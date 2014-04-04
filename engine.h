@@ -31,9 +31,10 @@ struct thread_info{
 };
 
 struct listensocket_info{
+	size_t number_of_threads;
 	uint16_t listen_port;
 };
 
-#define DEFAULT_LISTENSOCKET_INIT {.listen_port=DEFAULT_PORT}
+#define DEFAULT_LISTENSOCKET_INIT {.number_of_threads = 1,.listen_port=DEFAULT_PORT}
 
 void main_loop();

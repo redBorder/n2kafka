@@ -33,21 +33,10 @@ static void shutdown_process(){
 }
 
 int main(void){
-	struct thread_info thread_info;
-	memset(&thread_info,0,sizeof(thread_info));
+	struct listensocket_info listensocket_info = DEFAULT_LISTENSOCKET_INIT;
 
 	signal(SIGINT,shutdown_process);
-	main_loop(&thread_info);
-
-	/* safety test */
-	if(0!=pthread_mutex_trylock(&thread_info.listenfd_mutex)){
-		perror("Error locking mutex, when no other lock must be here.");
-	}else{
-		pthread_mutex_unlock(&thread_info.listenfd_mutex);
-	}
-
-	close(thread_info.listenfd);
-	pthread_mutex_destroy(&thread_info.listenfd_mutex);
+	main_loop(&listensocket_info);
 
 	return 0;
 }

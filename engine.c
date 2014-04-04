@@ -68,14 +68,14 @@ static int createListenSocketMutex(pthread_mutex_t *mutex){
 	return init_returned;
 }
 
-int accept_connection(int listenfd){
+static int accept_connection(int listenfd){
 	const int accept_return = accept(listenfd,NULL,NULL);
 	if(accept_return==-1)
 		perror("accept error: ");
 	return accept_return;
 }
 
-int select_socket(int listenfd,struct timeval *tv){
+static int select_socket(int listenfd,struct timeval *tv){
 	fd_set listenfd_set;
 
 	FD_ZERO(&listenfd_set);
@@ -83,24 +83,69 @@ int select_socket(int listenfd,struct timeval *tv){
 	return select(listenfd+1,&listenfd_set,NULL,NULL,(struct timeval *)tv);
 }
 
-void read_from_socket(int fd){
-	struct timeval tv = {.tv_sec = 5,.tv_usec = 0};
-	const int select_result = select_socket(fd,&tv);
-	if(select_result>1){
-		char buffer[4096] = {'\0'};
-		const int recv_result = recv(fd,buffer,4096,0);
-		// @TODO: Recv_result > buffer?
-		// @TODO: assert that starts with '{' and end with '}''
-		// @TODO: How many messages have coming?
-		if(recv_result > 0){
-			printf("received data: [%d bytes][%s]\n", recv_result,buffer);
-			
-		}else if(recv_result < 0){
-			perror("Recv error: ");
-		}
-		// else: end of connection
-		close(fd);
+static int read_from_ready_socket(int fd){
+	char buffer[4096] = {'\0'};
+	const int recv_result = recv(fd,buffer,4096,0);
+	// @TODO: Recv_result > buffer?
+	// @TODO: assert that starts with '{' and end with '}''
+	// @TODO: How many messages have coming?
+	if(recv_result > 0){
+		printf("received data: [%d bytes][%s]\n", recv_result,buffer);
+	}else if(recv_result < 0){
+		perror("Recv error: ");
+	}else{
+		printf("End of connection\n");
 	}
+
+	return recv_result;
+}
+
+static int read_from_socket_with_timeout(int fd,struct timeval *timeout){
+	const int select_result = select_socket(fd,timeout);
+	if(select_result>0){
+		return read_from_ready_socket(fd);
+	}else if(select_result<0){
+		perror("Select error");
+	}else{
+		printf("Select result: %d",select_result);
+	}
+
+	return 0; /* timeout, failures and reads ends are managed in the same way */
+}
+
+static void read_data_from_socket(int fd){
+	int read_result = 0;
+	do{
+		struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
+		read_result = read_from_socket_with_timeout(fd,&timeout);
+	}while(read_result!=0);
+}
+
+void *main_consumer_loop(void *_thread_info){
+	struct thread_info *thread_info = _thread_info;
+	while(!do_shutdown){
+		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
+		int connection_fd = 0;
+		pthread_mutex_lock(&thread_info->listenfd_mutex);
+		int select_result = select_socket(thread_info->listenfd,&tv);
+		if(select_result==-1 && errno!=EINTR){
+			perror("listen select error: ");
+		}else if(select_result>0){
+			connection_fd = accept_connection(thread_info->listenfd);
+		}else{
+			printf("timeout\n");
+		}
+		pthread_mutex_unlock(&thread_info->listenfd_mutex);
+
+
+		while(connection_fd>0){
+			read_data_from_socket(connection_fd);
+			close(connection_fd);
+			connection_fd=0;
+		}
+	}
+
+	return NULL;
 }
 
 void main_loop(struct listensocket_info *listensocket_info){
@@ -113,22 +158,22 @@ void main_loop(struct listensocket_info *listensocket_info){
 	if(0 != createListenSocketMutex(&thread_info.listenfd_mutex))
 		exit(-1);
 
-	while(!do_shutdown){
-		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
-		int connection_fd = 0;
-		pthread_mutex_lock(&thread_info.listenfd_mutex);
-		int select_result = select_socket(thread_info.listenfd,&tv);
-		if(select_result==-1 && errno!=EINTR){
-			perror("listen select error: ");
-		}else if(select_result>0){
-			connection_fd = accept_connection(thread_info.listenfd);
-		}else{
-			printf("timeout\n");
-		}
-		pthread_mutex_unlock(&thread_info.listenfd_mutex);
+	pthread_t *threads = malloc(sizeof(threads[0])*listensocket_info->number_of_threads);
 
-		if(connection_fd>0){
-			read_from_socket(connection_fd);
-		}
+	unsigned int i=0;
+	for(i=0;i<listensocket_info->number_of_threads;++i)
+		pthread_create(&threads[i],NULL,main_consumer_loop,&thread_info);
+
+	for(i=0;i<listensocket_info->number_of_threads;++i)
+		pthread_join(threads[i],NULL);
+
+	/* safety test */
+	if(0!=pthread_mutex_trylock(&thread_info.listenfd_mutex)){
+		perror("Error locking mutex, when no other lock must be here.");
+	}else{
+		pthread_mutex_unlock(&thread_info.listenfd_mutex);
 	}
+
+	close(thread_info.listenfd);
+	pthread_mutex_destroy(&thread_info.listenfd_mutex);
 }
