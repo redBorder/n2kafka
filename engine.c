@@ -20,6 +20,7 @@
 
 #include "engine.h"
 #include "parse.h"
+#include "kafka.h"
 
 #include <sys/time.h>
 #include <stdio.h>
@@ -116,16 +117,6 @@ static int read_from_socket_with_timeout(int fd,struct timeval *timeout,char *bu
 	return 0; /* timeout, failures and reads ends are managed in the same way */
 }
 
-static void send_and_free_message_list(message_list list){
-	struct message_list_element *elm;
-	while (!SLIST_EMPTY(&list)) {           /* List Deletion. */
-		elm = SLIST_FIRST(&list);
-		SLIST_REMOVE_HEAD(&list, slist_entry);
-		printf("Buffer: %s\n",elm->msg);
-		free(elm);
-     }
-}
-
 static void process_data_from_socket(int fd){
 	for(;;){
 		char buffer[READ_BUFFER_SIZE] = {'\0'};
@@ -134,7 +125,7 @@ static void process_data_from_socket(int fd){
 		const int read_ret = read_from_socket_with_timeout(fd,&timeout,buffer,READ_BUFFER_SIZE);
 		if(read_ret > 0){
 			message_list list = json_array_to_message_list(buffer);
-			send_and_free_message_list(list);
+			send_to_kafka(list);
 		}else{
 			return;
 		}

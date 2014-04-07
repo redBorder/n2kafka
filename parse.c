@@ -70,5 +70,7 @@ message_list json_array_to_message_list(const char *str){
 		list = parse_array(json_object);
 	}
 
+	json_decref(json_object);
+
 	return list;
 }

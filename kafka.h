@@ -18,28 +18,15 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#include "engine.h"
-#include "kafka.h"
+#include "parse.h"
 
-#include <signal.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
+struct kafka_conf{
+	const char *brokers;
+	const char *topic;
+};
 
-#define DEFAULT_PORT 2057
+#define DEFAULT_KAFKA_CONF = {NULL,NULL}
 
-static void shutdown_process(){
-	printf("Exiting\n");
-	do_shutdown=1;
-}
+void init_rdkafka();
 
-int main(void){
-	struct listensocket_info listensocket_info = DEFAULT_LISTENSOCKET_INIT;
-
-	signal(SIGINT,shutdown_process);
-
-	init_rdkafka();
-	main_loop(&listensocket_info);
-
-	return 0;
-}
+void send_to_kafka(message_list list);
