@@ -22,6 +22,7 @@
 #include "parse.h"
 #include "kafka.h"
 
+#include <fcntl.h>
 #include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -35,8 +36,6 @@
 #define READ_BUFFER_SIZE 4096
 
 int do_shutdown = 0;
-
-static int process_json_response = 1;
 
 static int createListenSocket(const struct listensocket_info *listensocket_info){
 	int listenfd = socket(AF_INET,SOCK_STREAM,0);
@@ -75,10 +74,18 @@ static int createListenSocketMutex(pthread_mutex_t *mutex){
 	return init_returned;
 }
 
+static void set_nonblock_flag(int fd){
+	int flags = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
 static int accept_connection(int listenfd){
-	const int accept_return = accept(listenfd,NULL,SOCK_NONBLOCK);
-	if(accept_return==-1)
+	const int accept_return = accept(listenfd,NULL,0);
+	if(accept_return==-1){
 		perror("accept error: ");
+		return accept_return;
+	}
+	set_nonblock_flag(accept_return);
 	return accept_return;
 }
 
@@ -95,7 +102,7 @@ static int read_from_ready_socket(int fd,char *buffer,const size_t buffer_len){
 	// @TODO: Recv_result > buffer?
 	// @TODO: assert that starts with '{' and end with '}''
 	// @TODO: How many messages have coming?
-	if(recv_result < 0){
+	if(recv_result < 0 && errno != EAGAIN){
 		perror("Recv error: ");
 	}else if(recv_result == 0){
 		// printf("End of connection\n");
@@ -104,25 +111,12 @@ static int read_from_ready_socket(int fd,char *buffer,const size_t buffer_len){
 	return recv_result;
 }
 
-static int read_from_socket_with_timeout(int fd,struct timeval *timeout,char *buffer, const size_t buffer_size){
-	const int select_result = select_socket(fd,timeout);
-	if(select_result>0){
-		return read_from_ready_socket(fd,buffer,buffer_size);
-	}else if(select_result<0){
-		perror("Select error");
-	}else{
-		printf("Select result: %d",select_result);
-	}
-
-	return 0; /* timeout, failures and reads ends are managed in the same way */
-}
-
 static void process_data_from_socket(int fd){
 	for(;;){
 		char buffer[READ_BUFFER_SIZE] = {'\0'};
-		struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
+		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
 
-		const int read_ret = read_from_socket_with_timeout(fd,&timeout,buffer,READ_BUFFER_SIZE);
+		const int read_ret = read_from_ready_socket(fd,buffer,READ_BUFFER_SIZE);
 		if(read_ret > 0){
 			message_list list = json_array_to_message_list(buffer);
 			send_to_kafka(list);
@@ -144,7 +138,7 @@ void *main_consumer_loop(void *_thread_info){
 		}else if(select_result>0){
 			connection_fd = accept_connection(thread_info->listenfd);
 		}else{
-			printf("timeout\n");
+			// printf("timeout\n");
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 

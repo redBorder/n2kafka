@@ -40,6 +40,8 @@ int main(void){
 
 	init_rdkafka();
 	main_loop(&listensocket_info);
+	flush_kafka();
+	stop_rdkafka();
 
 	return 0;
 }

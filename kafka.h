@@ -30,3 +30,6 @@ struct kafka_conf{
 void init_rdkafka();
 
 void send_to_kafka(message_list list);
+
+void flush_kafka();
+void stop_rdkafka();

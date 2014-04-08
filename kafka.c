@@ -40,14 +40,15 @@ static rd_kafka_topic_t *rkt = NULL;
 * See rdkafka.h for more information.
 */
 static void msg_delivered (rd_kafka_t *rk RB_UNUSED,
-void *payload RB_UNUSED, size_t len,
+void *payload RB_UNUSED, size_t len RB_UNUSED,
 int error_code,
 void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 
-	if (error_code)
+	if (error_code){
 		fprintf(stderr, "%% Message delivery failed: %s\n",rd_kafka_err2str(error_code));
-	else
-		fprintf(stderr, "%% Message delivered (%zd bytes)\n", len);
+	}else{
+		// fprintf(stderr, "%% Message delivered (%zd bytes)\n", len);
+	}
 }
 
 
@@ -75,6 +76,10 @@ void init_rdkafka(){
 	rkt = rd_kafka_topic_new(rk, topic, topic_conf);
 }
 
+static void flush_kafka0(int timeout_ms){
+	rd_kafka_poll(rk,timeout_ms);
+}
+
 void send_to_kafka(message_list list){
 	struct message_list_element *elm;
 	while (!SLIST_EMPTY(&list)) {
@@ -84,5 +89,17 @@ void send_to_kafka(message_list list){
 		rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
 			elm->msg,strlen(elm->msg),NULL,0,NULL);
 		free(elm);
-     }
+    }
+
+    flush_kafka0(0);
+}
+
+
+
+void flush_kafka(){
+	flush_kafka0(1000);
+}
+
+void stop_rdkafka(){
+	rd_kafka_destroy(rk);
 }
