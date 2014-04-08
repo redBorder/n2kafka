@@ -76,7 +76,7 @@ static int createListenSocketMutex(pthread_mutex_t *mutex){
 }
 
 static int accept_connection(int listenfd){
-	const int accept_return = accept(listenfd,NULL,NULL);
+	const int accept_return = accept(listenfd,NULL,SOCK_NONBLOCK);
 	if(accept_return==-1)
 		perror("accept error: ");
 	return accept_return;
@@ -148,7 +148,9 @@ void *main_consumer_loop(void *_thread_info){
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
-		process_data_from_socket(connection_fd);
+		if(connection_fd > 0)
+			process_data_from_socket(connection_fd);
+		connection_fd = 0;
 	}
 
 	return NULL;
