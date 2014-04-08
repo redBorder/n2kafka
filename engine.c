@@ -97,31 +97,24 @@ static int select_socket(int listenfd,struct timeval *tv){
 	return select(listenfd+1,&listenfd_set,NULL,NULL,(struct timeval *)tv);
 }
 
-static int read_from_ready_socket(int fd,char *buffer,const size_t buffer_len){
-	const int recv_result = recv(fd,buffer,buffer_len,0);
-	// @TODO: Recv_result > buffer?
-	// @TODO: assert that starts with '{' and end with '}''
-	// @TODO: How many messages have coming?
-	if(recv_result < 0 && errno != EAGAIN){
-		perror("Recv error: ");
-	}else if(recv_result == 0){
-		// printf("End of connection\n");
-	}
-
-	return recv_result;
-}
-
 static void process_data_from_socket(int fd){
 	for(;;){
 		char buffer[READ_BUFFER_SIZE] = {'\0'};
 		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
 
-		const int read_ret = read_from_ready_socket(fd,buffer,READ_BUFFER_SIZE);
-		if(read_ret > 0){
+		const int recv_result = recv(fd,buffer,READ_BUFFER_SIZE,0);
+		if(recv_result > 0){
 			message_list list = json_array_to_message_list(buffer);
 			send_to_kafka(list);
-		}else{
-			return;
+		}else if(recv_result < 0){
+			if(errno == EAGAIN){
+				usleep(1000);
+			}else{
+				perror("Recv error: ");
+				break;
+			}
+		}else{ /* recv_result == 0 */
+			break;
 		}
 	}
 }
