@@ -135,8 +135,11 @@ void *main_consumer_loop(void *_thread_info){
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
-		if(connection_fd > 0)
+		if(connection_fd > 0){
 			process_data_from_socket(connection_fd);
+			close(connection_fd);
+		}
+
 		connection_fd = 0;
 	}
 
