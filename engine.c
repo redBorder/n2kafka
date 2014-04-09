@@ -36,6 +36,9 @@
 
 #define READ_BUFFER_SIZE 4096
 
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+
 int do_shutdown = 0;
 
 static int createListenSocket(const struct listensocket_info *listensocket_info){
@@ -127,13 +130,15 @@ void *main_consumer_loop(void *_thread_info){
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
 		int connection_fd = 0;
 		pthread_mutex_lock(&thread_info->listenfd_mutex);
-		int select_result = select_socket(thread_info->listenfd,&tv);
-		if(select_result==-1 && errno!=EINTR){
-			perror("listen select error: ");
-		}else if(select_result>0){
-			connection_fd = accept_connection(thread_info->listenfd);
-		}else{
-			// printf("timeout\n");
+		if(likely(!do_shutdown)){
+			int select_result = select_socket(thread_info->listenfd,&tv);
+			if(select_result==-1 && errno!=EINTR){
+				perror("listen select error: ");
+			}else if(select_result>0){
+				connection_fd = accept_connection(thread_info->listenfd);
+			}else{
+				// printf("timeout\n");
+			}
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
