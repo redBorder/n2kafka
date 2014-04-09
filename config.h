@@ -25,10 +25,16 @@
 struct n2kafka_config{
     unsigned int tcp_threads;
     unsigned int udp_threads;
-    const char *format;
+    char *format;
     uint16_t listen_port;
-    const char *topic;
-    const char *broker;
+    char *topic;
+    char *brokers;
 };
 
 extern struct n2kafka_config global_config;
+
+void init_global_config();
+
+void parse_config(const char *config_file_path);
+
+void free_global_config();

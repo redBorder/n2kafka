@@ -20,6 +20,7 @@
 */
 
 #include "parse.h"
+#include "config.h"
 
 #include <string.h>
 #include <pthread.h>
@@ -29,8 +30,6 @@ static rd_kafka_t *rk = NULL;
 static rd_kafka_topic_t *rkt = NULL;
 
 #define RDKAFKA_ERRSTR_SIZE 512
-#define brokers "rb001"
-#define topic "rb_loc"
 
 #define RB_UNUSED __attribute__((unused))
 
@@ -67,13 +66,18 @@ void init_rdkafka(){
 		exit(1);
 	}
 
-	const int brokers_res = rd_kafka_brokers_add(rk,brokers);
+	if(global_config.brokers == NULL){
+		fprintf(stderr,"%% No brokers specified\n");
+		exit(1);
+	}
+
+	const int brokers_res = rd_kafka_brokers_add(rk,global_config.brokers);
 	if(brokers_res==0){
 		fprintf(stderr, "%% No valid brokers specified\n");
 		exit(1);
 	}
 
-	rkt = rd_kafka_topic_new(rk, topic, topic_conf);
+	rkt = rd_kafka_topic_new(rk, NULL, topic_conf);
 }
 
 static void flush_kafka0(int timeout_ms){

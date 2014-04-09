@@ -165,6 +165,8 @@ void main_loop(struct listensocket_info *listensocket_info){
 	for(i=0;i<listensocket_info->number_of_threads;++i)
 		pthread_join(threads[i],NULL);
 
+	free(threads);
+
 	/* safety test */
 	if(0!=pthread_mutex_trylock(&thread_info.listenfd_mutex)){
 		perror("Error locking mutex, when no other lock must be here.");

@@ -20,11 +20,13 @@
 
 #include "engine.h"
 #include "kafka.h"
+#include "config.h"
 
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <jansson.h>
 
 #define DEFAULT_PORT 2057
 
@@ -33,7 +35,30 @@ static void shutdown_process(){
 	do_shutdown=1;
 }
 
-int main(void){
+static void show_usage(const char *progname){
+	fprintf(stdout,"Usage: %s <config_file>\n",progname);
+	fprintf(stdout,"\n");
+	fprintf(stdout,"Where <config_file> is a json file that can contains the \n");
+	fprintf(stdout,"the next configurations:\n");
+	
+	fprintf(stdout,"{\n");
+	fprintf(stdout,"\t\"brokers\":\"kafka brokers\"\n");
+	fprintf(stdout,"\t\"topic\":\"kafka topic\"\n");
+	fprintf(stdout,"}\n");
+}
+
+static int is_asking_help(const char *param){
+	return 0==strcmp(param,"-h") || 0==strcmp(param,"--help");
+}
+
+int main(int argc,char *argv[]){
+	if(argc != 2 || is_asking_help(argv[1])){
+		show_usage(argv[0]);
+		exit(1);
+	}
+
+	parse_config(argv[1]);
+
 	struct listensocket_info listensocket_info = DEFAULT_LISTENSOCKET_INIT;
 
 	signal(SIGINT,shutdown_process);
