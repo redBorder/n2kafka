@@ -23,6 +23,7 @@
 #include <string.h>
 #include <jansson.h>
 
+#define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
 
@@ -40,11 +41,32 @@ static const char *assert_json_string(const char *key,const json_t *value){
 	return json_string_value(value);
 }
 
+static int assert_json_integer(const char *key,const json_t *value){
+	if(!json_is_integer(value)){
+		fprintf(stderr,"%s value must be an integer in config file\n",key);
+		exit(1);
+	}
+	return json_integer_value(value);
+}
+
 static void parse_config_keyval(const char *key,const json_t *value){
+	const char *proto = "tcp";
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
 	}else if(!strcasecmp(key,CONFIG_BROKERS_KEY)){
 		global_config.brokers = strdup(assert_json_string(key,value));
+	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
+		if(NULL==proto){
+			fprintf(stderr,"You have to set proto prior threads");
+			exit(1);
+		}
+		if(0==strcmp(proto,"tcp")){
+			global_config.tcp_threads = assert_json_integer(key,value);
+			if(global_config.tcp_threads == 0){
+				fprintf(stderr,"You have to set >0 threads");
+				exit(1);
+			}
+		}
 	}else{
 		fprintf(stderr,"Unknown config key %s\n",key);
 		exit(1);

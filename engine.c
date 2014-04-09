@@ -21,6 +21,7 @@
 #include "engine.h"
 #include "parse.h"
 #include "kafka.h"
+#include "config.h"
 
 #include <fcntl.h>
 #include <sys/time.h>
@@ -61,6 +62,7 @@ static int createListenSocket(const struct listensocket_info *listensocket_info)
 	const int listen_ret = listen(listenfd,SOMAXCONN);
 	if(listen_ret == -1){
 		perror("Error listen()");
+		close(listenfd);
 		return -1;
 	}
 
@@ -156,13 +158,18 @@ void main_loop(struct listensocket_info *listensocket_info){
 	if(0 != createListenSocketMutex(&thread_info.listenfd_mutex))
 		exit(-1);
 
-	pthread_t *threads = malloc(sizeof(threads[0])*listensocket_info->number_of_threads);
+	if(0==global_config.tcp_threads){
+		fprintf(stderr,"threads must be > 0\n");
+		exit(-1);
+	}
+
+	pthread_t *threads = malloc(sizeof(threads[0])*global_config.tcp_threads);
 
 	unsigned int i=0;
-	for(i=0;i<listensocket_info->number_of_threads;++i)
+	for(i=0;i<global_config.tcp_threads;++i)
 		pthread_create(&threads[i],NULL,main_consumer_loop,&thread_info);
 
-	for(i=0;i<listensocket_info->number_of_threads;++i)
+	for(i=0;i<global_config.tcp_threads;++i)
 		pthread_join(threads[i],NULL);
 
 	free(threads);

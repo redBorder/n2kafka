@@ -44,6 +44,7 @@ static void show_usage(const char *progname){
 	fprintf(stdout,"{\n");
 	fprintf(stdout,"\t\"brokers\":\"kafka brokers\"\n");
 	fprintf(stdout,"\t\"topic\":\"kafka topic\"\n");
+	fprintf(stdout,"\t\"threads\":<number_of_threads>\n");
 	fprintf(stdout,"}\n");
 }
 
