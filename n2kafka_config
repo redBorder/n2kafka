@@ -1,0 +1,5 @@
+{
+	"threads":20,
+	"brokers":"rb002",
+	"topic":"rb_loc"
+}
