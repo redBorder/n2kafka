@@ -42,6 +42,7 @@ static void show_usage(const char *progname){
 	fprintf(stdout,"the next configurations:\n");
 	
 	fprintf(stdout,"{\n");
+	fprintf(stdout,"\t\"port\":<listen port>\n");
 	fprintf(stdout,"\t\"brokers\":\"kafka brokers\"\n");
 	fprintf(stdout,"\t\"topic\":\"kafka topic\"\n");
 	fprintf(stdout,"\t\"threads\":<number_of_threads>\n");
@@ -60,12 +61,10 @@ int main(int argc,char *argv[]){
 
 	parse_config(argv[1]);
 
-	struct listensocket_info listensocket_info = DEFAULT_LISTENSOCKET_INIT;
-
 	signal(SIGINT,shutdown_process);
 
 	init_rdkafka();
-	main_loop(&listensocket_info);
+	main_loop();
 	flush_kafka();
 	stop_rdkafka();
 

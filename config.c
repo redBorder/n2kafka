@@ -26,6 +26,7 @@
 #define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
+#define CONFIG_PORT_KEY "port"
 
 struct n2kafka_config global_config;
 
@@ -60,13 +61,15 @@ static void parse_config_keyval(const char *key,const json_t *value){
 			fprintf(stderr,"You have to set proto prior threads");
 			exit(1);
 		}
-		if(0==strcmp(proto,"tcp")){
+		if(!strcmp(proto,"tcp")){
 			global_config.tcp_threads = assert_json_integer(key,value);
 			if(global_config.tcp_threads == 0){
 				fprintf(stderr,"You have to set >0 threads");
 				exit(1);
 			}
 		}
+	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
+		global_config.listen_port = assert_json_integer(key,value);
 	}else{
 		fprintf(stderr,"Unknown config key %s\n",key);
 		exit(1);

@@ -41,7 +41,7 @@
 
 int do_shutdown = 0;
 
-static int createListenSocket(const struct listensocket_info *listensocket_info){
+static int createListenSocket(){
 	int listenfd = socket(AF_INET,SOCK_STREAM,0);
 	if(listenfd==-1){
 		perror("Error creating socket: ");
@@ -53,7 +53,13 @@ static int createListenSocket(const struct listensocket_info *listensocket_info)
 
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
-	server_addr.sin_port=htons(listensocket_info->listen_port);
+	server_addr.sin_port=htons(global_config.listen_port);
+
+	if(server_addr.sin_port == 0){
+		fprintf(stderr, "listen port not declared in config file\n");
+		close(listenfd);
+		return -1;
+	}
 
 	const int bind_ret = bind(listenfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
 	if(bind_ret == -1){
@@ -153,10 +159,10 @@ void *main_consumer_loop(void *_thread_info){
 	return NULL;
 }
 
-void main_loop(struct listensocket_info *listensocket_info){
+void main_loop(){
 	struct thread_info thread_info;
 
-	thread_info.listenfd = createListenSocket(listensocket_info);
+	thread_info.listenfd = createListenSocket();
 	if(thread_info.listenfd == -1)
 		exit(-1);
 
