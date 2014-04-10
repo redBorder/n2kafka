@@ -21,6 +21,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 struct n2kafka_config{
     unsigned int tcp_threads;

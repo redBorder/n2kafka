@@ -19,12 +19,16 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include "util.h"
 #include "parse.h"
 #include "config.h"
 
-#include <string.h>
 #include <pthread.h>
 #include <librdkafka/rdkafka.h>
+
+#include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 
 static rd_kafka_t *rk = NULL;
 static rd_kafka_topic_t *rkt = NULL;
@@ -77,28 +81,37 @@ void init_rdkafka(){
 		exit(1);
 	}
 
-	rkt = rd_kafka_topic_new(rk, NULL, topic_conf);
+	if(global_config.topic == NULL){
+		fprintf(stderr,"%% No valid brokers specified\n");
+		exit(1);
+	}
+
+	rkt = rd_kafka_topic_new(rk, global_config.topic, topic_conf);
+	if(rkt == NULL){
+		fprintf(stderr,"%% Cannot create kafka topic\n");
+		exit(1);
+	}
 }
 
 static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(rk,timeout_ms);
 }
 
-void send_to_kafka(message_list list){
-	struct message_list_element *elm;
-	while (!SLIST_EMPTY(&list)) {
-		elm = SLIST_FIRST(&list);
-		SLIST_REMOVE_HEAD(&list, slist_entry);
-		// printf("Buffer: %s\n",elm->msg);
-		rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
-			elm->msg,strlen(elm->msg),NULL,0,NULL);
-		free(elm);
-    }
+void send_to_kafka(char *buf,const size_t bufsize,int msgflags){
+	const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
+		buf,bufsize,NULL,0,NULL);
 
-    flush_kafka0(0);
+	if(produce_ret == -1){
+		//fprintf(stderr, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
+		fprintf(stderr, "Failed to produce message: %s\n",strerror(errno));
+		if(msgflags | RD_KAFKA_MSG_F_FREE)
+			free(buf);
+	}
 }
 
-
+void send_copy_to_kafka(char *buf,const size_t bufsize){
+	send_to_kafka(buf,bufsize,RD_KAFKA_MSG_F_COPY);
+}
 
 void flush_kafka(){
 	flush_kafka0(1000);

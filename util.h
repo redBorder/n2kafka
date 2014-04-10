@@ -18,18 +18,7 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#include "parse.h"
+#pragma once
 
-struct kafka_conf{
-	const char *brokers;
-	const char *topic;
-};
-
-#define DEFAULT_KAFKA_CONF = {NULL,NULL}
-
-void init_rdkafka();
-
-void send_copy_to_kafka(char *buffer,const size_t bufsize);
-
-void flush_kafka();
-void stop_rdkafka();
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)

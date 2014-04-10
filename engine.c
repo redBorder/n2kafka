@@ -18,6 +18,8 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include "util.h"
+
 #include "engine.h"
 #include "parse.h"
 #include "kafka.h"
@@ -36,8 +38,7 @@
 
 #define READ_BUFFER_SIZE 4096
 
-#define likely(x)       __builtin_expect(!!(x), 1)
-#define unlikely(x)     __builtin_expect(!!(x), 0)
+
 
 int do_shutdown = 0;
 
@@ -74,7 +75,8 @@ static int createListenSocket(){
 		close(listenfd);
 		return -1;
 	}
-
+	
+	printf("Listening socket created successfuly\n");
 	return listenfd;
 }
 
@@ -92,6 +94,7 @@ static void set_nonblock_flag(int fd){
 
 static int accept_connection(int listenfd){
 	const int accept_return = accept(listenfd,NULL,0);
+	//	printf("Connection established\n");
 	if(accept_return==-1){
 		perror("accept error: ");
 		return accept_return;
@@ -115,8 +118,7 @@ static void process_data_from_socket(int fd){
 
 		const int recv_result = recv(fd,buffer,READ_BUFFER_SIZE,0);
 		if(recv_result > 0){
-			message_list list = json_array_to_message_list(buffer);
-			send_to_kafka(list);
+			send_copy_to_kafka(buffer,recv_result);
 		}else if(recv_result < 0){
 			if(errno == EAGAIN){
 				usleep(1000);

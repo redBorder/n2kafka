@@ -20,41 +20,47 @@
 */
 
 #include "parse.h"
+#include "util.h"
 
 #include <jansson.h>
 #include <librdkafka/rdkafka.h>
 
 #include <pthread.h>
+#include <string.h>
+#include <assert.h>
+
 
 static struct message_list_element *object_to_list_element(const json_t *json_object){
 	struct message_list_element *elm = calloc(1,sizeof(*elm));
-	elm->msg = json_dumps(json_object,JSON_COMPACT);
+	if(likely(elm)){
+		elm->msg = json_dumps(json_object,JSON_COMPACT);
+		elm->msg_len = strlen(elm->msg);
+	}else{
+		fprintf(stderr,"Memory error\n");
+	}
 	return elm;
 }
 
-message_list single_object_list(const json_t *json_object){
-	message_list list = new_message_list();
+static void add_object_to_list(message_list *list,const json_t *json_object){
+	assert(list);
+	assert(json_object);
 
 	struct message_list_element *elm = object_to_list_element(json_object);
-	if(elm){
-		SLIST_INSERT_HEAD(&list,elm,slist_entry);
-	}
+	if(likely(elm))
+		SLIST_INSERT_HEAD(list,elm,slist_entry);
 
-	return list;
 }
 
-static message_list parse_array(const json_t *json_array){
-	message_list list = new_message_list();
-
+static void parse_array(message_list *list,const json_t *json_array){
 	unsigned int i;
 	for(i = 0; i < json_array_size(json_array); i++){
 		const json_t *object = json_array_get(json_array,i);
-		struct message_list_element *elm = object_to_list_element(object);
-		if(elm)
-			SLIST_INSERT_HEAD(&list,elm,slist_entry);
+		if(likely(object)){
+			add_object_to_list(list,object);
+		}else{
+			fprintf(stderr,"Error in json_array get, index %d",i);
+		}
 	}
-
-	return list;
 }
 
 message_list json_array_to_message_list(const char *str){
@@ -62,12 +68,12 @@ message_list json_array_to_message_list(const char *str){
 	json_t * json_object = json_loads(str,0,&error);
 	message_list list = new_message_list();
 
-	if(!json_object){
+	if(unlikely(!json_object)){
 		fprintf(stderr,"json error on line %d: %s",error.line, error.text);
 	}else if(!json_is_array(json_object)){
-		list = single_object_list(json_object);
+		add_object_to_list(&list,json_object);
 	}else{
-		list = parse_array(json_object);
+		parse_array(&list,json_object);
 	}
 
 	json_decref(json_object);

@@ -20,24 +20,3 @@
 
 #pragma once
 
-#include <jansson.h>
-
-#include <sys/queue.h>
-#include <stdlib.h>
-
-struct message_list_element{
-	char *msg;
-	SLIST_ENTRY(message_list_element) slist_entry;
-};
-
-typedef SLIST_HEAD(,message_list_element) message_list;
-
-static message_list  __attribute__((unused)) new_message_list(){
-	message_list list;
-	SLIST_INIT(&list);
-	return list;
-}
-
-message_list single_object_list(const json_t *json_object);
-
-message_list json_array_to_message_list(const char *str);
