@@ -97,7 +97,7 @@ static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(rk,timeout_ms);
 }
 
-void send_to_kafka(char *buf,const size_t bufsize,int msgflags){
+static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 	const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
 		buf,bufsize,NULL,0,NULL);
 
@@ -109,8 +109,8 @@ void send_to_kafka(char *buf,const size_t bufsize,int msgflags){
 	}
 }
 
-void send_copy_to_kafka(char *buf,const size_t bufsize){
-	send_to_kafka(buf,bufsize,RD_KAFKA_MSG_F_COPY);
+void send_to_kafka(char *buf,const size_t bufsize){
+	send_to_kafka0(buf,bufsize,RD_KAFKA_MSG_F_FREE);
 }
 
 void flush_kafka(){

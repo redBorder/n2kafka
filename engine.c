@@ -113,12 +113,12 @@ static int select_socket(int listenfd,struct timeval *tv){
 
 static void process_data_from_socket(int fd){
 	for(;;){
-		char buffer[READ_BUFFER_SIZE] = {'\0'};
+		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
 
 		const int recv_result = recv(fd,buffer,READ_BUFFER_SIZE,0);
 		if(recv_result > 0){
-			send_copy_to_kafka(buffer,recv_result);
+			send_to_kafka(buffer,recv_result);
 		}else if(recv_result < 0){
 			if(errno == EAGAIN){
 				usleep(1000);
@@ -126,7 +126,10 @@ static void process_data_from_socket(int fd){
 				perror("Recv error: ");
 				break;
 			}
+
+			free(buffer);
 		}else{ /* recv_result == 0 */
+			free(buffer);
 			break;
 		}
 	}

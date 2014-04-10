@@ -29,7 +29,7 @@ struct kafka_conf{
 
 void init_rdkafka();
 
-void send_copy_to_kafka(char *buffer,const size_t bufsize);
+void send_to_kafka(char *buffer,const size_t bufsize);
 
 void flush_kafka();
 void stop_rdkafka();
