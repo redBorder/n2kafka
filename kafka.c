@@ -92,15 +92,21 @@ static void flush_kafka0(int timeout_ms){
 }
 
 static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
-	const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
-		buf,bufsize,NULL,0,NULL);
+	int retried = 0;
+	do{
+		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
+			buf,bufsize,NULL,0,NULL);
 
-	if(produce_ret == -1){
-		//fprintf(stderr, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
-		fprintf(stderr, "Failed to produce message: %s\n",strerror(errno));
-		if(msgflags | RD_KAFKA_MSG_F_FREE)
-			free(buf);
-	}
+		if(produce_ret == 0)
+			break;
+
+		if(ENOBUFS!=errno || retried++){
+			//fprintf(stderr, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
+			fprintf(stderr, "Failed to produce message: %s\n",strerror(errno));
+			if(msgflags | RD_KAFKA_MSG_F_FREE)
+				free(buf);
+		}
+	}while(1);
 }
 
 void send_to_kafka(char *buf,const size_t bufsize){

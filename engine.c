@@ -134,7 +134,7 @@ static int process_data_received_from_socket(char *buffer,const int recv_result)
 }
 
 static void process_data_from_socket(int fd){
-	for(;;){
+	while(likely(!do_shutdown)){
 		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
 
