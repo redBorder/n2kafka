@@ -43,7 +43,7 @@
 int do_shutdown = 0;
 
 static int createListenSocket(){
-	int listenfd = socket(AF_INET,SOCK_STREAM,0);
+	int listenfd = global_config.proto == N2KAFKA_UDP ? socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0) : socket(AF_INET,SOCK_STREAM,0);
 	if(listenfd==-1){
 		perror("Error creating socket: ");
 		return -1;
@@ -64,11 +64,13 @@ static int createListenSocket(){
 		return -1;
 	}
 	
-	const int listen_ret = listen(listenfd,SOMAXCONN);
-	if(listen_ret == -1){
-		perror("Error listen()");
-		close(listenfd);
-		return -1;
+	if(global_config.proto != N2KAFKA_UDP){
+		const int listen_ret = listen(listenfd,SOMAXCONN);
+		if(listen_ret == -1){
+			perror("Error listen()");
+			close(listenfd);
+			return -1;
+		}
 	}
 	
 	printf("Listening socket created successfuly\n");
@@ -171,12 +173,11 @@ static void *main_consumer_loop(void *_thread_info){
 	return NULL;
 }
 
-#if 0
 static void *main_consumer_loop_udp(void *_thread_info){
 	struct thread_info *thread_info = _thread_info;
 	while(!do_shutdown){
+		int recv_result = 0;
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
-		int connection_fd = 0;
 		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 		pthread_mutex_lock(&thread_info->listenfd_mutex);
 		if(likely(!do_shutdown)){
@@ -184,17 +185,16 @@ static void *main_consumer_loop_udp(void *_thread_info){
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
 				perror("listen select error");
 			}else if(select_result>0){
-				receive_from_socket(thread_info->listenfd,buffer,READ_BUFFER_SIZE);
+				recv_result = receive_from_socket(thread_info->listenfd,buffer,READ_BUFFER_SIZE);
 			}
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
-		process_data_from_socket(connection_fd);
+		process_data_received_from_socket(buffer,recv_result);
 	}
 
 	return NULL;
 }
-#endif
 
 void main_loop(){
 	struct thread_info thread_info;
@@ -210,8 +210,9 @@ void main_loop(){
 	pthread_t *threads = malloc(sizeof(threads[0])*global_config.threads);
 
 	unsigned int i=0;
+	void *consumer_fn = global_config.proto == N2KAFKA_UDP ? main_consumer_loop_udp : main_consumer_loop;
 	for(i=0;i<global_config.threads;++i)
-		pthread_create(&threads[i],NULL,main_consumer_loop,&thread_info);
+		pthread_create(&threads[i],NULL,consumer_fn,&thread_info);
 
 	for(i=0;i<global_config.threads;++i)
 		pthread_join(threads[i],NULL);

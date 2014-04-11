@@ -85,7 +85,7 @@ static void parse_config0(json_t *root){
 }
 
 static void check_config(){
-	if(global_config.listen_port > 0){
+	if(global_config.listen_port == 0){
 		fprintf(stderr,"You have to set a port to listen\n");
 		exit(1);
 	}
