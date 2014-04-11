@@ -1,5 +1,5 @@
 {
-	"proto":"udp",
+	"proto":"tcp",
 	"port":2057,
 	"threads":20,
 	"brokers":"pablo03",

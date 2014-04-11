@@ -18,6 +18,7 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include "util.h"
 #include "config.h"
 
 #include <string.h>
@@ -41,16 +42,14 @@ void init_global_config(){
 
 static const char *assert_json_string(const char *key,const json_t *value){
 	if(!json_is_string(value)){
-		fprintf(stderr,"%s value must be a string in config file\n",key);
-		exit(1);
+		fatal("%s value must be a string in config file\n",key);
 	}
 	return json_string_value(value);
 }
 
 static int assert_json_integer(const char *key,const json_t *value){
 	if(!json_is_integer(value)){
-		fprintf(stderr,"%s value must be an integer in config file\n",key);
-		exit(1);
+		fatal("%s value must be an integer in config file\n",key);
 	}
 	return json_integer_value(value);
 }
@@ -72,8 +71,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
 		global_config.listen_port = assert_json_integer(key,value);
 	}else{
-		fprintf(stderr,"Unknown config key %s\n",key);
-		exit(1);
+		fatal("Unknown config key %s\n",key);
 	}
 }
 
@@ -86,24 +84,19 @@ static void parse_config0(json_t *root){
 
 static void check_config(){
 	if(global_config.listen_port == 0){
-		fprintf(stderr,"You have to set a port to listen\n");
-		exit(1);
+		fatal("You have to set a port to listen\n");
 	}
 	if(global_config.topic == NULL){
-		fprintf(stderr,"You have to set a topic to write to\n");
-		exit(1);
+		fatal("You have to set a topic to write to\n");
 	}
 	if(global_config.brokers == NULL){
-		fprintf(stderr,"You have to set a brokers to write to\n");
-		exit(1);
+		fatal("You have to set a brokers to write to\n");
 	}
 	if(global_config.proto == 0){
-		fprintf(stderr,PROTO_ERROR "\n");
-		exit(1);
+		fatal(PROTO_ERROR "\n");
 	}
 	if(global_config.threads == 0){
-		fprintf(stderr,"You have to set >0 threads\n");
-		exit(1);
+		fatal("You have to set >0 threads\n");
 	}
 }
 

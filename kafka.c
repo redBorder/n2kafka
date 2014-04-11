@@ -65,31 +65,25 @@ void init_rdkafka(){
 	rk = rd_kafka_new(RD_KAFKA_PRODUCER,conf,errstr,RDKAFKA_ERRSTR_SIZE);
 
 	if(!rk){
-		fprintf(stderr,
-		"%% Failed to create new producer: %s\n",errstr);
-		exit(1);
+		fatal("%% Failed to create new producer: %s\n",errstr);
 	}
 
 	if(global_config.brokers == NULL){
-		fprintf(stderr,"%% No brokers specified\n");
-		exit(1);
+		fatal("%% No brokers specified\n");
 	}
 
 	const int brokers_res = rd_kafka_brokers_add(rk,global_config.brokers);
 	if(brokers_res==0){
-		fprintf(stderr, "%% No valid brokers specified\n");
-		exit(1);
+		fatal( "%% No valid brokers specified\n");
 	}
 
 	if(global_config.topic == NULL){
-		fprintf(stderr,"%% No valid brokers specified\n");
-		exit(1);
+		fatal("%% No valid brokers specified\n");
 	}
 
 	rkt = rd_kafka_topic_new(rk, global_config.topic, topic_conf);
 	if(rkt == NULL){
-		fprintf(stderr,"%% Cannot create kafka topic\n");
-		exit(1);
+		fatal("%% Cannot create kafka topic\n");
 	}
 }
 
