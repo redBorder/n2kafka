@@ -20,7 +20,7 @@
 
 #include "engine.h"
 #include "kafka.h"
-#include "config.h"
+#include "global_config.h"
 
 #include <signal.h>
 #include <stdio.h>

@@ -23,7 +23,7 @@
 #include "engine.h"
 #include "parse.h"
 #include "kafka.h"
-#include "config.h"
+#include "global_config.h"
 
 #include <fcntl.h>
 #include <stdio.h>

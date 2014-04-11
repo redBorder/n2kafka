@@ -21,7 +21,7 @@
 
 #include "util.h"
 #include "parse.h"
-#include "config.h"
+#include "global_config.h"
 
 #include <pthread.h>
 #include <librdkafka/rdkafka.h>

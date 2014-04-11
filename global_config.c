@@ -19,7 +19,7 @@
 */
 
 #include "util.h"
-#include "config.h"
+#include "global_config.h"
 
 #include <string.h>
 #include <jansson.h>
