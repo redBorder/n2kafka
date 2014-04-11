@@ -26,7 +26,6 @@
 #include "config.h"
 
 #include <fcntl.h>
-#include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -35,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <assert.h>
 
 #define READ_BUFFER_SIZE 4096
 
@@ -54,13 +54,8 @@ static int createListenSocket(){
 
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
+	assert(global_config.listen_port > 0);
 	server_addr.sin_port=htons(global_config.listen_port);
-
-	if(server_addr.sin_port == 0){
-		fprintf(stderr, "listen port not declared in config file\n");
-		close(listenfd);
-		return -1;
-	}
 
 	const int bind_ret = bind(listenfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
 	if(bind_ret == -1){
@@ -111,31 +106,43 @@ static int select_socket(int listenfd,struct timeval *tv){
 	return select(listenfd+1,&listenfd_set,NULL,NULL,(struct timeval *)tv);
 }
 
+static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
+	return recv(fd,buffer,buffer_size,0);
+}
+
+/* return 1: all ok, keep trying to receive data */
+/* return 0: error/end-of-data. dont keep asking for it */
+static int process_data_received_from_socket(char *buffer,const int recv_result){
+	if(recv_result > 0){
+		send_to_kafka(buffer,recv_result);
+	}else if(recv_result < 0){
+		if(errno == EAGAIN){
+			usleep(1000);
+		}else{
+			perror("Recv error: ");
+			return 0;
+		}
+
+		free(buffer);
+	}else{ /* recv_result == 0 */
+		free(buffer);
+		return 0;
+	}
+	return 1;
+}
+
 static void process_data_from_socket(int fd){
 	for(;;){
 		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
 
-		const int recv_result = recv(fd,buffer,READ_BUFFER_SIZE,0);
-		if(recv_result > 0){
-			send_to_kafka(buffer,recv_result);
-		}else if(recv_result < 0){
-			if(errno == EAGAIN){
-				usleep(1000);
-			}else{
-				perror("Recv error: ");
-				break;
-			}
-
-			free(buffer);
-		}else{ /* recv_result == 0 */
-			free(buffer);
+		const int recv_result = receive_from_socket(fd,buffer,READ_BUFFER_SIZE);
+		if(0==process_data_received_from_socket(buffer,recv_result))
 			break;
-		}
 	}
 }
 
-void *main_consumer_loop(void *_thread_info){
+static void *main_consumer_loop(void *_thread_info){
 	struct thread_info *thread_info = _thread_info;
 	while(!do_shutdown){
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
@@ -143,8 +150,8 @@ void *main_consumer_loop(void *_thread_info){
 		pthread_mutex_lock(&thread_info->listenfd_mutex);
 		if(likely(!do_shutdown)){
 			int select_result = select_socket(thread_info->listenfd,&tv);
-			if(select_result==-1 && errno!=EINTR){
-				perror("listen select error: ");
+			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
+				perror("listen select error");
 			}else if(select_result>0){
 				connection_fd = accept_connection(thread_info->listenfd);
 			}else{
@@ -164,6 +171,31 @@ void *main_consumer_loop(void *_thread_info){
 	return NULL;
 }
 
+#if 0
+static void *main_consumer_loop_udp(void *_thread_info){
+	struct thread_info *thread_info = _thread_info;
+	while(!do_shutdown){
+		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
+		int connection_fd = 0;
+		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
+		pthread_mutex_lock(&thread_info->listenfd_mutex);
+		if(likely(!do_shutdown)){
+			int select_result = select_socket(thread_info->listenfd,&tv);
+			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
+				perror("listen select error");
+			}else if(select_result>0){
+				receive_from_socket(thread_info->listenfd,buffer,READ_BUFFER_SIZE);
+			}
+		}
+		pthread_mutex_unlock(&thread_info->listenfd_mutex);
+
+		process_data_from_socket(connection_fd);
+	}
+
+	return NULL;
+}
+#endif
+
 void main_loop(){
 	struct thread_info thread_info;
 
@@ -174,18 +206,14 @@ void main_loop(){
 	if(0 != createListenSocketMutex(&thread_info.listenfd_mutex))
 		exit(-1);
 
-	if(0==global_config.tcp_threads){
-		fprintf(stderr,"threads must be > 0\n");
-		exit(-1);
-	}
-
-	pthread_t *threads = malloc(sizeof(threads[0])*global_config.tcp_threads);
+	assert(global_config.threads>0);
+	pthread_t *threads = malloc(sizeof(threads[0])*global_config.threads);
 
 	unsigned int i=0;
-	for(i=0;i<global_config.tcp_threads;++i)
+	for(i=0;i<global_config.threads;++i)
 		pthread_create(&threads[i],NULL,main_consumer_loop,&thread_info);
 
-	for(i=0;i<global_config.tcp_threads;++i)
+	for(i=0;i<global_config.threads;++i)
 		pthread_join(threads[i],NULL);
 
 	free(threads);

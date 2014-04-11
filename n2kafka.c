@@ -42,6 +42,7 @@ static void show_usage(const char *progname){
 	fprintf(stdout,"the next configurations:\n");
 	
 	fprintf(stdout,"{\n");
+	fprintf(stdout,"\t\"proto\":\"tcp\"/\"udp\",");
 	fprintf(stdout,"\t\"port\":<listen port>\n");
 	fprintf(stdout,"\t\"brokers\":\"kafka brokers\"\n");
 	fprintf(stdout,"\t\"topic\":\"kafka topic\"\n");

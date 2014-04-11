@@ -24,8 +24,10 @@
 #include <stdbool.h>
 
 struct n2kafka_config{
-    unsigned int tcp_threads;
-    unsigned int udp_threads;
+#define N2KAFKA_TCP 1
+#define N2KAFKA_UDP 2
+    int proto;
+    unsigned int threads;
     char *format;
     uint16_t listen_port;
     char *topic;

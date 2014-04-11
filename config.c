@@ -23,10 +23,15 @@
 #include <string.h>
 #include <jansson.h>
 
+#define CONFIG_PROTO_KEY "proto"
 #define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
 #define CONFIG_PORT_KEY "port"
+
+#define CONFIG_PROTO_TCP "tcp"
+#define CONFIG_PROTO_UDP "udp"
+#define PROTO_ERROR "Proto must be either TCP or UDP"
 
 struct n2kafka_config global_config;
 
@@ -51,23 +56,19 @@ static int assert_json_integer(const char *key,const json_t *value){
 }
 
 static void parse_config_keyval(const char *key,const json_t *value){
-	const char *proto = "tcp";
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
 	}else if(!strcasecmp(key,CONFIG_BROKERS_KEY)){
 		global_config.brokers = strdup(assert_json_string(key,value));
+	}else if(!strcasecmp(key,CONFIG_PROTO_KEY)){
+		const char *proto = assert_json_string(key,value);
+		if(!strcmp(proto,CONFIG_PROTO_TCP)){
+			global_config.proto = N2KAFKA_TCP;
+		}else if(!strcmp(proto,CONFIG_PROTO_UDP)){
+			global_config.proto = N2KAFKA_UDP;
+		}
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
-		if(NULL==proto){
-			fprintf(stderr,"You have to set proto prior threads");
-			exit(1);
-		}
-		if(!strcmp(proto,"tcp")){
-			global_config.tcp_threads = assert_json_integer(key,value);
-			if(global_config.tcp_threads == 0){
-				fprintf(stderr,"You have to set >0 threads");
-				exit(1);
-			}
-		}
+		global_config.threads = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
 		global_config.listen_port = assert_json_integer(key,value);
 	}else{
@@ -81,6 +82,29 @@ static void parse_config0(json_t *root){
 	json_t *value;
 	json_object_foreach(root, key, value)
 		parse_config_keyval(key,value);
+}
+
+static void check_config(){
+	if(global_config.listen_port > 0){
+		fprintf(stderr,"You have to set a port to listen\n");
+		exit(1);
+	}
+	if(global_config.topic == NULL){
+		fprintf(stderr,"You have to set a topic to write to\n");
+		exit(1);
+	}
+	if(global_config.brokers == NULL){
+		fprintf(stderr,"You have to set a brokers to write to\n");
+		exit(1);
+	}
+	if(global_config.proto == 0){
+		fprintf(stderr,PROTO_ERROR "\n");
+		exit(1);
+	}
+	if(global_config.threads == 0){
+		fprintf(stderr,"You have to set >0 threads\n");
+		exit(1);
+	}
 }
 
 void parse_config(const char *config_file_path){
@@ -98,6 +122,7 @@ void parse_config(const char *config_file_path){
 
 	parse_config0(root);
 	json_decref(root);
+	check_config();
 }
 
 void free_global_config(){
