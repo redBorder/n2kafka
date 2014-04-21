@@ -107,6 +107,8 @@ static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 				free(buf);
 		}
 	}while(1);
+	
+	rd_kafka_poll(rk,0);
 }
 
 void send_to_kafka(char *buf,const size_t bufsize){
