@@ -32,6 +32,8 @@ struct n2kafka_config{
     uint16_t listen_port;
     char *topic;
     char *brokers;
+
+    int debug;
 };
 
 extern struct n2kafka_config global_config;

@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,12 +90,28 @@ static void set_nonblock_flag(int fd){
 	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+static uint16_t get_port(const struct sockaddr_in *sa){
+	return ntohs(sa->sin_port);
+	
+}
+
+static void print_accepted_connection_log(const struct sockaddr_in *sa){
+	char str[sizeof(INET_ADDRSTRLEN)];
+	inet_ntop(AF_INET, &(sa->sin_addr), str, INET_ADDRSTRLEN);
+
+	printf("Accepted connection from %s:%d\n",str,get_port(sa));
+}
+
 static int accept_connection(int listenfd){
-	const int accept_return = accept(listenfd,NULL,0);
+	struct sockaddr addr;
+	socklen_t addrlen = sizeof(addr);
+	const int accept_return = accept(listenfd,&addr,&addrlen);
 	//	printf("Connection established\n");
 	if(accept_return==-1){
-		perror("accept error: ");
+		perror("accept error");
 		return accept_return;
+	}else if(global_config.debug && addr.sa_family == AF_INET){
+		print_accepted_connection_log((struct sockaddr_in *)&addr);
 	}
 	set_nonblock_flag(accept_return);
 	return accept_return;
@@ -226,6 +243,7 @@ void main_loop(){
 		pthread_mutex_unlock(&thread_info.listenfd_mutex);
 	}
 
+	printf("Closing listening socket.\n");
 	close(thread_info.listenfd);
 	pthread_mutex_destroy(&thread_info.listenfd_mutex);
 }

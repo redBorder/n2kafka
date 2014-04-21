@@ -29,6 +29,7 @@
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
 #define CONFIG_PORT_KEY "port"
+#define CONFIG_DEBUG_KEY "debug"
 
 #define CONFIG_PROTO_TCP "tcp"
 #define CONFIG_PROTO_UDP "udp"
@@ -68,6 +69,8 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		}
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
 		global_config.threads = assert_json_integer(key,value);
+	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
+		global_config.debug = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
 		global_config.listen_port = assert_json_integer(key,value);
 	}else{

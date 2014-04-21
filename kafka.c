@@ -43,14 +43,14 @@ static rd_kafka_topic_t *rkt = NULL;
 * See rdkafka.h for more information.
 */
 static void msg_delivered (rd_kafka_t *rk RB_UNUSED,
-void *payload RB_UNUSED, size_t len RB_UNUSED,
+void *payload, size_t len,
 int error_code,
 void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 
 	if (error_code){
 		fprintf(stderr, "%% Message delivery failed: %s\n",rd_kafka_err2str(error_code));
-	}else{
-		// fprintf(stderr, "%% Message delivered (%zd bytes)\n", len);
+	}else if(global_config.debug){
+		fprintf(stderr, "%% Message delivered (%zd bytes): %*.*s\n", len, (int)len,(int)len, (char *)payload);
 	}
 }
 
