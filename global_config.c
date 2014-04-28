@@ -89,10 +89,10 @@ static void check_config(){
 	if(global_config.listen_port == 0){
 		fatal("You have to set a port to listen\n");
 	}
-	if(global_config.topic == NULL){
+	if(!only_stdout_output() && global_config.topic == NULL){
 		fatal("You have to set a topic to write to\n");
 	}
-	if(global_config.brokers == NULL){
+	if(!only_stdout_output() && global_config.brokers == NULL){
 		fatal("You have to set a brokers to write to\n");
 	}
 	if(global_config.proto == 0){

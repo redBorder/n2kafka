@@ -39,8 +39,6 @@
 
 #define READ_BUFFER_SIZE 4096
 
-
-
 int do_shutdown = 0;
 
 static int createListenSocket(){
@@ -133,7 +131,12 @@ static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
 /* return 0: error/end-of-data. dont keep asking for it */
 static int process_data_received_from_socket(char *buffer,const int recv_result){
 	if(recv_result > 0){
-		send_to_kafka(buffer,recv_result);
+		if(only_stdout_output()){
+			fprintf(stdout,"[DEBUG] received data: %*.*s",recv_result,recv_result,buffer);
+			free(buffer);
+		}else{
+			send_to_kafka(buffer,recv_result);
+		}
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
 			usleep(1000);

@@ -64,10 +64,13 @@ int main(int argc,char *argv[]){
 
 	signal(SIGINT,shutdown_process);
 
-	init_rdkafka();
+	if(!only_stdout_output())
+		init_rdkafka();
 	main_loop();
-	flush_kafka();
-	stop_rdkafka();
+	if(!only_stdout_output()){
+		flush_kafka();
+		stop_rdkafka();
+	}
 
 	return 0;
 }

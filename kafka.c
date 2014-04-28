@@ -61,6 +61,11 @@ void init_rdkafka(){
 	rd_kafka_conf_t *conf = rd_kafka_conf_new();
 	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
 
+	if(only_stdout_output()){
+		fprintf(stdout,"[DEBUG] No brokers and no topic specified. Output will be printed in stdout.\n");
+		return;
+	}
+
 	rd_kafka_conf_set_dr_cb(conf, msg_delivered);
 	rk = rd_kafka_new(RD_KAFKA_PRODUCER,conf,errstr,RDKAFKA_ERRSTR_SIZE);
 
@@ -78,7 +83,7 @@ void init_rdkafka(){
 	}
 
 	if(global_config.topic == NULL){
-		fatal("%% No valid brokers specified\n");
+		fatal("%% No valid topic specified\n");
 	}
 
 	rkt = rd_kafka_topic_new(rk, global_config.topic, topic_conf);
