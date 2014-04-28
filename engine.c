@@ -131,12 +131,13 @@ static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
 /* return 0: error/end-of-data. dont keep asking for it */
 static int process_data_received_from_socket(char *buffer,const int recv_result){
 	if(recv_result > 0){
-		if(only_stdout_output()){
+		if(unlikely(global_config.debug))
 			fprintf(stdout,"[DEBUG] received data: %*.*s",recv_result,recv_result,buffer);
+
+		if(unlikely(only_stdout_output()))
 			free(buffer);
-		}else{
+		else
 			send_to_kafka(buffer,recv_result);
-		}
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
 			usleep(1000);
