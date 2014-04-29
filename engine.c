@@ -46,8 +46,14 @@ int do_shutdown = 0;
 static int createListenSocket(){
 	int listenfd = global_config.proto == N2KAFKA_UDP ? socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0) : socket(AF_INET,SOCK_STREAM,0);
 	if(listenfd==-1){
-		perror("Error creating socket: ");
+		perror("Error creating socket");
 		return -1;
+	}
+
+	const int so_reuseaddr_value = 1;
+	const int setsockopt_ret = setsockopt(listenfd,SOL_SOCKET, SO_REUSEADDR,&so_reuseaddr_value,sizeof(so_reuseaddr_value));
+	if(setsockopt_ret < 0){
+		perror("Error setting socket option");
 	}
 
 	struct sockaddr_in server_addr;
@@ -60,7 +66,7 @@ static int createListenSocket(){
 
 	const int bind_ret = bind(listenfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
 	if(bind_ret == -1){
-		perror("Error binding socket: ");
+		perror("Error binding socket");
 		close(listenfd);
 		return -1;
 	}
