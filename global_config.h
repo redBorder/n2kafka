@@ -27,7 +27,7 @@ struct n2kafka_config{
 #define N2KAFKA_TCP 1
 #define N2KAFKA_UDP 2
     int proto;
-    unsigned int threads;
+    unsigned int udp_threads;
     char *format;
     uint16_t listen_port;
     char *topic;

@@ -77,7 +77,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 			global_config.proto = N2KAFKA_UDP;
 		}
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
-		global_config.threads = assert_json_integer(key,value);
+		global_config.udp_threads = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
 		global_config.debug = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
@@ -109,8 +109,8 @@ static void check_config(){
 	if(global_config.proto == 0){
 		fatal(PROTO_ERROR "\n");
 	}
-	if(global_config.threads == 0){
-		fatal("You have to set >0 threads\n");
+	if(global_config.udp_threads == 0){
+		global_config.udp_threads = 1;
 	}
 }
 

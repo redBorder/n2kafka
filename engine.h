@@ -25,7 +25,7 @@
 
 extern int do_shutdown;
 
-struct thread_info{
+struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
 };

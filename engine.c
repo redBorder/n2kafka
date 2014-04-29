@@ -185,7 +185,9 @@ static int send_to_socket(int fd,const char *data,int len){
 	}
 }
 
-static void process_data_from_socket(int fd){
+static void *process_data_from_socket(void *pfd){
+	int fd = *(int *)pfd;
+	free(pfd);
 	if(NULL!=global_config.response){
 		if(global_config.debug)
 			printf("receiving first packet\n");
@@ -201,13 +203,15 @@ static void process_data_from_socket(int fd){
 			const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
 			if(send_ret <= 0){
 				perror("Cannot send to socket");
-				return;
+				close(fd);
+				return NULL;
 			}
 			if(global_config.debug)
 				printf("first response ok\n");
 		}else{
 			perror("Error receiving first amount of data");
-			return;
+			close(fd);
+			return NULL;
 		}
 	}
 
@@ -219,39 +223,46 @@ static void process_data_from_socket(int fd){
 		if(0==process_data_received_from_socket(buffer,recv_result))
 			break;
 	}
+
+	close(fd);
+	return NULL;
 }
 
-static void *main_consumer_loop(void *_thread_info){
-	struct thread_info *thread_info = _thread_info;
+static void main_tcp_loop(int listenfd){
+	pthread_attr_t pthread_attr;
+
+	pthread_attr_init(&pthread_attr);
+	pthread_attr_setdetachstate(&pthread_attr, PTHREAD_CREATE_DETACHED);
+
 	while(!do_shutdown){
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
 		int connection_fd = 0;
-		pthread_mutex_lock(&thread_info->listenfd_mutex);
 		if(likely(!do_shutdown)){
-			int select_result = select_socket(thread_info->listenfd,&tv);
+			int select_result = select_socket(listenfd,&tv);
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
 				perror("listen select error");
 			}else if(select_result>0){
-				connection_fd = accept_connection(thread_info->listenfd);
+				connection_fd = accept_connection(listenfd);
 			}else{
 				// printf("timeout\n");
 			}
 		}
-		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
 		if(connection_fd > 0){
-			process_data_from_socket(connection_fd);
-			close(connection_fd);
+			int *pconnection_fd = malloc(sizeof(int));
+			*pconnection_fd = connection_fd;
+			pthread_t thread;
+			pthread_create(&thread,&pthread_attr,process_data_from_socket,pconnection_fd);
 		}
 
 		connection_fd = 0;
 	}
 
-	return NULL;
+	pthread_attr_destroy(&pthread_attr);
 }
 
 static void *main_consumer_loop_udp(void *_thread_info){
-	struct thread_info *thread_info = _thread_info;
+	struct udp_thread_info *thread_info = _thread_info;
 	while(!do_shutdown){
 		int recv_result = 0;
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
@@ -273,37 +284,39 @@ static void *main_consumer_loop_udp(void *_thread_info){
 	return NULL;
 }
 
-void main_loop(){
-	struct thread_info thread_info;
-
-	thread_info.listenfd = createListenSocket();
-	if(thread_info.listenfd == -1)
-		exit(-1);
-
-	if(0 != createListenSocketMutex(&thread_info.listenfd_mutex))
-		exit(-1);
-
+static void main_udp_loop(int listenfd){
+	/* Lots of threads listening  and processing*/
+	unsigned int i;
+	struct udp_thread_info udp_thread_info;
+	udp_thread_info.listenfd = listenfd;
 	assert(global_config.threads>0);
-	pthread_t *threads = malloc(sizeof(threads[0])*global_config.threads);
+	pthread_t *threads = malloc(sizeof(threads[0])*global_config.udp_threads);
 
-	unsigned int i=0;
-	void *consumer_fn = global_config.proto == N2KAFKA_UDP ? main_consumer_loop_udp : main_consumer_loop;
-	for(i=0;i<global_config.threads;++i)
-		pthread_create(&threads[i],NULL,consumer_fn,&thread_info);
+	if(0 != createListenSocketMutex(&udp_thread_info.listenfd_mutex))
+		exit(-1);
 
-	for(i=0;i<global_config.threads;++i)
+	for(i=0;i<global_config.udp_threads;++i)
+		pthread_create(&threads[i],NULL,main_consumer_loop_udp,&udp_thread_info);
+
+	for(i=0;i<global_config.udp_threads;++i)
 		pthread_join(threads[i],NULL);
-
+	
+	pthread_mutex_destroy(&udp_thread_info.listenfd_mutex);
+	
 	free(threads);
+}
 
-	/* safety test */
-	if(0!=pthread_mutex_trylock(&thread_info.listenfd_mutex)){
-		perror("Error locking mutex, when no other lock must be here.");
+void main_loop(){
+	int listenfd = createListenSocket();
+	if(listenfd == -1)
+		exit(-1);
+
+	if(global_config.proto == N2KAFKA_UDP){
+		main_udp_loop(listenfd);
 	}else{
-		pthread_mutex_unlock(&thread_info.listenfd_mutex);
+		main_tcp_loop(listenfd);
 	}
 
 	printf("Closing listening socket.\n");
-	close(thread_info.listenfd);
-	pthread_mutex_destroy(&thread_info.listenfd_mutex);
+	close(listenfd);
 }
