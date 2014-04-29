@@ -35,8 +35,6 @@ static rd_kafka_topic_t *rkt = NULL;
 
 #define RDKAFKA_ERRSTR_SIZE 512
 
-#define RB_UNUSED __attribute__((unused))
-
 /**
 * Message delivery report callback.
 * Called once for each message.

@@ -33,6 +33,9 @@ struct n2kafka_config{
     char *topic;
     char *brokers;
 
+    char *response;
+    int response_len;
+
     bool debug;
 };
 

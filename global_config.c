@@ -20,6 +20,7 @@
 
 #include "util.h"
 #include "global_config.h"
+#include "librd/rdfile.h"
 
 #include <string.h>
 #include <jansson.h>
@@ -30,10 +31,12 @@
 #define CONFIG_BROKERS_KEY "brokers"
 #define CONFIG_PORT_KEY "port"
 #define CONFIG_DEBUG_KEY "debug"
+#define CONFIG_RESPONSE_KEY "response"
 
 #define CONFIG_PROTO_TCP "tcp"
 #define CONFIG_PROTO_UDP "udp"
 #define PROTO_ERROR "Proto must be either TCP or UDP"
+
 
 struct n2kafka_config global_config;
 
@@ -55,6 +58,12 @@ static int assert_json_integer(const char *key,const json_t *value){
 	return json_integer_value(value);
 }
 
+static void parse_response(const char *key,const json_t *value){
+	global_config.response = rd_file_read(assert_json_string(key,value),&global_config.response_len);
+    if(global_config.response == NULL)
+    	fatal("Cannot open response file %s\n",assert_json_string(key,value));
+}
+
 static void parse_config_keyval(const char *key,const json_t *value){
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
@@ -73,6 +82,8 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		global_config.debug = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
 		global_config.listen_port = assert_json_integer(key,value);
+	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
+		parse_response(key,value);
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
@@ -124,4 +135,5 @@ void parse_config(const char *config_file_path){
 void free_global_config(){
 	free(global_config.topic);
 	free(global_config.brokers);
+	free(global_config.response);
 }

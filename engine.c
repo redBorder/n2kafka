@@ -38,6 +38,8 @@
 #include <assert.h>
 
 #define READ_BUFFER_SIZE 4096
+static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 1,.tv_usec = 0};
+static const struct timeval WRITE_SELECT_TIMEVAL = {.tv_sec = 5,.tv_usec = 0};
 
 int do_shutdown = 0;
 
@@ -120,7 +122,14 @@ static int select_socket(int listenfd,struct timeval *tv){
 
 	FD_ZERO(&listenfd_set);
 	FD_SET(listenfd,&listenfd_set);
-	return select(listenfd+1,&listenfd_set,NULL,NULL,(struct timeval *)tv);
+	return select(listenfd+1,&listenfd_set,NULL,NULL,tv);
+}
+
+static int write_select_socket(int writefd,struct timeval *tv){
+	fd_set writefd_set;
+	FD_ZERO(&writefd_set);
+	FD_SET(writefd,&writefd_set);
+	return select(writefd+1,NULL,&writefd_set,NULL,tv);
 }
 
 static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
@@ -132,7 +141,7 @@ static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
 static int process_data_received_from_socket(char *buffer,const int recv_result){
 	if(recv_result > 0){
 		if(unlikely(global_config.debug))
-			fprintf(stdout,"[DEBUG] received data: %*.*s",recv_result,recv_result,buffer);
+			fprintf(stdout,"[DEBUG] received %d data: %*.*s\n",recv_result,recv_result,recv_result,buffer);
 
 		if(unlikely(only_stdout_output()))
 			free(buffer);
@@ -140,6 +149,7 @@ static int process_data_received_from_socket(char *buffer,const int recv_result)
 			send_to_kafka(buffer,recv_result);
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
+			// printf("Socket not ready. re-trying");
 			usleep(1000);
 		}else{
 			perror("Recv error: ");
@@ -154,7 +164,47 @@ static int process_data_received_from_socket(char *buffer,const int recv_result)
 	return 1;
 }
 
+static int send_to_socket(int fd,const char *data,int len){
+	struct timeval tv = WRITE_SELECT_TIMEVAL;
+	const int select_result = write_select_socket(fd,&tv);
+	if(select_result > 0){
+		return write(fd,data,len);
+	}else if(select_result == 0){
+		fprintf(stderr,"Socket not ready for writing in %ld.%6ld. Closing.\n",
+			WRITE_SELECT_TIMEVAL.tv_sec,WRITE_SELECT_TIMEVAL.tv_usec);
+		return select_result;
+	}else{
+		perror("Error writing to socket");
+		return select_result;
+	}
+}
+
 static void process_data_from_socket(int fd){
+	if(NULL!=global_config.response){
+		if(global_config.debug)
+			printf("receiving first packet\n");
+		// We will response one time, and then we will send
+		// the data received starting from the next one.
+		char buffer[READ_BUFFER_SIZE];
+		struct timeval tv = READ_SELECT_TIMEVAL;
+		select_socket(fd,&tv);
+		const int recv_result = receive_from_socket(fd,buffer,READ_BUFFER_SIZE);
+		if(recv_result > 0){
+			if(global_config.debug)
+				printf("Sending first response\n");
+			const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
+			if(send_ret <= 0){
+				perror("Cannot send to socket");
+				return;
+			}
+			if(global_config.debug)
+				printf("first response ok\n");
+		}else{
+			perror("Error receiving first amount of data");
+			return;
+		}
+	}
+
 	while(likely(!do_shutdown)){
 		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};

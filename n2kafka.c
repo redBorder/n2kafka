@@ -72,5 +72,7 @@ int main(int argc,char *argv[]){
 		stop_rdkafka();
 	}
 
+	free_global_config();
+
 	return 0;
 }
