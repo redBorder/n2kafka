@@ -60,6 +60,7 @@ int main(int argc,char *argv[]){
 		exit(1);
 	}
 
+	init_global_config();
 	parse_config(argv[1]);
 
 	signal(SIGINT,shutdown_process);

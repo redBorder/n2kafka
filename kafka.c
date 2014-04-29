@@ -33,7 +33,8 @@
 static rd_kafka_t *rk = NULL;
 static rd_kafka_topic_t *rkt = NULL;
 
-#define RDKAFKA_ERRSTR_SIZE 512
+#define ERROR_BUFFER_SIZE   256
+#define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
 
 /**
 * Message delivery report callback.
@@ -46,9 +47,9 @@ int error_code,
 void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 
 	if (error_code){
-		fprintf(stderr, "%% Message delivery failed: %s\n",rd_kafka_err2str(error_code));
-	}else if(global_config.debug){
-		fprintf(stderr, "%% Message delivered (%zd bytes): %*.*s\n", len, (int)len,(int)len, (char *)payload);
+		rblog(LOG_ERR,   "Message delivery failed: %s\n",rd_kafka_err2str(error_code));
+	}else{
+		rblog(LOG_DEBUG, "Message delivered (%zd bytes): %*.*s\n", len, (int)len,(int)len, (char *)payload);
 	}
 }
 
@@ -60,7 +61,7 @@ void init_rdkafka(){
 	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
 
 	if(only_stdout_output()){
-		fprintf(stdout,"[DEBUG] No brokers and no topic specified. Output will be printed in stdout.\n");
+		rblog(LOG_DEBUG,"No brokers and no topic specified. Output will be printed in stdout.\n");
 		return;
 	}
 
@@ -96,6 +97,8 @@ static void flush_kafka0(int timeout_ms){
 
 static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 	int retried = 0;
+	char errbuf[ERROR_BUFFER_SIZE];
+
 	do{
 		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
 			buf,bufsize,NULL,0,NULL);
@@ -104,8 +107,8 @@ static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 			break;
 
 		if(ENOBUFS!=errno || retried++){
-			//fprintf(stderr, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
-			fprintf(stderr, "Failed to produce message: %s\n",strerror(errno));
+			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
+			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			if(msgflags | RD_KAFKA_MSG_F_FREE)
 				free(buf);
 		}

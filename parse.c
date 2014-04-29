@@ -36,7 +36,7 @@ static struct message_list_element *object_to_list_element(const json_t *json_ob
 		elm->msg = json_dumps(json_object,JSON_COMPACT);
 		elm->msg_len = strlen(elm->msg);
 	}else{
-		fprintf(stderr,"Memory error\n");
+		rblog(LOG_ERR,"Memory error\n");
 	}
 	return elm;
 }
@@ -58,7 +58,7 @@ static void parse_array(message_list *list,const json_t *json_array){
 		if(likely(object)){
 			add_object_to_list(list,object);
 		}else{
-			fprintf(stderr,"Error in json_array get, index %d",i);
+			rblog(LOG_ERR,"Error in json_array get, index %d",i);
 		}
 	}
 }
@@ -69,7 +69,7 @@ message_list json_array_to_message_list(const char *str){
 	message_list list = new_message_list();
 
 	if(unlikely(!json_object)){
-		fprintf(stderr,"json error on line %d: %s",error.line, error.text);
+		rblog(LOG_ERR,"json error on line %d: %s",error.line, error.text);
 	}else if(!json_is_array(json_object)){
 		add_object_to_list(&list,json_object);
 	}else{

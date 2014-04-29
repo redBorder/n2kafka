@@ -20,9 +20,18 @@
 
 #pragma once
 
+#include "librbutils/rblog.h"
+
+#include <string.h>
+
 #define RB_UNUSED __attribute__((unused))
 
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 
-#define fatal(msg...) do{fprintf(stderr,msg);exit(1);}while(0)
+#define fatal(msg...) do{rblog(LOG_ERR,msg);exit(1);}while(0)
+
+static inline char *mystrerror(int _errno,char *buffer,size_t buffer_size){
+	strerror_r(_errno,buffer,buffer_size);
+	return buffer;
+}

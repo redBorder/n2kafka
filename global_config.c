@@ -42,6 +42,7 @@ struct n2kafka_config global_config;
 
 void init_global_config(){
 	memset(&global_config,0,sizeof(global_config));
+	rb_debug_set_debug_level(LOG_ERR);
 }
 
 static const char *assert_json_string(const char *key,const json_t *value){
@@ -64,6 +65,12 @@ static void parse_response(const char *key,const json_t *value){
     	fatal("Cannot open response file %s\n",assert_json_string(key,value));
 }
 
+static void parse_debug(const char *key,const json_t *value){
+	global_config.debug = assert_json_integer(key,value);
+	if(global_config.debug)
+		rb_debug_set_debug_level(LOG_DEBUG);
+}
+
 static void parse_config_keyval(const char *key,const json_t *value){
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
@@ -79,7 +86,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
 		global_config.udp_threads = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
-		global_config.debug = assert_json_integer(key,value);
+		parse_debug(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
 		global_config.listen_port = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
@@ -118,12 +125,12 @@ void parse_config(const char *config_file_path){
 	json_error_t error;
 	json_t *root = json_load_file(config_file_path,0,&error);
 	if(root==NULL){
-		fprintf(stderr,"Error parsing config file, line %d: %s\n",error.line,error.text);
+		rblog(LOG_ERR,"Error parsing config file, line %d: %s\n",error.line,error.text);
 		exit(1);
 	}
 
 	if(!json_is_object(root)){
-		fprintf(stderr,"JSON config is not an object\n");
+		rblog(LOG_ERR,"JSON config is not an object\n");
 		exit(1);
 	}
 

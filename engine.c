@@ -40,20 +40,22 @@
 #define READ_BUFFER_SIZE 4096
 static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 1,.tv_usec = 0};
 static const struct timeval WRITE_SELECT_TIMEVAL = {.tv_sec = 5,.tv_usec = 0};
+#define ERROR_BUFFER_SIZE 256
+static __thread char errbuf[ERROR_BUFFER_SIZE];
 
 int do_shutdown = 0;
 
 static int createListenSocket(){
 	int listenfd = global_config.proto == N2KAFKA_UDP ? socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0) : socket(AF_INET,SOCK_STREAM,0);
 	if(listenfd==-1){
-		perror("Error creating socket");
-		return -1;
+		rblog(LOG_ERR,"Error creating socket: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+		exit(-1);
 	}
 
 	const int so_reuseaddr_value = 1;
 	const int setsockopt_ret = setsockopt(listenfd,SOL_SOCKET, SO_REUSEADDR,&so_reuseaddr_value,sizeof(so_reuseaddr_value));
 	if(setsockopt_ret < 0){
-		perror("Error setting socket option");
+		rblog(LOG_WARNING,"Error setting socket option: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 	}
 
 	struct sockaddr_in server_addr;
@@ -66,7 +68,7 @@ static int createListenSocket(){
 
 	const int bind_ret = bind(listenfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
 	if(bind_ret == -1){
-		perror("Error binding socket");
+		rblog(LOG_ERR,"Error binding socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		close(listenfd);
 		return -1;
 	}
@@ -74,20 +76,20 @@ static int createListenSocket(){
 	if(global_config.proto != N2KAFKA_UDP){
 		const int listen_ret = listen(listenfd,SOMAXCONN);
 		if(listen_ret == -1){
-			perror("Error listen()");
+			rblog(LOG_ERR,"Error in listen: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			close(listenfd);
 			return -1;
 		}
 	}
 	
-	printf("Listening socket created successfuly\n");
+	rblog(LOG_INFO,"Listening socket created successfuly\n");
 	return listenfd;
 }
 
 static int createListenSocketMutex(pthread_mutex_t *mutex){
 	const int init_returned = pthread_mutex_init(mutex,NULL);
 	if(init_returned!=0)
-		perror("Error creating mutex: ");
+		rblog(LOG_ERR,"Error creating mutex: ");
 	return init_returned;
 }
 
@@ -105,7 +107,7 @@ static void print_accepted_connection_log(const struct sockaddr_in *sa){
 	char str[sizeof(INET_ADDRSTRLEN)];
 	inet_ntop(AF_INET, &(sa->sin_addr), str, INET_ADDRSTRLEN);
 
-	printf("Accepted connection from %s:%d\n",str,get_port(sa));
+	rblog(LOG_INFO,"Accepted connection from %s:%d\n",str,get_port(sa));
 }
 
 static int accept_connection(int listenfd){
@@ -114,7 +116,7 @@ static int accept_connection(int listenfd){
 	const int accept_return = accept(listenfd,&addr,&addrlen);
 	//	printf("Connection established\n");
 	if(accept_return==-1){
-		perror("accept error");
+		rblog(LOG_ERR,"accept error");
 		return accept_return;
 	}else if(global_config.debug && addr.sa_family == AF_INET){
 		print_accepted_connection_log((struct sockaddr_in *)&addr);
@@ -147,7 +149,7 @@ static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
 static int process_data_received_from_socket(char *buffer,const int recv_result){
 	if(recv_result > 0){
 		if(unlikely(global_config.debug))
-			fprintf(stdout,"[DEBUG] received %d data: %*.*s\n",recv_result,recv_result,recv_result,buffer);
+			rblog(LOG_DEBUG,"received %d data: %.*s\n",recv_result,recv_result,buffer);
 
 		if(unlikely(only_stdout_output()))
 			free(buffer);
@@ -158,7 +160,7 @@ static int process_data_received_from_socket(char *buffer,const int recv_result)
 			// printf("Socket not ready. re-trying");
 			usleep(1000);
 		}else{
-			perror("Recv error: ");
+			rblog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			return 0;
 		}
 
@@ -176,11 +178,11 @@ static int send_to_socket(int fd,const char *data,int len){
 	if(select_result > 0){
 		return write(fd,data,len);
 	}else if(select_result == 0){
-		fprintf(stderr,"Socket not ready for writing in %ld.%6ld. Closing.\n",
+		rblog(LOG_ERR,"Socket not ready for writing in %ld.%6ld. Closing.\n",
 			WRITE_SELECT_TIMEVAL.tv_sec,WRITE_SELECT_TIMEVAL.tv_usec);
 		return select_result;
 	}else{
-		perror("Error writing to socket");
+		rblog(LOG_ERR,"Error writing to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		return select_result;
 	}
 }
@@ -189,8 +191,7 @@ static void *process_data_from_socket(void *pfd){
 	int fd = *(int *)pfd;
 	free(pfd);
 	if(NULL!=global_config.response){
-		if(global_config.debug)
-			printf("receiving first packet\n");
+		rblog(LOG_DEBUG,"receiving first packet\n");
 		// We will response one time, and then we will send
 		// the data received starting from the next one.
 		char buffer[READ_BUFFER_SIZE];
@@ -199,17 +200,17 @@ static void *process_data_from_socket(void *pfd){
 		const int recv_result = receive_from_socket(fd,buffer,READ_BUFFER_SIZE);
 		if(recv_result > 0){
 			if(global_config.debug)
-				printf("Sending first response\n");
+				rblog(LOG_DEBUG,"Sending first response\n");
 			const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
 			if(send_ret <= 0){
-				perror("Cannot send to socket");
+				rblog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 				close(fd);
 				return NULL;
 			}
 			if(global_config.debug)
-				printf("first response ok\n");
+				rblog(LOG_DEBUG,"first response ok\n");
 		}else{
-			perror("Error receiving first amount of data");
+			rblog(LOG_ERR,"Error receiving first amount of data: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			close(fd);
 			return NULL;
 		}
@@ -240,7 +241,7 @@ static void main_tcp_loop(int listenfd){
 		if(likely(!do_shutdown)){
 			int select_result = select_socket(listenfd,&tv);
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
-				perror("listen select error");
+				rblog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			}else if(select_result>0){
 				connection_fd = accept_connection(listenfd);
 			}else{
@@ -271,7 +272,7 @@ static void *main_consumer_loop_udp(void *_thread_info){
 		if(likely(!do_shutdown)){
 			int select_result = select_socket(thread_info->listenfd,&tv);
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
-				perror("listen select error");
+				rblog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			}else if(select_result>0){
 				recv_result = receive_from_socket(thread_info->listenfd,buffer,READ_BUFFER_SIZE);
 			}
@@ -289,7 +290,7 @@ static void main_udp_loop(int listenfd){
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
 	udp_thread_info.listenfd = listenfd;
-	assert(global_config.threads>0);
+	assert(global_config.udp_threads>0);
 	pthread_t *threads = malloc(sizeof(threads[0])*global_config.udp_threads);
 
 	if(0 != createListenSocketMutex(&udp_thread_info.listenfd_mutex))
@@ -317,6 +318,6 @@ void main_loop(){
 		main_tcp_loop(listenfd);
 	}
 
-	printf("Closing listening socket.\n");
+	rblog(LOG_INFO,"Closing listening socket.\n");
 	close(listenfd);
 }
