@@ -24,7 +24,6 @@
 #include "global_config.h"
 
 #include <pthread.h>
-#include <librdkafka/rdkafka.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -57,19 +56,39 @@ void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 void init_rdkafka(){
 	char errstr[RDKAFKA_ERRSTR_SIZE];
 
-	rd_kafka_conf_t *conf = rd_kafka_conf_new();
-	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
+	assert(global_config.kafka_conf);
+	assert(global_config.kafka_topic_conf);
+
+	#if 0
+	// @TODO workaround. Allow pass kafka parameters.
+	int res = rd_kafka_conf_set(global_config.kafka_conf, "socket.keepalive.enable", "true", errstr, sizeof(errstr));
+	if (res != RD_KAFKA_CONF_OK) {
+		rblog(LOG_ERR, "rd_kafka_conf_set %s\n", errstr);
+		exit(1);
+	}
+
+	res = rd_kafka_conf_set(global_config.kafka_conf, "socket.max.fails", "3", errstr, sizeof(errstr));
+	if (res != RD_KAFKA_CONF_OK) {
+		rblog(LOG_ERR, "rd_kafka_conf_set %s\n", errstr);
+		exit(1);
+	}
+	// @TODO end of workaround
+	#endif
 
 	if(only_stdout_output()){
 		rblog(LOG_DEBUG,"No brokers and no topic specified. Output will be printed in stdout.\n");
 		return;
 	}
 
-	rd_kafka_conf_set_dr_cb(conf, msg_delivered);
-	rk = rd_kafka_new(RD_KAFKA_PRODUCER,conf,errstr,RDKAFKA_ERRSTR_SIZE);
+	rd_kafka_conf_set_dr_cb(global_config.kafka_conf, msg_delivered);
+	rk = rd_kafka_new(RD_KAFKA_PRODUCER,global_config.kafka_conf,errstr,RDKAFKA_ERRSTR_SIZE);
 
 	if(!rk){
 		fatal("%% Failed to create new producer: %s\n",errstr);
+	}
+
+	if(global_config.debug){
+		rd_kafka_set_log_level (rk, LOG_DEBUG);
 	}
 
 	if(global_config.brokers == NULL){
@@ -85,7 +104,7 @@ void init_rdkafka(){
 		fatal("%% No valid topic specified\n");
 	}
 
-	rkt = rd_kafka_topic_new(rk, global_config.topic, topic_conf);
+	rkt = rd_kafka_topic_new(rk, global_config.topic, global_config.kafka_topic_conf);
 	if(rkt == NULL){
 		fatal("%% Cannot create kafka topic\n");
 	}

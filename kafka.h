@@ -19,16 +19,9 @@
 */
 
 #include "parse.h"
-
-struct kafka_conf{
-	const char *brokers;
-	const char *topic;
-};
-
-#define DEFAULT_KAFKA_CONF = {NULL,NULL}
+#include <librdkafka/rdkafka.h>
 
 void init_rdkafka();
-
 void send_to_kafka(char *buffer,const size_t bufsize);
 
 void flush_kafka();

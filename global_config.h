@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "kafka.h"
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -30,15 +32,21 @@ struct n2kafka_config{
     unsigned int udp_threads;
     char *format;
     uint16_t listen_port;
+
     char *topic;
     char *brokers;
+
+    rd_kafka_conf_t *kafka_conf;
+    rd_kafka_topic_conf_t *kafka_topic_conf;
+
+    #define DEFAULT_KAFKA_CONF = {NULL,NULL,rd_kafka_conf_new()}
+
 
     char *response;
     int response_len;
 
     bool debug;
 };
-
 
 extern struct n2kafka_config global_config;
 

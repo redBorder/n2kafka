@@ -4,5 +4,7 @@
 	"port":2057,
 	"threads":20,
 	"brokers":"pablo03",
-	"topic":"eugenio"
+	"topic":"eugenio",
+	"kafka_config":"socket.max.fails=3",
+	"kafka_config":"debug=topic,broker,msg"
 }
