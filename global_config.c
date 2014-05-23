@@ -22,6 +22,7 @@
 #include "global_config.h"
 #include "librd/rdfile.h"
 
+#include <librd/rdlog.h>
 #include <string.h>
 #include <jansson.h>
 
@@ -45,7 +46,7 @@ void init_global_config(){
 	memset(&global_config,0,sizeof(global_config));
 	global_config.kafka_conf = rd_kafka_conf_new();
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
-	rb_debug_set_debug_level(LOG_ERR);
+	rd_log_set_severity(LOG_ERR);
 }
 
 static const char *assert_json_string(const char *key,const json_t *value){
@@ -72,7 +73,7 @@ static void parse_response(const char *key,const json_t *value){
 static void parse_debug(const char *key,const json_t *value){
 	global_config.debug = assert_json_integer(key,value);
 	if(global_config.debug)
-		rb_debug_set_debug_level(LOG_DEBUG);
+		rd_log_set_severity(LOG_DEBUG);
 }
 
 static void parse_kafka_config(const char *key,const json_t *jvalue){

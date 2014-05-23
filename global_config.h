@@ -39,9 +39,6 @@ struct n2kafka_config{
     rd_kafka_conf_t *kafka_conf;
     rd_kafka_topic_conf_t *kafka_topic_conf;
 
-    #define DEFAULT_KAFKA_CONF = {NULL,NULL,rd_kafka_conf_new()}
-
-
     char *response;
     int response_len;
 
