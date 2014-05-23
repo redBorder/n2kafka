@@ -1,20 +1,16 @@
-all: n2kafka
+BIN=	n2kafka
 
-OBJECTS = engine.o n2kafka.o kafka.o global_config.o
-CFLAGS = -W -Wall -g -O0 -I/opt/rb/include -L/opt/rb/lib
-#CFLAGS = -W -Wall -g -O2 -DNDEBUG -I/opt/rb/include -L/opt/rb/lib
+SRCS=	engine.c global_config.c kafka.c n2kafka.c 
+OBJS=	$(SRCS:.c=.o)
 
-n2kafka: $(OBJECTS)
-	gcc $(CFLAGS) -o n2kafka $(OBJECTS) -lpthread -ljansson -lrdkafka -lrd -lrbutils
+.PHONY:
 
-clean:
-	rm -f $(OBJECTS)
+all: $(BIN)
 
-%.o:%.c %.h
-	gcc $(CFLAGS) -o $@ $< -c
+include mklove/Makefile.base
 
-%.o:%.c
-	gcc $(CFLAGS) -o $@ $< -c
+install: bin-install
 
-install:
-	install n2kafka /opt/rb/bin
+clean: bin-clean
+
+-include $(DEPS)
