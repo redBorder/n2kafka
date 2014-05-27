@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+
+mkl_require good_cflags
+
+function checks {
+    # Check that librdkafka is available, and allow to link it statically.
+    mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
+       "#include <librdkafka/rdkafka.h>"
+
+    # -lrt required on linux
+    mkl_lib_check "librt" "" cont CC "-lrt"
+
+    mkl_lib_check --static=-lrdkafka "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
+       "#include <librdkafka/rdkafka.h>"
+
+    mkl_lib_check --static=-ljansson "libjansson" "" fail CC "-ljansson" \
+       "#include <jansson.h>"
+
+    mkl_in_list "$*" "--disable-optimization" || mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
+
+}
