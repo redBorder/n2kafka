@@ -5,6 +5,7 @@
 	"threads":20,
 	"brokers":"pablo03",
 	"topic":"eugenio",
-	"kafka_config":"socket.max.fails=3",
-	"kafka_config":"debug=topic,broker,msg"
+	"rdkafka.socket.max.fails":"3",
+	"rdkafka.debug":"topic,broker,msg",
+	"rdkafka.socket.keepalive.enable":"true"
 }

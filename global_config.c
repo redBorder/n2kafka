@@ -33,7 +33,7 @@
 #define CONFIG_PORT_KEY "port"
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
-#define CONFIG_KAFKA_KEY "kafka_config"
+#define CONFIG_RDKAFKA_KEY "rdkafka."
 
 #define CONFIG_PROTO_TCP "tcp"
 #define CONFIG_PROTO_UDP "udp"
@@ -76,22 +76,11 @@ static void parse_debug(const char *key,const json_t *value){
 		rd_log_set_severity(LOG_DEBUG);
 }
 
-static void parse_kafka_config(const char *key,const json_t *jvalue){
-	// Extracted from Magnus Edenhill's kafkacat 
-	char *value = strdup(assert_json_string(key,jvalue));
-	
-	char *name, *val;
+static void parse_rdkafka_keyval_config(const char *key,const char *value){
 	rd_kafka_conf_res_t res;
 	char errstr[512];
 
-	name = value;
-	if (!(val = strchr(name, '='))) {
-		fatal("%% Expected \""CONFIG_KAFKA_KEY"\":\"property=value, not %s, ", name);
-		exit(1);
-	}
-
-	*val = '\0';
-	val++;
+	const char *name = key + strlen(CONFIG_RDKAFKA_KEY);
 
 	res = RD_KAFKA_CONF_UNKNOWN;
 	/* Try "topic." prefixed properties on topic
@@ -100,16 +89,20 @@ static void parse_kafka_config(const char *key,const json_t *jvalue){
 	if (!strncmp(name, "topic.", strlen("topic.")))
 		res = rd_kafka_topic_conf_set(global_config.kafka_topic_conf,
 					      name+strlen("topic."),
-					      val,errstr,sizeof(errstr));
+					      value,errstr,sizeof(errstr));
 
 	if (res == RD_KAFKA_CONF_UNKNOWN)
-		res = rd_kafka_conf_set(global_config.kafka_conf, name, val,
+		res = rd_kafka_conf_set(global_config.kafka_conf, name, value,
 					errstr, sizeof(errstr));
 
 	if (res != RD_KAFKA_CONF_OK)
 		fatal("%s", errstr);
+}
 
-	free(value);
+static void parse_rdkafka_config_json(const char *key,const json_t *jvalue){
+	// Extracted from Magnus Edenhill's kafkacat 
+	const char *value = assert_json_string(key,jvalue);
+	parse_rdkafka_keyval_config(key,value);
 }
 
 static void parse_config_keyval(const char *key,const json_t *value){
@@ -132,8 +125,9 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		global_config.listen_port = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
 		parse_response(key,value);
-	}else if(!strcasecmp(key,CONFIG_KAFKA_KEY)){
-		parse_kafka_config(key,value);
+	}else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))){
+		// if tarts with
+		parse_rdkafka_config_json(key,value);
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
