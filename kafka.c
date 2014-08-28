@@ -126,11 +126,14 @@ static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 		if(produce_ret == 0)
 			break;
 
-		if(ENOBUFS!=errno || retried++){
+		if(ENOBUFS==errno && !(retried++)){
+			rd_kafka_poll(rk,5); // backpressure
+		}else{
 			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
 			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			if(msgflags | RD_KAFKA_MSG_F_FREE)
 				free(buf);
+			break;
 		}
 	}while(1);
 	

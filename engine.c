@@ -161,10 +161,9 @@ static int process_data_received_from_socket(char *buffer,const int recv_result)
 			usleep(1000);
 		}else{
 			rblog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+			free(buffer);
 			return 0;
 		}
-
-		free(buffer);
 	}else{ /* recv_result == 0 */
 		free(buffer);
 		return 0;
