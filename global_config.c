@@ -22,9 +22,11 @@
 #include "global_config.h"
 #include "librd/rdfile.h"
 
+#include <errno.h>
 #include <librd/rdlog.h>
 #include <string.h>
 #include <jansson.h>
+#include <arpa/inet.h>
 
 #define CONFIG_PROTO_KEY "proto"
 #define CONFIG_THREADS_KEY "threads"
@@ -33,6 +35,7 @@
 #define CONFIG_PORT_KEY "port"
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
+#define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 
 #define CONFIG_PROTO_TCP "tcp"
@@ -46,6 +49,7 @@ void init_global_config(){
 	memset(&global_config,0,sizeof(global_config));
 	global_config.kafka_conf = rd_kafka_conf_new();
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
+	global_config.blacklist = in_addr_list_new();
 	rd_log_set_severity(LOG_ERR);
 }
 
@@ -61,6 +65,21 @@ static int assert_json_integer(const char *key,const json_t *value){
 		fatal("%s value must be an integer in config file\n",key);
 	}
 	return json_integer_value(value);
+}
+
+static const json_t *assert_json_array(const char *key,const json_t *value){
+	if(!json_is_array(value)){
+		fatal("%s value must be an array\n",key);
+	}
+	return value;
+}
+
+static void *assert_pton(int af,const char *src,void *dst){
+	const int pton_rc = inet_pton(af,src,dst);
+	if(pton_rc < 0){
+		fatal("pton(%s) error: %s",src,strerror(errno));
+	}
+	return dst;
 }
 
 static void parse_response(const char *key,const json_t *value){
@@ -105,6 +124,22 @@ static void parse_rdkafka_config_json(const char *key,const json_t *jvalue){
 	parse_rdkafka_keyval_config(key,value);
 }
 
+static void parse_blacklist(const char *key,const json_t *value){
+	assert_json_array(key,value);
+
+	const size_t arr_len = json_array_size(value);
+	size_t i;
+	for(i=0;i<arr_len;++i){
+		struct in_addr addr;
+		const json_t *json_i = json_array_get(value,i);
+		const char *addr_string = assert_json_string("blacklist values",json_i);
+		if(global_config.debug)
+			rdbg("adding %s address to blacklist",addr_string);
+		assert_pton(AF_INET,addr_string,&addr);
+		in_addr_list_add(global_config.blacklist,&addr);
+	}
+}
+
 static void parse_config_keyval(const char *key,const json_t *value){
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
@@ -128,6 +163,8 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))){
 		// if tarts with
 		parse_rdkafka_config_json(key,value);
+	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
+		parse_blacklist(key,value);
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
@@ -180,4 +217,5 @@ void free_global_config(){
 	free(global_config.topic);
 	free(global_config.brokers);
 	free(global_config.response);
+	in_addr_list_done(global_config.blacklist);
 }

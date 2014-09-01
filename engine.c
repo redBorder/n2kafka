@@ -111,14 +111,24 @@ static void print_accepted_connection_log(const struct sockaddr_in *sa){
 }
 
 static int accept_connection(int listenfd){
-	struct sockaddr addr;
+	struct sockaddr_in addr;
 	socklen_t addrlen = sizeof(addr);
-	const int accept_return = accept(listenfd,&addr,&addrlen);
+	const int accept_return = accept(listenfd,(struct sockaddr *)&addr,&addrlen);
 	//	printf("Connection established\n");
 	if(accept_return==-1){
 		rblog(LOG_ERR,"accept error");
 		return accept_return;
-	}else if(global_config.debug && addr.sa_family == AF_INET){
+	}else if(addr.sin_family != AF_INET){
+		rblog(LOG_ERR,"Unknown connection family: %d",addr.sin_family);
+		close(accept_return);
+		return -1;
+	}else if(in_addr_list_contains(global_config.blacklist,&addr.sin_addr)){
+		char buf[INET6_ADDRSTRLEN];
+		if(global_config.debug)
+			rdbg("Connection rejected: %s in blacklist",inet_ntop(AF_INET,&addr,buf,sizeof(buf)));
+		close(accept_return);
+		return -1;
+	}else if(global_config.debug){
 		print_accepted_connection_log((struct sockaddr_in *)&addr);
 	}
 	set_nonblock_flag(accept_return);

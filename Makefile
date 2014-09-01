@@ -1,6 +1,6 @@
 BIN=	n2kafka
 
-SRCS=	engine.c global_config.c kafka.c n2kafka.c 
+SRCS=	engine.c global_config.c kafka.c n2kafka.c in_addr_list.c
 OBJS=	$(SRCS:.c=.o)
 
 .PHONY:

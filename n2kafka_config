@@ -7,5 +7,6 @@
 	"topic":"eugenio",
 	"rdkafka.socket.max.fails":"3",
 	"rdkafka.debug":"topic,broker,msg",
-	"rdkafka.socket.keepalive.enable":"true"
+	"rdkafka.socket.keepalive.enable":"true",
+	"blacklist":["1.1.1.1","1.1.2.2"]
 }

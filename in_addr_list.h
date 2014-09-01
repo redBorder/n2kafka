@@ -20,42 +20,19 @@
 
 #pragma once
 
-#include "kafka.h"
-#include "in_addr_list.h"
+#include <sys/queue.h>
+#include <netinet/in.h>
 
-#include <stdint.h>
-#include <stdbool.h>
+typedef struct in_addr_list_s in_addr_list_t; /* FW DECLARATION */
 
-struct n2kafka_config{
-#define N2KAFKA_TCP 1
-#define N2KAFKA_UDP 2
-    int proto;
-    unsigned int udp_threads;
-    char *format;
-    uint16_t listen_port;
+/// Init a sockaddr_in list.
+in_addr_list_t *in_addr_list_new();
 
-    char *topic;
-    char *brokers;
+/// Add an address to list.
+void in_addr_list_add(in_addr_list_t *list,const struct in_addr *addr);
 
-    rd_kafka_conf_t *kafka_conf;
-    rd_kafka_topic_conf_t *kafka_topic_conf;
+/// Check if an addr is in list.
+int in_addr_list_contains(const in_addr_list_t *list,const struct in_addr *addr);
 
-    in_addr_list_t *blacklist;
-
-    char *response;
-    int response_len;
-
-    bool debug;
-};
-
-extern struct n2kafka_config global_config;
-
-static inline bool only_stdout_output(){
-	return global_config.debug && !global_config.brokers && !global_config.topic;
-}
-
-void init_global_config();
-
-void parse_config(const char *config_file_path);
-
-void free_global_config();
+/// Deallocate a list.
+void in_addr_list_done(in_addr_list_t *list);
