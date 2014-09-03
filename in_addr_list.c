@@ -61,7 +61,7 @@ void in_addr_list_add(in_addr_list_t *list,const struct in_addr *addr){
 int in_addr_list_contains(const in_addr_list_t *list,const struct in_addr *addr){
 	in_addr_list_node_t *n=NULL;
 	for(n=LIST_FIRST(syslist(list));n!=NULL;n=LIST_NEXT(n,entry)){
-		if(memcmp(addr,&n->addr,sizeof(n->addr)))
+		if(0==memcmp(addr,&n->addr,sizeof(n->addr)))
 			return 1;
 	}
 	return 0;
