@@ -74,4 +74,5 @@ void in_addr_list_done(in_addr_list_t *list){
 		LIST_REMOVE(n,entry);
 		free(n);
 	}
+	free(list);
 }

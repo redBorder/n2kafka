@@ -6,7 +6,6 @@
 	"brokers":"pablo03",
 	"topic":"eugenio",
 	"rdkafka.socket.max.fails":"3",
-	"rdkafka.debug":"topic,broker,msg",
 	"rdkafka.socket.keepalive.enable":"true",
-	"blacklist":["1.1.1.1","1.1.2.2"]
+	"blacklist":["192.168.101.3"]
 }

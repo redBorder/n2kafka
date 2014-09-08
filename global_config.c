@@ -217,5 +217,7 @@ void free_global_config(){
 	free(global_config.topic);
 	free(global_config.brokers);
 	free(global_config.response);
+	rd_kafka_conf_destroy(global_config.kafka_conf);
+	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
 	in_addr_list_done(global_config.blacklist);
 }

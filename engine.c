@@ -38,7 +38,7 @@
 #include <assert.h>
 
 #define READ_BUFFER_SIZE 4096
-static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 1,.tv_usec = 0};
+static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 20,.tv_usec = 0};
 static const struct timeval WRITE_SELECT_TIMEVAL = {.tv_sec = 5,.tv_usec = 0};
 #define ERROR_BUFFER_SIZE 256
 static __thread char errbuf[ERROR_BUFFER_SIZE];
@@ -48,7 +48,7 @@ int do_shutdown = 0;
 static int createListenSocket(){
 	int listenfd = global_config.proto == N2KAFKA_UDP ? socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0) : socket(AF_INET,SOCK_STREAM,0);
 	if(listenfd==-1){
-		rblog(LOG_ERR,"Error creating socket: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+		rblog(LOG_ERR,"Error creating socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		exit(-1);
 	}
 
@@ -82,7 +82,7 @@ static int createListenSocket(){
 		}
 	}
 	
-	rblog(LOG_INFO,"Listening socket created successfuly\n");
+	rblog(LOG_INFO,"Listening socket created successfuly");
 	return listenfd;
 }
 
@@ -107,16 +107,16 @@ static void print_accepted_connection_log(const struct sockaddr_in *sa){
 	char str[sizeof(INET_ADDRSTRLEN)];
 	inet_ntop(AF_INET, &(sa->sin_addr), str, INET_ADDRSTRLEN);
 
-	rblog(LOG_INFO,"Accepted connection from %s:%d\n",str,get_port(sa));
+	rblog(LOG_INFO,"Accepted connection from %s:%d",str,get_port(sa));
 }
 
+/// @todo be compatible with ipv6
 static int accept_connection(int listenfd){
 	struct sockaddr_in addr;
 	socklen_t addrlen = sizeof(addr);
 	const int accept_return = accept(listenfd,(struct sockaddr *)&addr,&addrlen);
-	//	printf("Connection established\n");
 	if(accept_return==-1){
-		rblog(LOG_ERR,"accept error");
+		rblog(LOG_ERR,"accept error: %s",strerror(errno));
 		return accept_return;
 	}else if(addr.sin_family != AF_INET){
 		rblog(LOG_ERR,"Unknown connection family: %d",addr.sin_family);
@@ -150,35 +150,19 @@ static int write_select_socket(int writefd,struct timeval *tv){
 	return select(writefd+1,NULL,&writefd_set,NULL,tv);
 }
 
-static int receive_from_socket(int fd,char *buffer,const size_t buffer_size){
-	return recv(fd,buffer,buffer_size,0);
+static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,const size_t buffer_size){
+	socklen_t socklen = (socklen_t)sizeof(*addr);
+	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
-/* return 1: all ok, keep trying to receive data */
-/* return 0: error/end-of-data. dont keep asking for it */
-static int process_data_received_from_socket(char *buffer,const int recv_result){
-	if(recv_result > 0){
-		if(unlikely(global_config.debug))
-			rblog(LOG_DEBUG,"received %d data: %.*s\n",recv_result,recv_result,buffer);
+static void process_data_received_from_socket(char *buffer,const int recv_result){
+	if(unlikely(global_config.debug))
+		rblog(LOG_DEBUG,"received %d data: %.*s\n",recv_result,recv_result,buffer);
 
-		if(unlikely(only_stdout_output()))
-			free(buffer);
-		else
-			send_to_kafka(buffer,recv_result);
-	}else if(recv_result < 0){
-		if(errno == EAGAIN){
-			// printf("Socket not ready. re-trying");
-			usleep(1000);
-		}else{
-			rblog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-			free(buffer);
-			return 0;
-		}
-	}else{ /* recv_result == 0 */
+	if(unlikely(only_stdout_output()))
 		free(buffer);
-		return 0;
-	}
-	return 1;
+	else
+		send_to_kafka(buffer,recv_result);
 }
 
 static int send_to_socket(int fd,const char *data,int len){
@@ -197,41 +181,48 @@ static int send_to_socket(int fd,const char *data,int len){
 }
 
 static void *process_data_from_socket(void *pfd){
+	int first_response_sent = 0;
 	int fd = *(int *)pfd;
 	free(pfd);
-	if(NULL!=global_config.response){
-		rblog(LOG_DEBUG,"receiving first packet\n");
-		// We will response one time, and then we will send
-		// the data received starting from the next one.
-		char buffer[READ_BUFFER_SIZE];
-		struct timeval tv = READ_SELECT_TIMEVAL;
-		select_socket(fd,&tv);
-		const int recv_result = receive_from_socket(fd,buffer,READ_BUFFER_SIZE);
-		if(recv_result > 0){
-			if(global_config.debug)
-				rblog(LOG_DEBUG,"Sending first response\n");
-			const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
-			if(send_ret <= 0){
-				rblog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-				close(fd);
-				return NULL;
-			}
-			if(global_config.debug)
-				rblog(LOG_DEBUG,"first response ok\n");
-		}else{
-			rblog(LOG_ERR,"Error receiving first amount of data: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-			close(fd);
-			return NULL;
-		}
-	}
 
 	while(likely(!do_shutdown)){
-		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
-		// struct timeval timeout = {.tv_sec = 5,.tv_usec = 0};
+		struct sockaddr_in6 saddr;
+		struct timeval read_tv = READ_SELECT_TIMEVAL;
+		const int select_rc = select_socket(fd,&read_tv);
+		if(select_rc > 0){
+			char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
+			const int recv_result = receive_from_socket(fd,&saddr,buffer,READ_BUFFER_SIZE);
+			if(recv_result > 0){
+				process_data_received_from_socket(buffer,recv_result);
+			}else if(recv_result < 0){
+				if(errno == EAGAIN){
+					rdbg("Socket not ready. re-trying");
+					free(buffer);
+				}else{
+					rblog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+					free(buffer);
+					break;
+				}
+			}else{ /* recv_result == 0 */
+				free(buffer);
+				break;
+			}
 
-		const int recv_result = receive_from_socket(fd,buffer,READ_BUFFER_SIZE);
-		if(0==process_data_received_from_socket(buffer,recv_result))
-			break;
+			if(NULL!=global_config.response && !first_response_sent){
+				rblog(LOG_DEBUG,"Sending first response...");
+				const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
+				if(send_ret <= 0){
+					rblog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+					close(fd);
+					break;
+				}
+				if(global_config.debug)
+					rblog(LOG_DEBUG,"first response ok");
+				first_response_sent = 1;
+			}
+		}else if(select_rc < 0){
+			rblog(LOG_ERR,"Select error: %s",strerror(errno));
+		}
 	}
 
 	close(fd);
@@ -283,7 +274,8 @@ static void *main_consumer_loop_udp(void *_thread_info){
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
 				rblog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			}else if(select_result>0){
-				recv_result = receive_from_socket(thread_info->listenfd,buffer,READ_BUFFER_SIZE);
+				struct sockaddr_in6 addr;
+				recv_result = receive_from_socket(thread_info->listenfd,&addr,buffer,READ_BUFFER_SIZE);
 			}
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);

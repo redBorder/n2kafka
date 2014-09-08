@@ -150,4 +150,5 @@ void flush_kafka(){
 
 void stop_rdkafka(){
 	rd_kafka_destroy(rk);
+	rd_kafka_topic_destroy(rkt);
 }
