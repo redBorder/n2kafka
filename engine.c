@@ -262,6 +262,7 @@ static void main_tcp_loop(int listenfd){
 	pthread_attr_destroy(&pthread_attr);
 }
 
+/// @TODO join with TCP
 static void *main_consumer_loop_udp(void *_thread_info){
 	struct udp_thread_info *thread_info = _thread_info;
 	while(!do_shutdown){
