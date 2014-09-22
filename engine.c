@@ -98,6 +98,13 @@ static void set_nonblock_flag(int fd){
 	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+static void set_keepalive_opt(int fd){
+	int i=1;
+	const int sso_rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char*)&i, sizeof(int));
+	if(sso_rc == -1)
+		rdbg("Can't set SO_KEEPALIVE option\n");
+}
+
 static uint16_t get_port(const struct sockaddr_in *sa){
 	return ntohs(sa->sin_port);
 	
@@ -131,6 +138,9 @@ static int accept_connection(int listenfd){
 	}else if(global_config.debug){
 		print_accepted_connection_log((struct sockaddr_in *)&addr);
 	}
+
+	if(global_config.tcp_keepalive)
+		set_keepalive_opt(accept_return);
 	set_nonblock_flag(accept_return);
 	return accept_return;
 }

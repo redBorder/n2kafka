@@ -7,5 +7,6 @@
 	"topic":"eugenio",
 	"rdkafka.socket.max.fails":"3",
 	"rdkafka.socket.keepalive.enable":"true",
-	"blacklist":["192.168.101.3"]
+	"blacklist":["192.168.101.3"],
+	"tcp_keepalive":true
 }

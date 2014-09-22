@@ -46,6 +46,7 @@ struct n2kafka_config{
     int response_len;
 
     bool debug;
+    bool tcp_keepalive;
 };
 
 extern struct n2kafka_config global_config;
