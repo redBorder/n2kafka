@@ -123,7 +123,7 @@ static int accept_connection(int listenfd){
 	socklen_t addrlen = sizeof(addr);
 	const int accept_return = accept(listenfd,(struct sockaddr *)&addr,&addrlen);
 	if(accept_return==-1){
-		rblog(LOG_ERR,"accept error: %s",strerror(errno));
+		rblog(LOG_ERR,"accept error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		return accept_return;
 	}else if(addr.sin_family != AF_INET){
 		rblog(LOG_ERR,"Unknown connection family: %d",addr.sin_family);
@@ -165,9 +165,9 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
-static void process_data_received_from_socket(char *buffer,const int recv_result){
+static void process_data_received_from_socket(char *buffer,const size_t recv_result){
 	if(unlikely(global_config.debug))
-		rblog(LOG_DEBUG,"received %d data: %.*s\n",recv_result,recv_result,buffer);
+		rblog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
 	if(unlikely(only_stdout_output()))
 		free(buffer);
@@ -175,7 +175,7 @@ static void process_data_received_from_socket(char *buffer,const int recv_result
 		send_to_kafka(buffer,recv_result);
 }
 
-static int send_to_socket(int fd,const char *data,int len){
+static int send_to_socket(int fd,const char *data,size_t len){
 	struct timeval tv = WRITE_SELECT_TIMEVAL;
 	const int select_result = write_select_socket(fd,&tv);
 	if(select_result > 0){
@@ -203,7 +203,7 @@ static void *process_data_from_socket(void *pfd){
 			char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 			const int recv_result = receive_from_socket(fd,&saddr,buffer,READ_BUFFER_SIZE);
 			if(recv_result > 0){
-				process_data_received_from_socket(buffer,recv_result);
+				process_data_received_from_socket(buffer,(size_t)recv_result);
 			}else if(recv_result < 0){
 				if(errno == EAGAIN){
 					rdbg("Socket not ready. re-trying");
@@ -219,19 +219,28 @@ static void *process_data_from_socket(void *pfd){
 			}
 
 			if(NULL!=global_config.response && !first_response_sent){
+				int send_ret = 1;
 				rblog(LOG_DEBUG,"Sending first response...");
-				const int send_ret = send_to_socket(fd,global_config.response,global_config.response_len-1);
+
+				if(global_config.response_len == 0){
+					rblog(LOG_ERR,"Can't send first response: size of response == 0");
+					first_response_sent = 1;
+				} else {
+					send_ret = send_to_socket(fd,global_config.response,(size_t)global_config.response_len-1);
+				}
+
 				if(send_ret <= 0){
 					rblog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 					close(fd);
 					break;
 				}
+				
 				if(global_config.debug)
 					rblog(LOG_DEBUG,"first response ok");
 				first_response_sent = 1;
 			}
 		}else if(select_rc < 0){
-			rblog(LOG_ERR,"Select error: %s",strerror(errno));
+			rblog(LOG_ERR,"Select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		}
 	}
 
@@ -291,7 +300,19 @@ static void *main_consumer_loop_udp(void *_thread_info){
 		}
 		pthread_mutex_unlock(&thread_info->listenfd_mutex);
 
-		process_data_received_from_socket(buffer,recv_result);
+		if(recv_result < 0){
+			if(errno == EAGAIN) {
+				rdbg("Socket not ready. re-trying");
+				free(buffer);
+			} else {
+				rblog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+				free(buffer);
+				break;
+			}
+		} else {
+			process_data_received_from_socket(buffer,(size_t)recv_result);
+			
+		}
 	}
 
 	return NULL;

@@ -75,7 +75,7 @@ static const json_t *assert_json_array(const char *key,const json_t *value){
 	return value;
 }
 
-static const int assert_json_boolean(const char *key,const json_t *value){
+static int assert_json_boolean(const char *key,const json_t *value){
 	if(!json_is_boolean(value)){
 		fatal("%s value must be a boolean\n",key);
 	}
@@ -165,7 +165,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 			global_config.proto = N2KAFKA_UDP;
 		}
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
-		global_config.udp_threads = assert_json_integer(key,value);
+		global_config.udp_threads = (unsigned)assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
 		parse_debug(key,value);
 	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){

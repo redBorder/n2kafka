@@ -41,7 +41,7 @@ static rd_kafka_topic_t *rkt = NULL;
 * Called once for each message.
 * See rdkafka.h for more information.
 */
-static void msg_delivered (rd_kafka_t *rk RB_UNUSED,
+static void msg_delivered (rd_kafka_t *_rk RB_UNUSED,
 void *payload, size_t len,
 int error_code,
 void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {

@@ -7,8 +7,7 @@ mkl_require gitversion as GITVERSION
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual "
-#mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wextra -Wsign-conversion -Wshadow"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wjump-misses-init" # New in gcc 4.5
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wdouble-promotion" # New in gcc 4.6
