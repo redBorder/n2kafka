@@ -1,10 +1,10 @@
 {
 	"debug":1,
-	"proto":"tcp",
+	"proto":"http",
 	"port":2057,
 	"threads":20,
-	"brokers":"pablo03",
-	"topic":"eugenio",
+	"brokers":"eugeniodev",
+	"topic":"rb_flow",
 	"rdkafka.socket.max.fails":"3",
 	"rdkafka.socket.keepalive.enable":"true",
 	"blacklist":["192.168.101.3"],

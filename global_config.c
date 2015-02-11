@@ -39,10 +39,10 @@
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
 
-#define CONFIG_PROTO_TCP "tcp"
-#define CONFIG_PROTO_UDP "udp"
-#define PROTO_ERROR "Proto must be either TCP or UDP"
-
+#define CONFIG_PROTO_TCP  "tcp"
+#define CONFIG_PROTO_UDP  "udp"
+#define CONFIG_PROTO_HTTP "http"
+#define PROTO_ERROR "Proto must be either TCP or UDP or HTTP"
 
 struct n2kafka_config global_config;
 
@@ -164,6 +164,11 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		}else if(!strcmp(proto,CONFIG_PROTO_UDP)){
 			global_config.proto = N2KAFKA_UDP;
 		}
+#ifdef HAVE_LIBMICROHTTPD
+		else if(!strcmp(proto,CONFIG_PROTO_HTTP)){
+			global_config.proto = N2KAFKA_HTTP;
+		}
+#endif
 	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
 		global_config.udp_threads = (unsigned)assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
@@ -173,7 +178,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
 		parse_response(key,value);
 	}else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))){
-		// if tarts with
+		// if starts with
 		parse_rdkafka_config_json(key,value);
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);

@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "config.h"
+
 #include "kafka.h"
 #include "in_addr_list.h"
 
@@ -27,8 +29,11 @@
 #include <stdbool.h>
 
 struct n2kafka_config{
-#define N2KAFKA_TCP 1
-#define N2KAFKA_UDP 2
+#define N2KAFKA_TCP  1
+#define N2KAFKA_UDP  2
+#ifdef HAVE_LIBMICROHTTPD
+#define N2KAFKA_HTTP 3
+#endif
     int proto;
     unsigned int udp_threads;
     char *format;

@@ -140,12 +140,16 @@ static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 	rd_kafka_poll(rk,0);
 }
 
-void send_to_kafka(char *buf,const size_t bufsize){
-	send_to_kafka0(buf,bufsize,RD_KAFKA_MSG_F_FREE);
+void send_to_kafka(char *buf,const size_t bufsize,int flags){
+	send_to_kafka0(buf,bufsize,flags);
 }
 
 void flush_kafka(){
 	flush_kafka0(1000);
+}
+
+void kafka_poll(int timeout_ms){
+	rd_kafka_poll(rk,timeout_ms);
 }
 
 void stop_rdkafka(){

@@ -16,10 +16,10 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wcast-align -Wdisabled-optimization -Winit-
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default" 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations" 
 
-mkl_toggle_option "Standard" WITH_HTTP "--enable-http" "HTTP support using libCURL" "y"
+mkl_toggle_option "Standard" WITH_HTTP "--enable-http" "HTTP support using libmicrohttpd" "y"
 
-function checks_libcurl {
-  mkl_lib_check "libcurl" "" cont CC "-lcurl" "#include <curl/curl.h>"
+function checks_libmicrohttpd {
+  mkl_lib_check "libmicrohttpd" "" cont CC "-lmicrohttpd" "#include <microhttpd.h>"
 }
 
 function checks {
@@ -32,8 +32,8 @@ function checks {
 
     # -lcurl required if HTTP enabled
     if [[ "x$WITH_HTTP" == "xy" ]]; then
-        checks_libcurl
-        mkl_define_set "Have libCURL library" "HAVE_LIBCURL" "1"
+        checks_libmicrohttpd
+        mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
     fi
 
     mkl_lib_check --static=-lrdkafka "librd" "" fail CC "-lrd -lpthread -lz -lrt" \

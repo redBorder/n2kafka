@@ -18,12 +18,17 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include "config.h"
 #include "util.h"
 
 #include "engine.h"
 #include "parse.h"
 #include "kafka.h"
 #include "global_config.h"
+
+#ifdef HAVE_LIBMICROHTTPD
+#include "http.h"
+#endif
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -45,8 +50,25 @@ static __thread char errbuf[ERROR_BUFFER_SIZE];
 
 int do_shutdown = 0;
 
-static int createListenSocket(){
-	int listenfd = global_config.proto == N2KAFKA_UDP ? socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0) : socket(AF_INET,SOCK_STREAM,0);
+static int createListenSocket() {
+	int listenfd = 0;
+	switch(global_config.proto){
+	case N2KAFKA_UDP:
+		listenfd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK,0);
+		break;
+	case N2KAFKA_TCP:
+		listenfd = socket(AF_INET,SOCK_STREAM,0);
+		break;
+#ifdef HAVE_LIBMICROHTTPD
+	case N2KAFKA_HTTP:
+		rdlog(LOG_ERR,"Can't be here. Exiting.");
+		exit(-1);
+		break;
+#endif
+	default:
+		rdlog(LOG_ERR,"Can't create socket: Unknown type");
+		exit(-1);
+	};
 	if(listenfd==-1){
 		rblog(LOG_ERR,"Error creating socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 		exit(-1);
@@ -172,7 +194,7 @@ static void process_data_received_from_socket(char *buffer,const size_t recv_res
 	if(unlikely(only_stdout_output()))
 		free(buffer);
 	else
-		send_to_kafka(buffer,recv_result);
+		send_to_kafka(buffer,recv_result,RD_KAFKA_MSG_F_FREE);
 }
 
 static int send_to_socket(int fd,const char *data,size_t len){
@@ -340,7 +362,20 @@ static void main_udp_loop(int listenfd){
 	free(threads);
 }
 
-void main_loop(){
+#ifdef HAVE_LIBMICROHTTPD
+static void *main_http_loop(void *__unused __attribute__((unused))) {
+	/* Different approax than socket: let libhttpd manage it */
+	struct http_handler *hh = start_http_loop(global_config.listen_port);
+	while(!do_shutdown)
+		kafka_poll(1000 /* ms */);
+
+	break_http_loop(hh);
+	
+	return NULL;
+}
+#endif
+
+static void *main_socket_loop(void *__unused __attribute__((unused))) {
 	int listenfd = createListenSocket();
 	if(listenfd == -1)
 		exit(-1);
@@ -353,4 +388,23 @@ void main_loop(){
 
 	rblog(LOG_INFO,"Closing listening socket.\n");
 	close(listenfd);
+
+	return NULL;
+}
+
+void main_loop(){
+	switch(global_config.proto) {
+	case N2KAFKA_UDP: 
+	case N2KAFKA_TCP:
+		main_socket_loop(NULL);
+		break;
+#ifdef HAVE_LIBMICROHTTPD
+	case N2KAFKA_HTTP:
+		main_http_loop(NULL);
+		break;
+#endif
+	default:
+		rblog(LOG_ERR,"Unknown socket loop type");
+		exit(-1);
+	};
 }

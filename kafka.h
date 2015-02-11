@@ -22,7 +22,9 @@
 #include <librdkafka/rdkafka.h>
 
 void init_rdkafka();
-void send_to_kafka(char *buffer,const size_t bufsize);
+void send_to_kafka(char *buffer,const size_t bufsize,int flags);
+
+void kafka_poll();
 
 void flush_kafka();
 void stop_rdkafka();
