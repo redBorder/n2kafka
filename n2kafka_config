@@ -1,8 +1,9 @@
 {
 	"debug":1,
-	"proto":"http",
-	"port":2057,
-	"threads":20,
+	"listeners":[
+		{"proto":"http","port":2057},
+		{"proto":"tcp","port":2056}
+	],
 	"brokers":"eugeniodev",
 	"topic":"rb_flow",
 	"rdkafka.socket.max.fails":"3",

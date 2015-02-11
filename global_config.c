@@ -22,12 +22,16 @@
 #include "global_config.h"
 #include "librd/rdfile.h"
 
+#include "http.h"
+#include "socket.h"
+
 #include <errno.h>
 #include <librd/rdlog.h>
 #include <string.h>
 #include <jansson.h>
 #include <arpa/inet.h>
 
+#define CONFIG_LISTENERS_ARRAY "listeners"
 #define CONFIG_PROTO_KEY "proto"
 #define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
@@ -42,9 +46,17 @@
 #define CONFIG_PROTO_TCP  "tcp"
 #define CONFIG_PROTO_UDP  "udp"
 #define CONFIG_PROTO_HTTP "http"
-#define PROTO_ERROR "Proto must be either TCP or UDP or HTTP"
 
 struct n2kafka_config global_config;
+
+static const struct registered_listener{
+	const char *proto;
+	listener_creator creator;
+} registered_listeners[] = {
+	{CONFIG_PROTO_HTTP, create_http_listener},
+	{CONFIG_PROTO_TCP, create_tcp_listener},
+	{CONFIG_PROTO_UDP, create_udp_listener},
+};
 
 void init_global_config(){
 	memset(&global_config,0,sizeof(global_config));
@@ -52,6 +64,7 @@ void init_global_config(){
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
 	global_config.blacklist = in_addr_list_new();
 	rd_log_set_severity(LOG_ERR);
+	LIST_INIT(&global_config.listeners);
 }
 
 static const char *assert_json_string(const char *key,const json_t *value){
@@ -152,29 +165,79 @@ static void parse_blacklist(const char *key,const json_t *value){
 	}
 }
 
+static const listener_creator *protocol_creator(const char *proto){
+	size_t i;
+	const size_t listeners_length 
+	    = sizeof(registered_listeners)/sizeof(registered_listeners[0]);
+
+	for(i=0;i<listeners_length;++i) {
+		if ( NULL==registered_listeners[i].proto ) {
+			rdlog(LOG_CRIT,"Error: NULL proto in registered_listeners");
+			continue;
+		}
+
+		if( 0 == strcmp(registered_listeners[i].proto, proto) ) {
+			return &registered_listeners[i].creator;
+		}
+	}
+
+	return NULL;
+}
+
+static void parse_listener(json_t *config){
+	char *proto = NULL;
+	json_error_t json_err;
+	char err[512];
+
+	const int unpack_rc = json_unpack_ex(config,&json_err,0,"{s:s}",
+		"proto",&proto);
+
+	if( unpack_rc != 0 ) {
+		rdlog(LOG_ERR,"Can't parse listener: %s",json_err.text);
+		return;
+	}
+
+	if(NULL == proto ) {
+		rdlog(LOG_ERR,"Can't create a listener with no proto");
+		return;
+	}
+
+	const listener_creator *_listener_creator = protocol_creator(proto);
+	if ( NULL == _listener_creator ) {
+		rdlog(LOG_ERR,"Can't find listener creator for protocol %s",proto);
+		return;
+	}
+
+	struct listener *listener = (*_listener_creator)(config,err,sizeof(err));
+
+	if( NULL == listener ) {
+		rdlog(LOG_ERR,"Can't create listener for proto %s",proto);
+		return;
+	}
+
+	LIST_INSERT_HEAD(&global_config.listeners,listener,entry);
+}
+
+static void parse_listeners_array(const char *key,const json_t *array){
+	assert_json_array(key,array);
+
+	size_t _index;
+	json_t *value;
+
+	json_array_foreach(array,_index,value) {
+		parse_listener(value);
+	}
+}
+
 static void parse_config_keyval(const char *key,const json_t *value){
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
 		global_config.topic = strdup(assert_json_string(key,value));
 	}else if(!strcasecmp(key,CONFIG_BROKERS_KEY)){
 		global_config.brokers = strdup(assert_json_string(key,value));
-	}else if(!strcasecmp(key,CONFIG_PROTO_KEY)){
-		const char *proto = assert_json_string(key,value);
-		if(!strcmp(proto,CONFIG_PROTO_TCP)){
-			global_config.proto = N2KAFKA_TCP;
-		}else if(!strcmp(proto,CONFIG_PROTO_UDP)){
-			global_config.proto = N2KAFKA_UDP;
-		}
-#ifdef HAVE_LIBMICROHTTPD
-		else if(!strcmp(proto,CONFIG_PROTO_HTTP)){
-			global_config.proto = N2KAFKA_HTTP;
-		}
-#endif
-	}else if(!strcasecmp(key,CONFIG_THREADS_KEY)){
-		global_config.udp_threads = (unsigned)assert_json_integer(key,value);
+	}else if(!strcasecmp(key,CONFIG_LISTENERS_ARRAY)){
+		parse_listeners_array(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
 		parse_debug(key,value);
-	}else if(!strcasecmp(key,CONFIG_PORT_KEY)){
-		global_config.listen_port = assert_json_integer(key,value);
 	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
 		parse_response(key,value);
 	}else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))){
@@ -197,20 +260,11 @@ static void parse_config0(json_t *root){
 }
 
 static void check_config(){
-	if(global_config.listen_port == 0){
-		fatal("You have to set a port to listen\n");
-	}
 	if(!only_stdout_output() && global_config.topic == NULL){
 		fatal("You have to set a topic to write to\n");
 	}
 	if(!only_stdout_output() && global_config.brokers == NULL){
 		fatal("You have to set a brokers to write to\n");
-	}
-	if(global_config.proto == 0){
-		fatal(PROTO_ERROR "\n");
-	}
-	if(global_config.udp_threads == 0){
-		global_config.udp_threads = 1;
 	}
 }
 
@@ -232,11 +286,30 @@ void parse_config(const char *config_file_path){
 	check_config();
 }
 
+static void shutdown_listeners(struct n2kafka_config *config){
+	struct listener *l = LIST_FIRST(&config->listeners);
+	while( NULL != l ) {
+		struct listener *aux = LIST_NEXT(l,entry);
+
+		if (NULL == l->join) {
+			rblog(LOG_CRIT,"One listener does not have join() function.");
+		} else {
+			l->join(l->private);
+		}
+
+		free(l);
+		l = aux;
+	}
+}
+
 void free_global_config(){
+	shutdown_listeners(&global_config);
+
+
+	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
+	rd_kafka_conf_destroy(global_config.kafka_conf);
+	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);
 	free(global_config.response);
-	rd_kafka_conf_destroy(global_config.kafka_conf);
-	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
-	in_addr_list_done(global_config.blacklist);
 }

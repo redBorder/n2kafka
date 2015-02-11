@@ -18,21 +18,11 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#include "config.h"
-#include "util.h"
-
-#include "engine.h"
-#include "parse.h"
-#include "kafka.h"
-#include "global_config.h"
+#pragma once
 
 #ifdef HAVE_LIBMICROHTTPD
-#include "http.h"
+#include "global_config.h"
+struct http_handler;
+struct json_t;
+struct listener *create_http_listener(struct json_t *config,char *err,size_t errsize);
 #endif
-
-int do_shutdown = 0;
-
-void main_loop(){
-	while(!do_shutdown)
-		kafka_poll(1000 /* ms */);
-}

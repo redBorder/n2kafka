@@ -27,17 +27,27 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <sys/queue.h>
+
+struct json_t;
+struct listener;
+typedef struct listener* (*listener_creator)(struct json_t *config,char *err,size_t errsize);
+typedef void (*listener_join)(void *listener_private);
+struct listener{
+    void *private;
+    listener_creator create;
+    listener_join join;
+    LIST_ENTRY(listener) entry;
+};
+
+
+typedef LIST_HEAD(,listener) listener_list;
 
 struct n2kafka_config{
-#define N2KAFKA_TCP  1
-#define N2KAFKA_UDP  2
 #ifdef HAVE_LIBMICROHTTPD
 #define N2KAFKA_HTTP 3
 #endif
-    int proto;
-    unsigned int udp_threads;
     char *format;
-    uint16_t listen_port;
 
     char *topic;
     char *brokers;
@@ -49,6 +59,8 @@ struct n2kafka_config{
 
     char *response;
     int response_len;
+
+    listener_list listeners;
 
     bool debug;
     bool tcp_keepalive;
