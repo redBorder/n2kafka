@@ -139,7 +139,7 @@ static void print_accepted_connection_log(const struct sockaddr_in *sa){
 }
 
 /// @todo be compatible with ipv6
-static int accept_connection(int listenfd){
+static int accept_connection(int listenfd,int tcp_keepalive){
 	struct sockaddr_in addr;
 	socklen_t addrlen = sizeof(addr);
 	const int accept_return = accept(listenfd,(struct sockaddr *)&addr,&addrlen);
@@ -160,7 +160,7 @@ static int accept_connection(int listenfd){
 		print_accepted_connection_log((struct sockaddr_in *)&addr);
 	}
 
-	if(global_config.tcp_keepalive)
+	if(tcp_keepalive)
 		set_keepalive_opt(accept_return);
 	set_nonblock_flag(accept_return);
 	return accept_return;
@@ -269,7 +269,7 @@ static void *process_data_from_socket(void *pfd){
 	return NULL;
 }
 
-static void main_tcp_loop(int listenfd){
+static void main_tcp_loop(int listenfd,int tcp_keepalive){
 	pthread_attr_t pthread_attr;
 
 	pthread_attr_init(&pthread_attr);
@@ -283,7 +283,7 @@ static void main_tcp_loop(int listenfd){
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
 				rdlog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			}else if(select_result>0){
-				connection_fd = accept_connection(listenfd);
+				connection_fd = accept_connection(listenfd,tcp_keepalive);
 			}else{
 				// printf("timeout\n");
 			}
@@ -365,6 +365,7 @@ struct main_thread_parameters{
 	char *proto;
 	uint16_t listen_port;
 	size_t udp_threads;
+    bool tcp_keepalive;
 };
 
 static void *main_socket_loop(void *_params) {
@@ -382,7 +383,7 @@ static void *main_socket_loop(void *_params) {
 	if( 0 == strcmp(N2KAFKA_UDP,params->proto) ){
 		main_udp_loop(listenfd,params->udp_threads);
 	}else{
-		main_tcp_loop(listenfd);
+		main_tcp_loop(listenfd,params->tcp_keepalive);
 	}
 
 	rdlog(LOG_INFO,"Closing listening socket.\n");
@@ -406,12 +407,14 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 		return NULL;
 	}
 
-	param->udp_threads = 1; /* Default */
+	/* Default */
+	param->udp_threads = 1; 
+	param->tcp_keepalive = 0;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
-		"{s:s,s:i,s?i}",
+		"{s:s,s:i,s?i,s?b}",
 		"proto",&proto,"port",&param->listen_port,
-		"udp_threads",&param->udp_threads);
+		"udp_threads",&param->udp_threads,"tcp_keepalive",&param->tcp_keepalive);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
 		free(param);

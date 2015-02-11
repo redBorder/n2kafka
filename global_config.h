@@ -63,7 +63,6 @@ struct n2kafka_config{
     listener_list listeners;
 
     bool debug;
-    bool tcp_keepalive;
 };
 
 extern struct n2kafka_config global_config;

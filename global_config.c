@@ -88,13 +88,6 @@ static const json_t *assert_json_array(const char *key,const json_t *value){
 	return value;
 }
 
-static int assert_json_boolean(const char *key,const json_t *value){
-	if(!json_is_boolean(value)){
-		fatal("%s value must be a boolean\n",key);
-	}
-	return json_is_true(value);
-}
-
 static void *assert_pton(int af,const char *src,void *dst){
 	const int pton_rc = inet_pton(af,src,dst);
 	if(pton_rc < 0){
@@ -114,10 +107,6 @@ static void parse_debug(const char *key,const json_t *value){
 	global_config.debug = assert_json_integer(key,value);
 	if(global_config.debug)
 		rd_log_set_severity(LOG_DEBUG);
-}
-
-static void parse_keepalive(const char *key,const json_t *value){
-	global_config.tcp_keepalive = assert_json_boolean(key,value);
 }
 
 static void parse_rdkafka_keyval_config(const char *key,const char *value){
@@ -245,8 +234,6 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		parse_rdkafka_config_json(key,value);
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
-	}else if(!strcasecmp(key,CONFIG_TCP_KEEPALIVE)){
-		parse_keepalive(key,value);
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}

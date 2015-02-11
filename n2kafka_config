@@ -2,12 +2,11 @@
 	"debug":1,
 	"listeners":[
 		{"proto":"http","port":2057},
-		{"proto":"tcp","port":2056}
+		{"proto":"tcp","port":2056,"tcp_keepalive":true}
 	],
 	"brokers":"eugeniodev",
 	"topic":"rb_flow",
 	"rdkafka.socket.max.fails":"3",
 	"rdkafka.socket.keepalive.enable":"true",
-	"blacklist":["192.168.101.3"],
-	"tcp_keepalive":true
+	"blacklist":["192.168.101.3"]
 }
