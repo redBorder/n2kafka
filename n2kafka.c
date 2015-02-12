@@ -42,11 +42,16 @@ static void show_usage(const char *progname){
 	fprintf(stdout,"the next configurations:\n");
 	
 	fprintf(stdout,"{\n");
-	fprintf(stdout,"\t\"proto\":\"tcp\"/\"udp\"/\"http\",");
-	fprintf(stdout,"\t\"port\":<listen port>\n");
-	fprintf(stdout,"\t\"brokers\":\"kafka brokers\"\n");
-	fprintf(stdout,"\t\"topic\":\"kafka topic\"\n");
-	fprintf(stdout,"\t\"threads\":<number_of_threads>\n");
+	fprintf(stdout,"\t\"listeners:\":[\n");
+	fprintf(stdout,"\t\t{\"proto\":\"http\",\"port\":2057},\n");
+	fprintf(stdout,"\t\t{\"proto\":\"tcp\",\"port\":2056,\"tcp_leepalive\":true},\n");
+	fprintf(stdout,"\t\t{\"proto\":\"udp\",\"port\":2058,\"threads\":20}\n");
+	fprintf(stdout,"\t],\n");
+	fprintf(stdout,"\t\"brokers\":\"kafka brokers\",\n");
+	fprintf(stdout,"\t\"topic\":\"kafka topic\",\n");
+	fprintf(stdout,"\t\"rdkafka.socket.max.fails\":\"3\",\n");
+	fprintf(stdout,"\t\"rdkafka.socket.keepalive.enable\":\"true\",\n");
+	fprintf(stdout,"\t\"blacklist\":[\"192.168.101.3\"]\n");
 	fprintf(stdout,"}\n");
 }
 
