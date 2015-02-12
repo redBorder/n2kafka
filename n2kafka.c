@@ -18,6 +18,7 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include "version.h"
 #include "engine.h"
 #include "kafka.h"
 #include "global_config.h"
@@ -36,6 +37,7 @@ static void shutdown_process(){
 }
 
 static void show_usage(const char *progname){
+	fprintf(stdout,"n2kafka version %s-%s\n",n2kafka_version,n2kafka_revision);
 	fprintf(stdout,"Usage: %s <config_file>\n",progname);
 	fprintf(stdout,"\n");
 	fprintf(stdout,"Where <config_file> is a json file that can contains the \n");
@@ -43,8 +45,8 @@ static void show_usage(const char *progname){
 	
 	fprintf(stdout,"{\n");
 	fprintf(stdout,"\t\"listeners:\":[\n");
-	fprintf(stdout,"\t\t{\"proto\":\"http\",\"port\":2057},\n");
-	fprintf(stdout,"\t\t{\"proto\":\"tcp\",\"port\":2056,\"tcp_leepalive\":true},\n");
+	fprintf(stdout,"\t\t{\"proto\":\"http\",\"port\":2057,\"mode\":\"(1)\"},\"threads\":20}\n");
+	fprintf(stdout,"\t\t{\"proto\":\"tcp\",\"port\":2056,\"tcp_leepalive\":true,\"mode\"},\n");
 	fprintf(stdout,"\t\t{\"proto\":\"udp\",\"port\":2058,\"threads\":20}\n");
 	fprintf(stdout,"\t],\n");
 	fprintf(stdout,"\t\"brokers\":\"kafka brokers\",\n");
@@ -52,7 +54,12 @@ static void show_usage(const char *progname){
 	fprintf(stdout,"\t\"rdkafka.socket.max.fails\":\"3\",\n");
 	fprintf(stdout,"\t\"rdkafka.socket.keepalive.enable\":\"true\",\n");
 	fprintf(stdout,"\t\"blacklist\":[\"192.168.101.3\"]\n");
-	fprintf(stdout,"}\n");
+	fprintf(stdout,"}\n\n");
+	fprintf(stdout,"(1) Modes can be:\n");
+	fprintf(stdout,"\tthread_per_connection: Creates a thread for each connection.\n");
+	fprintf(stdout,"\t\tThread argument will be ignored in this mode\n");
+	fprintf(stdout,"\tselect,poll,epoll: Fixed number of threads (with threads parameter)"
+                   " manages all connections\n");
 }
 
 static int is_asking_help(const char *param){
