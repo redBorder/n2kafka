@@ -25,6 +25,11 @@
 #define HTTP_UNUSED __attribute__((unused))
 #define POSTBUFFERSIZE (10*1024)
 
+#define MODE_THREAD_PER_CONNECTION "thread_per_connection"
+#define MODE_SELECT "select"
+#define MODE_POLL "poll"
+#define MODE_EPOLL "epoll"
+
 #include "http.h"
 
 #include "global_config.h"
@@ -187,24 +192,63 @@ static int post_handle(void *cls HTTP_UNUSED,
 	}
 }
 
-static struct http_private *start_http_loop(int port,char *err,
-                                            size_t errsize) {
-	struct http_private *h = calloc(1,sizeof(*h));
+struct http_loop_args {
+	const char *mode;
+	int port;
+	unsigned int num_threads;
+};
 
-	if(!h) {
-		snprintf(err,errsize,"Can't create http listener private data"
-		                     " (out of memory?)");
+static struct http_private *start_http_loop(const struct http_loop_args *args,
+                                            char *err,
+                                            size_t errsize) {
+	struct http_private *h = NULL;
+
+	unsigned int flags = 0;
+	if(args->mode == NULL || 0==strcmp(MODE_THREAD_PER_CONNECTION,
+	                                   args->mode)) {
+		flags |= MHD_USE_THREAD_PER_CONNECTION;
+	} else if(0==strcmp(MODE_SELECT,args->mode)) {
+		flags |= MHD_USE_SELECT_INTERNALLY;
+	} else if(0==strcmp(MODE_POLL,args->mode)) {
+		flags |= MHD_USE_POLL_INTERNALLY;
+	} else if(0==strcmp(MODE_EPOLL,args->mode)) {
+		flags |= MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY;
+	} else {
+		snprintf(err,errsize,"Not a valid HTTP mode. Select one between("
+		    MODE_THREAD_PER_CONNECTION "," MODE_SELECT "," MODE_POLL "," 
+		    MODE_EPOLL ")");
 		return NULL;
 	}
 
-	h->d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
-		port,
-		NULL, /* Auth callback */
-		NULL, /* Auth callback parameter */
-		post_handle, /* Request handler */
-		NULL, /* Request handler parameter */
-		MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
-		MHD_OPTION_END);
+	flags |= MHD_USE_DEBUG;
+
+	h = calloc(1,sizeof(*h));
+	if(!h) {
+		snprintf(err,errsize,"Can't allocate LIBMICROHTTPD private"
+		         " (out of memory?)");
+		return NULL;
+	}
+
+	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
+		h->d = MHD_start_daemon(flags,
+			args->port,
+			NULL, /* Auth callback */
+			NULL, /* Auth callback parameter */
+			post_handle, /* Request handler */
+			NULL, /* Request handler parameter */
+			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+			MHD_OPTION_END);
+	} else {
+		h->d = MHD_start_daemon(flags,
+			args->port,
+			NULL, /* Auth callback */
+			NULL, /* Auth callback parameter */
+			post_handle, /* Request handler */
+			NULL, /* Request handler parameter */
+			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+			MHD_OPTION_THREAD_POOL_SIZE, args->num_threads,
+			MHD_OPTION_END);
+	}
 
 	if(NULL == h->d) {
 		snprintf(err,errsize,"Can't allocate LIBMICROHTTPD handler"
@@ -226,16 +270,23 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 
 	json_error_t error;
 
-	int port = 0;
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i}","port",
-		&port);
+	struct http_loop_args handler_args;
+	memset(&handler_args,0,sizeof(handler_args));
+	handler_args.num_threads = 1;
+
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
+		"port",&handler_args.port,"mode",&handler_args.mode,
+		"num_threads",&handler_args.num_threads);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't find server port: %s",error.text);
 	}
 
-	struct http_private *priv = start_http_loop(port,err,errsize);
+	if(NULL==handler_args.mode)
+		handler_args.mode = MODE_SELECT;
+
+	struct http_private *priv = start_http_loop(&handler_args,err,errsize);
 	if( NULL == priv ) {
-		return NULL;	
+		return NULL;
 	}
 
 	struct listener *listener = calloc(1,sizeof(*listener));
@@ -248,10 +299,8 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	listener->create  = create_http_listener;
 	listener->join    = break_http_loop;
 	listener->private = priv;
+
 	return listener;
-
-
 }
-
 
 #endif

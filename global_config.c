@@ -200,7 +200,7 @@ static void parse_listener(json_t *config){
 	struct listener *listener = (*_listener_creator)(config,err,sizeof(err));
 
 	if( NULL == listener ) {
-		rdlog(LOG_ERR,"Can't create listener for proto %s",proto);
+		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
 		return;
 	}
 
