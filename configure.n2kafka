@@ -20,6 +20,7 @@ mkl_toggle_option "Standard" WITH_HTTP "--enable-http" "HTTP support using libmi
 
 function checks_libmicrohttpd {
   mkl_lib_check "libmicrohttpd" "" cont CC "-lmicrohttpd" "#include <microhttpd.h>"
+  mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
 }
 
 function checks {
@@ -33,7 +34,6 @@ function checks {
     # -lcurl required if HTTP enabled
     if [[ "x$WITH_HTTP" == "xy" ]]; then
         checks_libmicrohttpd
-        mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
     fi
 
     mkl_lib_check --static=-lrdkafka "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
