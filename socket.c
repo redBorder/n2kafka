@@ -25,6 +25,8 @@
 #include <librd/rdlog.h>
 #include <jansson.h>
 
+#include <ev.h>
+
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
@@ -40,9 +42,15 @@ struct udp_thread_info{
 	int listenfd;
 };
 
-
 #define N2KAFKA_TCP "tcp"
 #define N2KAFKA_UDP "udp"
+
+#define CONFIG_NUM_THREADS "threads"
+
+#define MODE_THREAD_PER_CONNECTION "thread_per_connection"
+#define MODE_SELECT "select"
+#define MODE_POLL "poll"
+#define MODE_EPOLL "epoll"
 
 #define READ_BUFFER_SIZE 4096
 static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 20,.tv_usec = 0};
@@ -138,34 +146,6 @@ static void print_accepted_connection_log(const struct sockaddr_in *sa){
 	rdlog(LOG_INFO,"Accepted connection from %s:%d",str,get_port(sa));
 }
 
-/// @todo be compatible with ipv6
-static int accept_connection(int listenfd,int tcp_keepalive){
-	struct sockaddr_in addr;
-	socklen_t addrlen = sizeof(addr);
-	const int accept_return = accept(listenfd,(struct sockaddr *)&addr,&addrlen);
-	if(accept_return==-1){
-		rdlog(LOG_ERR,"accept error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-		return accept_return;
-	}else if(addr.sin_family != AF_INET){
-		rdlog(LOG_ERR,"Unknown connection family: %d",addr.sin_family);
-		close(accept_return);
-		return -1;
-	}else if(in_addr_list_contains(global_config.blacklist,&addr.sin_addr)){
-		char buf[INET6_ADDRSTRLEN];
-		if(global_config.debug)
-			rdbg("Connection rejected: %s in blacklist",inet_ntop(AF_INET,&addr,buf,sizeof(buf)));
-		close(accept_return);
-		return -1;
-	}else if(global_config.debug){
-		print_accepted_connection_log((struct sockaddr_in *)&addr);
-	}
-
-	if(tcp_keepalive)
-		set_keepalive_opt(accept_return);
-	set_nonblock_flag(accept_return);
-	return accept_return;
-}
-
 static int select_socket(int listenfd,struct timeval *tv){
 	fd_set listenfd_set;
 
@@ -211,65 +191,116 @@ static int send_to_socket(int fd,const char *data,size_t len){
 	}
 }
 
-static void *process_data_from_socket(void *pfd){
-	int first_response_sent = 0;
-	int fd = *(int *)pfd;
-	free(pfd);
+struct connection_private {
+	int first_response_sent;
+};
 
-	while(likely(!do_shutdown)){
-		struct sockaddr_in6 saddr;
-		struct timeval read_tv = READ_SELECT_TIMEVAL;
-		const int select_rc = select_socket(fd,&read_tv);
-		if(select_rc > 0){
-			char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
-			const int recv_result = receive_from_socket(fd,&saddr,buffer,READ_BUFFER_SIZE);
-			if(recv_result > 0){
-				process_data_received_from_socket(buffer,(size_t)recv_result);
-			}else if(recv_result < 0){
-				if(errno == EAGAIN){
-					rdbg("Socket not ready. re-trying");
-					free(buffer);
-				}else{
-					rdlog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-					free(buffer);
-					break;
-				}
-			}else{ /* recv_result == 0 */
-				free(buffer);
-				break;
-			}
+static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
+	ev_io_stop(loop,watcher);
 
-			if(NULL!=global_config.response && !first_response_sent){
-				int send_ret = 1;
-				rdlog(LOG_DEBUG,"Sending first response...");
-
-				if(global_config.response_len == 0){
-					rdlog(LOG_ERR,"Can't send first response: size of response == 0");
-					first_response_sent = 1;
-				} else {
-					send_ret = send_to_socket(fd,global_config.response,(size_t)global_config.response_len-1);
-				}
-
-				if(send_ret <= 0){
-					rdlog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-					close(fd);
-					break;
-				}
-				
-				if(global_config.debug)
-					rdlog(LOG_DEBUG,"first response ok");
-				first_response_sent = 1;
-			}
-		}else if(select_rc < 0){
-			rdlog(LOG_ERR,"Select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-		}
-	}
-
-	close(fd);
-	return NULL;
+	close(watcher->fd);
+	free(watcher->data); /* Connection data */
+	free(watcher);
 }
 
-static void main_tcp_loop(int listenfd,int tcp_keepalive){
+static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
+
+	if(EV_ERROR & revents) {
+		rdlog(LOG_ERR,"Read callback error: %s",mystrerror(errno,errbuf,
+			ERROR_BUFFER_SIZE));
+	}
+
+	struct connection_private *connection = (struct connection_private *) watcher->data;
+	struct sockaddr_in6 saddr;
+
+	char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
+	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
+	if(recv_result > 0){
+		process_data_received_from_socket(buffer,(size_t)recv_result);
+	}else if(recv_result < 0){
+		if(errno == EAGAIN){
+			rdbg("Socket not ready. re-trying");
+			free(buffer);
+		}else{
+			rdlog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+			free(buffer);
+			close_socket_and_stop_watcher(loop,watcher);
+		}
+	}else{ /* recv_result == 0 */
+		free(buffer);
+		close_socket_and_stop_watcher(loop,watcher);
+	}
+
+	if(NULL!=global_config.response && !connection->first_response_sent){
+		int send_ret = 1;
+		rdlog(LOG_DEBUG,"Sending first response...");
+
+		if(global_config.response_len == 0){
+			rdlog(LOG_ERR,"Can't send first response: size of response == 0");
+			connection->first_response_sent = 1;
+		} else {
+			send_ret = send_to_socket(watcher->fd,global_config.response,(size_t)global_config.response_len-1);
+		}
+
+		if(send_ret <= 0){
+			rdlog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+			close_socket_and_stop_watcher(loop,watcher);
+		}
+		
+		rdlog(LOG_DEBUG,"first response ok");
+		connection->first_response_sent = 1;
+	}
+}
+
+struct accept_private{
+	int tcp_keepalive;
+};
+
+static void accept_cb(struct ev_loop *loop, struct ev_io *watcher,int revents){
+	struct sockaddr_in client_addr;
+	socklen_t client_len = sizeof(client_addr);
+	int client_sd;
+	char buf[512];
+
+	if(EV_ERROR & revents) {
+		strerror_r(errno,buf,sizeof(buf));
+		rdlog(LOG_ERR,"Invalid event: %s",buf);
+		return;
+	}
+
+	client_sd = accept(watcher->fd, (struct sockaddr *)&client_addr,
+		&client_len);
+
+	if(client_sd < 0) {
+		strerror_r(errno,buf,sizeof(buf));
+		rdlog(LOG_ERR,"accept error: %s",buf);
+		return;
+	}
+
+	if(in_addr_list_contains(global_config.blacklist,&client_addr.sin_addr)) {
+		if(global_config.debug)
+			rdbg("Connection rejected: %s in blacklist",
+				inet_ntop(AF_INET,&client_addr,buf,sizeof(buf)));
+		close(client_sd);
+		return;
+	}else if(global_config.debug){
+		print_accepted_connection_log((struct sockaddr_in *)&client_addr);
+	}
+
+	if(((struct accept_private *)watcher->data)->tcp_keepalive)
+		set_keepalive_opt(client_sd);
+	set_nonblock_flag(client_sd);
+
+	/* Set watcher */
+	struct ev_io *w_client = (struct ev_io *) malloc(sizeof(struct ev_io));
+	if(unlikely(NULL == w_client)) {
+		rdlog(LOG_ERR,"Can't allocate client private data");
+	} else {
+		ev_io_init(w_client, read_cb, client_sd, EV_READ);
+		ev_io_start(loop, w_client);
+	}
+
+#if 0
 	pthread_attr_t pthread_attr;
 
 	pthread_attr_init(&pthread_attr);
@@ -300,6 +331,57 @@ static void main_tcp_loop(int listenfd,int tcp_keepalive){
 	}
 
 	pthread_attr_destroy(&pthread_attr);
+#endif
+}
+
+static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
+	int revents) {
+
+	char buf[512];
+
+	if(EV_ERROR & revents) {
+		strerror_r(errno,buf,sizeof(buf));
+		rdlog(LOG_ERR,"Invalid event: %s",buf);
+		return;
+	}
+
+	if(1 == do_shutdown)
+		ev_break(loop,EVBREAK_ALL);
+}
+
+struct socket_listener_private {
+	pthread_t main_loop;
+	struct ev_loop *event_loop;
+	struct ev_async w_async;
+
+	struct {
+		char *proto;
+		uint16_t listen_port;
+		size_t udp_threads;
+    	bool tcp_keepalive;
+    } config;
+};
+
+static void main_tcp_loop(int listenfd,struct socket_listener_private *priv){
+	priv->event_loop = ev_loop_new(0);
+	struct accept_private accept_private = {
+		.tcp_keepalive = priv->config.tcp_keepalive
+	};
+	struct ev_io w_accept = {
+		.data = &accept_private
+	};
+
+	ev_io_init((&w_accept),accept_cb,listenfd,EV_READ);
+	ev_async_init((&priv->w_async),async_cb);
+	ev_io_start(priv->event_loop,&w_accept);
+	ev_async_start(priv->event_loop,&priv->w_async);
+
+	ev_run(priv->event_loop,0);
+
+	ev_async_stop(priv->event_loop,&priv->w_async);
+	ev_io_stop(priv->event_loop,&w_accept);
+
+	ev_loop_destroy(priv->event_loop);
 }
 
 /// @TODO join with TCP
@@ -361,29 +443,26 @@ static void main_udp_loop(int listenfd,size_t udp_threads){
 	free(threads);
 }
 
-struct main_thread_parameters{
-	char *proto;
-	uint16_t listen_port;
-	size_t udp_threads;
-    bool tcp_keepalive;
-};
-
 static void *main_socket_loop(void *_params) {
-	struct main_thread_parameters *params = _params;
+	struct socket_listener_private *params = _params;
 
 	if( NULL == _params ) {
 		rdlog(LOG_ERR,"NULL passed to %s",__FUNCTION__);
 		return NULL;
 	}
 	
-	int listenfd = createListenSocket(params->proto,params->listen_port);
+	int listenfd = createListenSocket(params->config.proto,params->config.listen_port);
 	if(listenfd == -1)
 		return NULL;
 
-	if( 0 == strcmp(N2KAFKA_UDP,params->proto) ){
-		main_udp_loop(listenfd,params->udp_threads);
+	/*
+	@TODO have to look at ev_set_syserr_cb
+	*/
+
+	if( 0 == strcmp(N2KAFKA_UDP,params->config.proto) ){
+		main_udp_loop(listenfd,params->config.udp_threads);
 	}else{
-		main_tcp_loop(listenfd,params->tcp_keepalive);
+		main_tcp_loop(listenfd,params);
 	}
 
 	rdlog(LOG_INFO,"Closing listening socket.\n");
@@ -392,66 +471,65 @@ static void *main_socket_loop(void *_params) {
 	return NULL;
 }
 
-struct socket_listener_private {
-	pthread_t main_loop;
-};
+static void join_listener_socket(void *_private){
+	struct socket_listener_private *private = _private;
+
+	do_shutdown = 1;
+	ev_async_send (private->event_loop,&private->w_async);
+	pthread_join(private->main_loop,NULL);
+	free(private);
+}
 
 struct listener *create_socket_listener(struct json_t *config,char *err,size_t errsize){
 	json_error_t error;
 	char *proto;
 
-	struct main_thread_parameters *param = calloc(1,sizeof(*param));
-	if( NULL == param ) {
-		snprintf(err,errsize,"Can't allocate private of create_socket_listener"
-		                     " (out of memory?)");
+	struct socket_listener_private *priv = calloc(1,sizeof(*priv));
+	if( NULL == priv ) {
+		snprintf(err,errsize,"Can't allocate private data (out of memory?)");
 		return NULL;
 	}
 
 	/* Default */
-	param->udp_threads = 1; 
-	param->tcp_keepalive = 0;
+	priv->config.udp_threads = 1; 
+	priv->config.tcp_keepalive = 0;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
 		"{s:s,s:i,s?i,s?b}",
-		"proto",&proto,"port",&param->listen_port,
-		"udp_threads",&param->udp_threads,"tcp_keepalive",&param->tcp_keepalive);
+		"proto",&proto,"port",&priv->config.listen_port,
+		"udp_threads",&priv->config.udp_threads,"tcp_keepalive",&priv->config.tcp_keepalive);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
-		free(param);
+		free(priv);
 		return NULL;
 	}
 
-	if( param->udp_threads == 0 ) {
+	if( priv->config.udp_threads == 0 ) {
 		snprintf(err,errsize,"Error: UDP threads has to be > 0");
-		free(param);
+		free(priv);
 		return NULL;
 	}
 
-	param->proto = strdup(proto);
-	if( NULL == param->proto) {
+	priv->config.proto = strdup(proto);
+	if( NULL == priv->config.proto) {
 		snprintf(err,errsize,"Error: Can't strdup protocol (out of memory?)");
-		free(param);
-		return NULL;
-	}
-
-	struct socket_listener_private *priv = calloc(1,sizeof(*priv));
-	if( NULL == priv ) {
-		snprintf(err,errsize,"Can't allocate private data (out of memory?)");
-		free(param);
+		free(priv);
 		return NULL;
 	}
 
 	struct listener *l = calloc(1,sizeof(*l));
 	if( NULL == l ) {
 		snprintf(err,errsize,"Can't allocate listener (out of memory?)");
-		free(param);
+		free(priv);
 	}
 
+	l->join    = join_listener_socket;
+	l->private = priv;
+
 	const int pcreate_rc = pthread_create(&priv->main_loop,NULL,
-		main_socket_loop,param);
+		main_socket_loop,priv);
 	if (pcreate_rc != 0) {
 		strerror_r(pcreate_rc,err,errsize);
-		free(param);
 		free(priv);
 		free(l);
 		return NULL;

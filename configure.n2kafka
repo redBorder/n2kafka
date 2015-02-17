@@ -7,6 +7,7 @@ mkl_require gitversion as GITVERSION
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wjump-misses-init" # New in gcc 4.5
@@ -29,7 +30,9 @@ function checks {
        "#include <librdkafka/rdkafka.h>"
 
     # -lrt required on linux
-    mkl_lib_check "librt" "" cont CC "-lrt"
+    mkl_lib_check "librt" "" fail CC "-lrt" 
+
+    mkl_lib_check "libev" "" fail CC "-lev" "#include <ev.h>"
 
     # -lcurl required if HTTP enabled
     if [[ "x$WITH_HTTP" == "xy" ]]; then
