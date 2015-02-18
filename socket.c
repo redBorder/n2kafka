@@ -242,14 +242,17 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		if(errno == EAGAIN){
 			rdbg("Socket not ready. re-trying");
 			free(buffer);
+			return;
 		}else{
 			rdlog(LOG_ERR,"Recv error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			free(buffer);
 			close_socket_and_stop_watcher(loop,watcher);
+			return;
 		}
 	}else{ /* recv_result == 0 */
 		free(buffer);
 		close_socket_and_stop_watcher(loop,watcher);
+		return;
 	}
 
 	if(NULL!=global_config.response && !connection->first_response_sent){
@@ -589,6 +592,7 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 	if( NULL == l ) {
 		snprintf(err,errsize,"Can't allocate listener (out of memory?)");
 		free(priv);
+		return NULL;
 	}
 
 	l->join    = join_listener_socket;
