@@ -37,6 +37,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#define MAX_NUM_THREADS 256
+
 struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
@@ -47,10 +49,29 @@ struct udp_thread_info{
 
 #define CONFIG_NUM_THREADS "threads"
 
-#define MODE_THREAD_PER_CONNECTION "thread_per_connection"
-#define MODE_SELECT "select"
-#define MODE_POLL "poll"
-#define MODE_EPOLL "epoll"
+enum thread_mode{
+	#define STR_MODE_THREAD_PER_CONNECTION "thread_per_connection"
+	MODE_THREAD_PER_CONNECTION,
+	#define STR_MODE_SELECT "select"
+	MODE_SELECT,
+	#define STR_MODE_POLL "poll"
+	MODE_POLL,
+	#define STR_MODE_EPOLL "epoll"
+	MODE_EPOLL,
+	MODE_INVALID
+};
+
+static enum thread_mode thread_mode_str(const char *mode_str) {
+	if(NULL==mode_str || 0==strcmp(STR_MODE_THREAD_PER_CONNECTION,mode_str))
+		return MODE_THREAD_PER_CONNECTION;
+	if(0 == strcmp(STR_MODE_SELECT,mode_str))
+		return MODE_SELECT;
+	if(0 == strcmp(STR_MODE_POLL,mode_str))
+		return MODE_POLL;
+	if(0 == strcmp(STR_MODE_EPOLL,mode_str))
+		return MODE_EPOLL;
+	return MODE_INVALID;
+}
 
 #define READ_BUFFER_SIZE 4096
 static const struct timeval READ_SELECT_TIMEVAL  = {.tv_sec = 20,.tv_usec = 0};
@@ -252,13 +273,32 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	}
 }
 
-struct accept_private{
-	int tcp_keepalive;
+struct socket_listener_private {
+	pthread_t main_loop;
+	struct ev_loop *event_loop;
+	struct ev_async w_async;
+
+	struct {
+		char *proto;
+		uint16_t listen_port;
+		size_t threads;
+    	bool tcp_keepalive;
+    	enum thread_mode thread_mode;
+    } config;
+
+    pthread_t threads[MAX_NUM_THREADS];
+    struct ev_loop *event_loops[MAX_NUM_THREADS];
+    struct ev_async event_asyncs[MAX_NUM_THREADS];
+
+    size_t accept_current_worker_idx;
 };
 
-static void accept_cb(struct ev_loop *loop, struct ev_io *watcher,int revents){
+static void accept_cb(struct ev_loop *loop __attribute__((unused)), 
+                      struct ev_io *watcher,int revents){
 	struct sockaddr_in client_addr;
 	socklen_t client_len = sizeof(client_addr);
+	struct socket_listener_private *accept_private = 
+		(struct socket_listener_private *)watcher->data;
 	int client_sd;
 	char buf[512];
 
@@ -287,51 +327,30 @@ static void accept_cb(struct ev_loop *loop, struct ev_io *watcher,int revents){
 		print_accepted_connection_log((struct sockaddr_in *)&client_addr);
 	}
 
-	if(((struct accept_private *)watcher->data)->tcp_keepalive)
+	if(accept_private->config.tcp_keepalive)
 		set_keepalive_opt(client_sd);
 	set_nonblock_flag(client_sd);
 
-	/* Set watcher */
-	struct ev_io *w_client = (struct ev_io *) malloc(sizeof(struct ev_io));
-	if(unlikely(NULL == w_client)) {
-		rdlog(LOG_ERR,"Can't allocate client private data");
+	if(accept_private->config.thread_mode == MODE_THREAD_PER_CONNECTION) {
+		rdlog(LOG_ERR,"Mode " STR_MODE_THREAD_PER_CONNECTION "still not implemented");
+		exit(-1);
 	} else {
-		ev_io_init(w_client, read_cb, client_sd, EV_READ);
-		ev_io_start(loop, w_client);
-	}
+		/* Set watcher */
+		struct ev_io *w_client = (struct ev_io *) malloc(sizeof(struct ev_io));
+		if(unlikely(NULL == w_client)) {
+			rdlog(LOG_ERR,"Can't allocate client private data");
+		} else {
+			const size_t cur_idx = accept_private->accept_current_worker_idx++;
+			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
+				accept_private->accept_current_worker_idx = 0;
 
-#if 0
-	pthread_attr_t pthread_attr;
+			rdbg("Sent connection to worker thread %zu",cur_idx);
+			
+			ev_io_init(w_client, read_cb, client_sd, EV_READ);
+			ev_io_start(accept_private->event_loops[cur_idx], w_client);
 
-	pthread_attr_init(&pthread_attr);
-	pthread_attr_setdetachstate(&pthread_attr, PTHREAD_CREATE_DETACHED);
-
-	while(!do_shutdown){
-		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
-		int connection_fd = 0;
-		if(likely(!do_shutdown)){
-			int select_result = select_socket(listenfd,&tv);
-			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
-				rdlog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-			}else if(select_result>0){
-				connection_fd = accept_connection(listenfd,tcp_keepalive);
-			}else{
-				// printf("timeout\n");
-			}
 		}
-
-		if(connection_fd > 0){
-			int *pconnection_fd = malloc(sizeof(int));
-			*pconnection_fd = connection_fd;
-			pthread_t thread;
-			pthread_create(&thread,&pthread_attr,process_data_from_socket,pconnection_fd);
-		}
-
-		connection_fd = 0;
 	}
-
-	pthread_attr_destroy(&pthread_attr);
-#endif
 }
 
 static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
@@ -349,26 +368,25 @@ static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
 		ev_break(loop,EVBREAK_ALL);
 }
 
-struct socket_listener_private {
-	pthread_t main_loop;
-	struct ev_loop *event_loop;
-	struct ev_async w_async;
-
-	struct {
-		char *proto;
-		uint16_t listen_port;
-		size_t udp_threads;
-    	bool tcp_keepalive;
-    } config;
+struct worker_args {
+	struct socket_listener_private *accept_private;
+	int idx;
 };
 
-static void main_tcp_loop(int listenfd,struct socket_listener_private *priv){
+static void *worker(void *_worker_arg) {
+	struct worker_args *worker_args = _worker_arg;
+
+	ev_run(worker_args->accept_private->event_loops[worker_args->idx],0);
+
+	free(worker_args);
+
+	return NULL;
+}
+
+static void main_tcp_loop(int listenfd,struct socket_listener_private *priv) {
 	priv->event_loop = ev_loop_new(0);
-	struct accept_private accept_private = {
-		.tcp_keepalive = priv->config.tcp_keepalive
-	};
 	struct ev_io w_accept = {
-		.data = &accept_private
+		.data = priv,
 	};
 
 	ev_io_init((&w_accept),accept_cb,listenfd,EV_READ);
@@ -376,7 +394,44 @@ static void main_tcp_loop(int listenfd,struct socket_listener_private *priv){
 	ev_io_start(priv->event_loop,&w_accept);
 	ev_async_start(priv->event_loop,&priv->w_async);
 
+	size_t i;
+	for(i=0;i<priv->config.threads;++i) {
+		struct worker_args *args = calloc(1,sizeof(args[0]));
+		if(!args) {
+			rdlog(LOG_ERR,"Can't allocate worker arg (out of memory?");
+			continue;
+		}
+
+		args->idx = i;
+		args->accept_private = priv;
+
+		priv->event_loops[i] = ev_loop_new(0);
+		if(priv->event_loops[i] == NULL){
+			rdlog(LOG_ERR,"Can't create even't loop %zu",i);
+			free(args);
+			continue;
+		}
+
+		ev_async_init((&priv->event_asyncs[i]),async_cb);
+		ev_async_start(priv->event_loops[i],&priv->event_asyncs[i]);
+
+		pthread_create(&priv->threads[i],NULL,worker,args);
+	}
+
 	ev_run(priv->event_loop,0);
+
+	for(i=0;i<priv->config.threads;++i) {
+		if(NULL == priv->event_loops[i]) {
+			rdlog(LOG_ERR,"Something happened: event loop %zu not found.",i);
+			continue;
+		}
+
+		ev_async_send(priv->event_loops[i],&priv->event_asyncs[i]);
+		pthread_join(priv->threads[i],NULL);
+
+		ev_async_stop(priv->event_loops[i],&priv->event_asyncs[i]);
+		ev_loop_destroy(priv->event_loops[i]);
+	}
 
 	ev_async_stop(priv->event_loop,&priv->w_async);
 	ev_io_stop(priv->event_loop,&w_accept);
@@ -460,7 +515,7 @@ static void *main_socket_loop(void *_params) {
 	*/
 
 	if( 0 == strcmp(N2KAFKA_UDP,params->config.proto) ){
-		main_udp_loop(listenfd,params->config.udp_threads);
+		main_udp_loop(listenfd,params->config.threads);
 	}else{
 		main_tcp_loop(listenfd,params);
 	}
@@ -491,23 +546,36 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 	}
 
 	/* Default */
-	priv->config.udp_threads = 1; 
+	priv->config.threads = 1; 
 	priv->config.tcp_keepalive = 0;
+	priv->config.thread_mode = MODE_EPOLL;
+	const char *mode=NULL;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
-		"{s:s,s:i,s?i,s?b}",
+		"{s:s,s:i,s?i,s?b,s?s}",
 		"proto",&proto,"port",&priv->config.listen_port,
-		"udp_threads",&priv->config.udp_threads,"tcp_keepalive",&priv->config.tcp_keepalive);
+		"num_threads",&priv->config.threads,"tcp_keepalive",&priv->config.tcp_keepalive,
+		"mode",&mode);
+
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
 		free(priv);
 		return NULL;
 	}
 
-	if( priv->config.udp_threads == 0 ) {
-		snprintf(err,errsize,"Error: UDP threads has to be > 0");
-		free(priv);
-		return NULL;
+	if( priv->config.threads == 0 ) {
+		rdlog(LOG_ERR,"UDP threads has to be > 0. Setting to 1");
+		priv->config.threads = 1;
+	}
+
+	if( priv->config.threads > MAX_NUM_THREADS ) {
+		rdlog(LOG_ERR,"UDP threads has to be < %d. Setting to %d",
+			MAX_NUM_THREADS,MAX_NUM_THREADS);
+		priv->config.threads = MAX_NUM_THREADS;
+	}
+
+	if(mode != NULL) {
+		priv->config.thread_mode = thread_mode_str(mode);
 	}
 
 	priv->config.proto = strdup(proto);

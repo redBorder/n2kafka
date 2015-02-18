@@ -2,7 +2,7 @@
 	"debug":1,
 	"listeners":[
 		{"proto":"http","port":2057, "mode":"epoll","num_threads":20},
-		{"proto":"tcp","port":2056,"tcp_keepalive":true}
+		{"proto":"tcp","port":2056,"tcp_keepalive":true,"num_threads":40}
 	],
 	"brokers":"eugeniodev",
 	"topic":"rb_flow",
