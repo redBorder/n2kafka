@@ -263,6 +263,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 static void break_http_loop(void *_h){
 	struct http_private *h = _h;
 	MHD_stop_daemon(h->d);
+	free(h);
 }
 
 struct listener *create_http_listener(struct json_t *config,char *err,

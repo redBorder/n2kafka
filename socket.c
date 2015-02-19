@@ -22,6 +22,8 @@
 #include "global_config.h"
 #include "util.h"
 
+#include <librd/rdthread.h>
+#include <librd/rdqueue.h>
 #include <librd/rdlog.h>
 #include <jansson.h>
 
@@ -38,6 +40,8 @@
 #include <arpa/inet.h>
 
 #define MAX_NUM_THREADS 256
+
+#define CONNECTION_PRIVATE_MAGIC 0x45235612L
 
 struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
@@ -213,6 +217,9 @@ static int send_to_socket(int fd,const char *data,size_t len){
 }
 
 struct connection_private {
+	#ifdef CONNECTION_PRIVATE_MAGIC
+	uint64_t magic;
+	#endif
 	int first_response_sent;
 };
 
@@ -220,7 +227,6 @@ static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *wat
 	ev_io_stop(loop,watcher);
 
 	close(watcher->fd);
-	free(watcher->data); /* Connection data */
 	free(watcher);
 }
 
@@ -233,6 +239,10 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 	struct connection_private *connection = (struct connection_private *) watcher->data;
 	struct sockaddr_in6 saddr;
+
+#ifdef CONNECTION_PRIVATE_MAGIC
+	assert(connection->magic == CONNECTION_PRIVATE_MAGIC);
+#endif
 
 	char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
@@ -292,6 +302,7 @@ struct socket_listener_private {
     pthread_t threads[MAX_NUM_THREADS];
     struct ev_loop *event_loops[MAX_NUM_THREADS];
     struct ev_async event_asyncs[MAX_NUM_THREADS];
+    rd_fifoq_t watchers_queue[MAX_NUM_THREADS];
 
     size_t accept_current_worker_idx;
 };
@@ -338,11 +349,16 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 		rdlog(LOG_ERR,"Mode " STR_MODE_THREAD_PER_CONNECTION "still not implemented");
 		exit(-1);
 	} else {
-		/* Set watcher */
-		struct ev_io *w_client = (struct ev_io *) malloc(sizeof(struct ev_io));
+		/* Set watcher. Private data just after watcher */
+		struct ev_io *w_client = calloc(1,
+			sizeof(struct ev_io)+sizeof(struct connection_private));
 		if(unlikely(NULL == w_client)) {
 			rdlog(LOG_ERR,"Can't allocate client private data");
 		} else {
+			w_client->data = &w_client[1];
+#if CONNECTION_PRIVATE_MAGIC
+			((struct connection_private *)w_client->data)->magic = CONNECTION_PRIVATE_MAGIC;
+#endif
 			const size_t cur_idx = accept_private->accept_current_worker_idx++;
 			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
 				accept_private->accept_current_worker_idx = 0;
@@ -350,14 +366,21 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			rdbg("Sent connection to worker thread %zu",cur_idx);
 			
 			ev_io_init(w_client, read_cb, client_sd, EV_READ);
-			ev_io_start(accept_private->event_loops[cur_idx], w_client);
-
+			rd_fifoq_add(&accept_private->watchers_queue[cur_idx],w_client);
+			ev_async_send(accept_private->event_loops[cur_idx],
+				&accept_private->event_asyncs[cur_idx]);
 		}
 	}
 }
 
+struct worker_args {
+	struct socket_listener_private *accept_private;
+	size_t idx;
+};
+
 static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
 	int revents) {
+	struct worker_args *args = ev_userdata(loop);
 
 	char buf[512];
 
@@ -367,14 +390,23 @@ static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
 		return;
 	}
 
-	if(1 == do_shutdown)
+	if(1 == do_shutdown) {
+		/* The signal was for end the loop */
 		ev_break(loop,EVBREAK_ALL);
-}
+	} else if(args) {
+		/* The signal was alerting a new socket to watch */
+		size_t i = args->idx;
+		rd_fifoq_elm_t *qelm = NULL;
+		while((qelm = rd_fifoq_pop(&args->accept_private->watchers_queue[i]))){
+			struct ev_io *w_client = qelm->rfqe_ptr;
+			if(NULL != w_client) {
+				ev_io_start(loop, w_client);
+			}
 
-struct worker_args {
-	struct socket_listener_private *accept_private;
-	int idx;
-};
+			rd_fifoq_elm_release(&args->accept_private->watchers_queue[i],qelm);
+		}
+	}
+}
 
 static void *worker(void *_worker_arg) {
 	struct worker_args *worker_args = _worker_arg;
@@ -391,6 +423,11 @@ static void main_tcp_loop(int listenfd,struct socket_listener_private *priv) {
 	struct ev_io w_accept = {
 		.data = priv,
 	};
+
+	if( NULL == priv->event_loop ) {
+		rdlog(LOG_ERR,"Can't initialize event loop (out of memory?)");
+		return;
+	}
 
 	ev_io_init((&w_accept),accept_cb,listenfd,EV_READ);
 	ev_async_init((&priv->w_async),async_cb);
@@ -415,7 +452,10 @@ static void main_tcp_loop(int listenfd,struct socket_listener_private *priv) {
 			continue;
 		}
 
-		ev_async_init((&priv->event_asyncs[i]),async_cb);
+		ev_set_userdata(priv->event_loops[i],args);
+
+		rd_fifoq_init(&priv->watchers_queue[i]);
+		ev_async_init(&priv->event_asyncs[i],async_cb);
 		ev_async_start(priv->event_loops[i],&priv->event_asyncs[i]);
 
 		pthread_create(&priv->threads[i],NULL,worker,args);

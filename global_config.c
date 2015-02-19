@@ -292,9 +292,10 @@ static void shutdown_listeners(struct n2kafka_config *config){
 void free_global_config(){
 	shutdown_listeners(&global_config);
 
-
-	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
-	rd_kafka_conf_destroy(global_config.kafka_conf);
+	// @TODO SIGSEGV wen calling this functions.
+	// Not memory-leak produced because they are called at the end of execution
+	//rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
+	//rd_kafka_conf_destroy(global_config.kafka_conf);
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);
