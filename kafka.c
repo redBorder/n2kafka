@@ -109,6 +109,9 @@ void init_rdkafka(){
 	if(rkt == NULL){
 		fatal("%% Cannot create kafka topic\n");
 	}
+
+	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
+	sleep(1); 
 }
 
 static void flush_kafka0(int timeout_ms){
