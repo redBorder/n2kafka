@@ -237,6 +237,10 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 			post_handle, /* Request handler */
 			NULL, /* Request handler parameter */
 			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+			/* Memory limit per connection */
+			MHD_OPTION_CONNECTION_MEMORY_LIMIT, (size_t)(128*1024),
+			/* Memory increment at read buffer growing */
+			MHD_OPTION_CONNECTION_MEMORY_INCREMENT, (size_t)(4*1024),
 			MHD_OPTION_END);
 	} else {
 		h->d = MHD_start_daemon(flags,
