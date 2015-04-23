@@ -21,6 +21,7 @@
 #include "socket.h"
 #include "global_config.h"
 #include "util.h"
+#include "rb_mac.h"
 
 #include <librd/rdthread.h>
 #include <librd/rdqueue.h>
@@ -191,14 +192,55 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
+struct json_data {
+	uint64_t client_mac;
+};
+
+static char *process_json_data_received_from_socket(char *orig_buf,json_t *json,struct json_data *data){
+	assert(data);
+
+	json_error_t err;
+	const char *client_mac = NULL;
+	const int unpack_rc = json_unpack_ex(json,&err,0,"{s:s}","client_mac",&client_mac);
+
+	if(unpack_rc < 0){
+		rdlog(LOG_WARNING,"Can't extract client mac from (%s), line %d column %d: %s",
+			err.source,err.line,err.column,err.text);
+	}else{
+		data->client_mac = parse_mac(client_mac);
+		if(data->client_mac > 0xFFFFFFFFFFFF)
+			data->client_mac = 0;
+	}
+
+	return orig_buf;
+}
+
+static void process_data_received_from_socket0(char *buffer,const size_t bsize){
+	struct json_data data = {
+		.client_mac = 0
+	};
+
+	json_error_t err;
+	json_t *json = json_loadb(buffer,bsize,0,&err);
+	if(NULL == json){
+		rdlog(LOG_ERR,"Can't decode json buffer (line %d,col %d): %s",
+			err.line,err.column,err.text);
+	}else{
+		buffer = process_json_data_received_from_socket(buffer,json,&data);
+	}
+
+	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
+}
+
 static void process_data_received_from_socket(char *buffer,const size_t recv_result){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
-	if(unlikely(only_stdout_output()))
+	if(unlikely(only_stdout_output())){
 		free(buffer);
-	else
-		send_to_kafka(buffer,recv_result,RD_KAFKA_MSG_F_FREE);
+	} else {
+		process_data_received_from_socket0(buffer,recv_result);
+	}
 }
 
 static int send_to_socket(int fd,const char *data,size_t len){

@@ -107,8 +107,9 @@ static void request_completed (void *cls HTTP_UNUSED,
 	if ( NULL == con_info ) 
 		return;
 	
+	/// @TODO extract json data
 	if( con_info->str.buf ) {
-		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE);
+		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,0);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	}
 	

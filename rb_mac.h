@@ -1,6 +1,8 @@
 /*
-** Copyright (C) 2014 Eneo Tecnologia S.L.
+**
+** Copyright (c) 2014, Eneo Tecnologia
 ** Author: Eugenio Perez <eupm90@gmail.com>
+** All rights reserved.
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License Version 2 as
@@ -18,13 +20,14 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#include "parse.h"
-#include <librdkafka/rdkafka.h>
+#pragma once
+#include <stdint.h>
 
-void init_rdkafka();
-void send_to_kafka(char *buffer,const size_t bufsize,int flags,void *opaque);
+/// MAX mac can return parse_mac
+#define MAX_MAC 0xffffffffffffL
 
-void kafka_poll();
+#define valid_mac(mac) (mac <= MAX_MAC)
+#define INVALID_MAC (MAX_MAC+1)
 
-void flush_kafka();
-void stop_rdkafka();
+// error if return 0xFFFFFFFFFFFFFFFFL
+uint64_t parse_mac(const char *mac);P
