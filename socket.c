@@ -215,7 +215,7 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 static void process_data_received_from_socket0(char *buffer,size_t bsize,enum decode_as decode_as){
 	assert(buffer);
 	(void) decode_as;
-	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
+	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,NULL);
 }
 
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,enum decode_as decode_as){
