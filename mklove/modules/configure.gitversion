@@ -15,5 +15,5 @@ else
 fi
 
 function checks {
-    mkl_allvar_set "gitversion" "$__MKL_GITVERSION_VARNAME" "$(git describe --abbrev=6 --tags HEAD --always --dirty)"
+    mkl_allvar_set "gitversion" "$__MKL_GITVERSION_VARNAME" "$(git describe --abbrev=6 --tags HEAD --always)"
 }
