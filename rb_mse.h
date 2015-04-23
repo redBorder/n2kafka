@@ -26,8 +26,9 @@
 struct mse_data {
 	/* is NULL in some flows, so we need to save them here */
 	uint64_t client_mac;
-	const char *_client_mac;
 	const char *subscriptionName;
+	/* private */
+	const char *_client_mac;
 };
 
-char *extract_mse_rich_data(char *from,size_t *bsize,struct mse_data *to);
+char *process_mse_buffer(char *from,size_t *bsize,struct mse_data *data);

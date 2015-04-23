@@ -131,11 +131,13 @@ static void request_completed (void *cls,
 		};
 
 		if(h->decode_as == DECODE_AS_MSE) {
-			con_info->str.buf = extract_mse_rich_data(con_info->str.buf,&con_info->str.used,&mse_data);
+			con_info->str.buf = process_mse_buffer(con_info->str.buf,&con_info->str.used,&mse_data);
 		}
 
-		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)mse_data.client_mac);
-		con_info->str.buf = NULL; /* librdkafka will free it */
+		if(con_info->str.buf){
+			send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)mse_data.client_mac);
+			con_info->str.buf = NULL; /* librdkafka will free it */
+		}
 	}
 	
 	free_con_info(con_info);

@@ -94,13 +94,15 @@ static int extract_mse10_rich_data(json_t *from,struct mse_data *to) {
 }
 
 
-char *extract_mse_rich_data(char *buffer,size_t *bsize,struct mse_data *to){
+char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to){
+	assert(bsize);
+
 	json_error_t err;
 	json_t *json = json_loadb(buffer,*bsize,0,&err);
 	if(NULL == json){
 		rdlog(LOG_ERR,"Error decoding MSE JSON (%s), line %d column %d: %s",
 			buffer,err.line,err.column,err.text);
-		return buffer;
+		goto err;
 	}
 
 	const int extract_rc = 
@@ -108,14 +110,22 @@ char *extract_mse_rich_data(char *buffer,size_t *bsize,struct mse_data *to){
 		is_mse10_message(json) ? extract_mse10_rich_data(json,to) :
 		({rdlog(LOG_ERR,"This is not an valid MSE JSON: %s",buffer);-1;});
 	
-	if(extract_rc == 0){
-		to->client_mac = parse_mac(to->_client_mac);
-		if(!valid_mac(to->client_mac))
-			to->client_mac = 0;
-	}
+	if(extract_rc < 0)
+		goto err;
+
+	to->client_mac = parse_mac(to->_client_mac);
+	if(!valid_mac(to->client_mac))
+		goto err;
 
 	to->_client_mac = NULL;
 	json_decref(json);
 
-	return buffer; /* If we change buffer, we have to modify bsize */
+	return buffer; /* @TODO If we change buffer, we have to modify bsize */
+
+err:
+	if(json)
+		json_decref(json);
+	*bsize = 0;
+	free(buffer);
+	return NULL;
 }

@@ -229,10 +229,11 @@ static void process_data_received_from_socket0(char *buffer,size_t bsize,enum de
 	};
 
 	if(decode_as == DECODE_AS_MSE){
-		buffer = extract_mse_rich_data(buffer,&bsize,&data);
+		buffer = process_mse_buffer(buffer,&bsize,&data);
 	}
 
-	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
+	if(buffer)
+		send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
 }
 
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,enum decode_as decode_as){
