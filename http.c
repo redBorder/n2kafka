@@ -31,9 +31,11 @@
 #define MODE_EPOLL "epoll"
 
 #include "http.h"
+#include "rb_mse.h"
 
 #include "global_config.h"
 
+#include <assert.h>
 #include <jansson.h>
 #include <librd/rdlog.h>
 #include <microhttpd.h>
@@ -48,8 +50,23 @@ struct string {
 	size_t allocated,used;
 };
 
+enum decode_as{
+	DECODE_AS_NONE=0,
+	DECODE_AS_MSE
+};
+
+static const char *decode_as_strs[] = {
+	[DECODE_AS_NONE] = "",
+	[DECODE_AS_MSE]  = "MSE"
+};
+
+#define HTTP_PRIVATE_MAGIC 0xC0B345FE
 struct http_private{
+#ifdef HTTP_PRIVATE_MAGIC
+	uint64_t magic;
+#endif
 	struct MHD_Daemon *d;
+	enum decode_as decode_as;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -93,23 +110,31 @@ static void free_con_info(struct conn_info *con_info) {
 	free(con_info);
 }
 
-static void request_completed (void *cls HTTP_UNUSED, 
+static void request_completed (void *cls,
                                struct MHD_Connection *connection HTTP_UNUSED,
                                void **con_cls,
                                enum MHD_RequestTerminationCode toe HTTP_UNUSED)
 {
-	if( NULL == con_cls ) {
+	if( NULL == con_cls || NULL == *con_cls) {
 		return; /* This point should never reached? */
 	}
 
 	struct conn_info *con_info = *con_cls;
-
-	if ( NULL == con_info ) 
-		return;
+	struct http_private *h = cls;
 	
-	/// @TODO extract json data
+	/// @TODO duplicated code in 'socket.c'. We have to join both.
 	if( con_info->str.buf ) {
-		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,0);
+		struct mse_data mse_data = {
+			.client_mac = 0,
+			._client_mac = NULL,
+			.subscriptionName = NULL,
+		};
+
+		if(h->decode_as == DECODE_AS_MSE) {
+			con_info->str.buf = extract_mse_rich_data(con_info->str.buf,&con_info->str.used,&mse_data);
+		}
+
+		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)mse_data.client_mac);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	}
 	
@@ -159,7 +184,7 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
-static int post_handle(void *cls HTTP_UNUSED,
+static int post_handle(void *_cls,
 						 struct MHD_Connection *connection,
 						 const char *url HTTP_UNUSED,
 						 const char *method,
@@ -167,6 +192,12 @@ static int post_handle(void *cls HTTP_UNUSED,
 						 const char *upload_data,
 						 size_t *upload_data_size,
 						 void **ptr) {
+
+	struct http_private *cls = _cls;
+
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == cls->magic);
+#endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
 		return MHD_NO; /* unexpected method */
@@ -197,6 +228,7 @@ struct http_loop_args {
 	const char *mode;
 	int port;
 	unsigned int num_threads;
+	enum decode_as decode_as;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -229,6 +261,11 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 		         " (out of memory?)");
 		return NULL;
 	}
+#ifdef HTTP_PRIVATE_MAGIC
+	h->magic = HTTP_PRIVATE_MAGIC;
+#endif
+	h->decode_as = args->decode_as;
+
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -236,8 +273,8 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 			NULL, /* Auth callback */
 			NULL, /* Auth callback parameter */
 			post_handle, /* Request handler */
-			NULL, /* Request handler parameter */
-			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+			h, /* Request handler parameter */
+			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
 			/* Memory limit per connection */
 			MHD_OPTION_CONNECTION_MEMORY_LIMIT, (size_t)(128*1024),
 			/* Memory increment at read buffer growing */
@@ -249,8 +286,8 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 			NULL, /* Auth callback */
 			NULL, /* Auth callback parameter */
 			post_handle, /* Request handler */
-			NULL, /* Request handler parameter */
-			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+			h, /* Request handler parameter */
+			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
 			MHD_OPTION_THREAD_POOL_SIZE, args->num_threads,
 			MHD_OPTION_END);
 	}
@@ -279,16 +316,29 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	struct http_loop_args handler_args;
 	memset(&handler_args,0,sizeof(handler_args));
 	handler_args.num_threads = 1;
+	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s:s}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads);
+		"num_threads",&handler_args.num_threads,"decode_as",&decode_as);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't find server port: %s",error.text);
 	}
 
 	if(NULL==handler_args.mode)
 		handler_args.mode = MODE_SELECT;
+
+	if(NULL != decode_as){
+		size_t i;
+		for(i=0;i<sizeof(decode_as_strs)/sizeof(decode_as_strs[i]);++i)
+			if(0==strcmp(decode_as_strs[i],decode_as))
+				handler_args.decode_as = i;
+
+		if(0==handler_args.decode_as){
+			rdlog(LOG_ERR,"Can't decode as %s",decode_as);
+			exit(-1);
+		}
+	}
 
 	struct http_private *priv = start_http_loop(&handler_args,err,errsize);
 	if( NULL == priv ) {

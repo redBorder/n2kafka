@@ -114,5 +114,8 @@ char *extract_mse_rich_data(char *buffer,size_t *bsize,struct mse_data *to){
 			to->client_mac = 0;
 	}
 
+	to->_client_mac = NULL;
+	json_decref(json);
+
 	return buffer; /* If we change buffer, we have to modify bsize */
 }
