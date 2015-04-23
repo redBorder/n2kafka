@@ -20,14 +20,14 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#pragma once
 #include <stdint.h>
+#include <string.h>
 
-/// MAX mac can return parse_mac
-#define MAX_MAC 0xffffffffffffL
+struct mse_data {
+	/* is NULL in some flows, so we need to save them here */
+	uint64_t client_mac;
+	const char *_client_mac;
+	const char *subscriptionName;
+};
 
-#define valid_mac(mac) (mac <= MAX_MAC)
-#define INVALID_MAC (MAX_MAC+1)
-
-// error if return 0xFFFFFFFFFFFFFFFFL
-uint64_t parse_mac(const char *mac);
+char *extract_mse_rich_data(char *from,size_t *bsize,struct mse_data *to);

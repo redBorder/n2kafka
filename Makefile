@@ -1,7 +1,7 @@
 BIN=	n2kafka
 
 SRCS=	engine.c global_config.c kafka.c n2kafka.c in_addr_list.c http.c \
-		socket.c version.c rb_mac.c
+		socket.c version.c rb_mac.c rb_mse.c
 OBJS=	$(SRCS:.c=.o)
 
 .PHONY:
