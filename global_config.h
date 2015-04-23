@@ -40,7 +40,6 @@ struct listener{
     LIST_ENTRY(listener) entry;
 };
 
-
 typedef LIST_HEAD(,listener) listener_list;
 
 struct n2kafka_config{
