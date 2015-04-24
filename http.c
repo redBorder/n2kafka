@@ -213,6 +213,7 @@ struct http_loop_args {
 	int port;
 	unsigned int num_threads;
 	enum decode_as decode_as;
+	json_t *enrich_with;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -302,9 +303,10 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	handler_args.num_threads = 1;
 	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s:s}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads,"decode_as",&decode_as);
+		"num_threads",&handler_args.num_threads,"decode_as",&decode_as,
+		"enrich_with",&handler_args.enrich_with);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't find server port: %s",error.text);
 	}
