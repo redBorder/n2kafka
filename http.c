@@ -66,6 +66,7 @@ struct http_private{
 	uint64_t magic;
 #endif
 	struct MHD_Daemon *d;
+	struct enrich_with *enrich_with;
 	enum decode_as decode_as;
 };
 
@@ -121,6 +122,9 @@ static void request_completed (void *cls,
 
 	struct conn_info *con_info = *con_cls;
 	struct http_private *h = cls;
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == h->magic);
+#endif
 	
 	/// @TODO duplicated code in 'socket.c'. We have to join both.
 	if( con_info->str.buf ) {
@@ -131,11 +135,13 @@ static void request_completed (void *cls,
 		};
 
 		if(h->decode_as == DECODE_AS_MSE) {
-			con_info->str.buf = process_mse_buffer(con_info->str.buf,&con_info->str.used,&mse_data);
+			con_info->str.buf = process_mse_buffer(con_info->str.buf,&con_info->str.used,
+				                &mse_data,h->enrich_with);
 		}
 
 		if(con_info->str.buf){
-			send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)mse_data.client_mac);
+			send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,
+				                            (void *)(intptr_t)mse_data.client_mac);
 			con_info->str.buf = NULL; /* librdkafka will free it */
 		}
 	}
@@ -231,6 +237,7 @@ struct http_loop_args {
 	int port;
 	unsigned int num_threads;
 	enum decode_as decode_as;
+	json_t *enrich_with;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -267,6 +274,9 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->magic = HTTP_PRIVATE_MAGIC;
 #endif
 	h->decode_as = args->decode_as;
+	char *enrich_with = json_dumps(args->enrich_with,0);
+	h->enrich_with = process_enrich_with(enrich_with);
+	free(enrich_with);
 
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
@@ -320,9 +330,10 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	handler_args.num_threads = 1;
 	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s:s}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads,"decode_as",&decode_as);
+		"num_threads",&handler_args.num_threads,"decode_as",&decode_as,
+		"enrich_with",&handler_args.enrich_with);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't find server port: %s",error.text);
 	}

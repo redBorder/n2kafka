@@ -39,6 +39,32 @@ static const char MSE_DEVICE_ID_KEY[] = "deviceId";
 
 static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
 
+struct enrich_with {
+	json_t *json;
+};
+
+struct enrich_with *process_enrich_with(const char *_enrich_with){
+	json_error_t err;
+
+	struct enrich_with *ret = calloc(1,sizeof(ret[0]));
+	if(ret){
+		ret->json = json_loads(_enrich_with,0,&err);
+		if(NULL == ret->json){
+			rdlog(LOG_ERR,"Can't parse entich with (%s): %s",
+				_enrich_with,err.text);
+			free(ret);
+			ret = NULL;
+		}
+	}
+
+	return ret;
+}
+
+void free_enrich_with(struct enrich_with *enrich_with){
+	json_decref(enrich_with->json);
+	free(enrich_with);
+}
+
 static int is_mse8_message(const json_t *json){
 	return NULL != json_object_get(json,MSE8_STREAMING_NOTIFICATION_KEY);
 }
@@ -93,9 +119,41 @@ static int extract_mse10_rich_data(json_t *from,struct mse_data *to) {
 	return unpack_rc;
 }
 
+static int extract_client_mac(const char *buffer,json_t *json,struct mse_data *to){
+	const int extract_rc =  
+		is_mse8_message(json)  ? extract_mse8_rich_data(json,to)  :
+		is_mse10_message(json) ? extract_mse10_rich_data(json,to) :
+		({rdlog(LOG_ERR,"This is not an valid MSE JSON: %s",buffer);-1;});
 
-char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to){
+
+	if(extract_rc < 0)
+		return -1;
+
+	to->client_mac = parse_mac(to->_client_mac);
+	if(!valid_mac(to->client_mac)){
+		rdlog(LOG_WARNING,"Can't found client mac in (%s), using random partitioner",
+			buffer);
+		to->client_mac = 0;
+		return -1;
+	}
+
+	return 0;
+}
+
+static void enrich_mse_json(json_t *json,const struct enrich_with *enrich_with){
+	json_t *_enrich_with = json_deep_copy(enrich_with->json);
+	if(NULL == _enrich_with){
+		rdlog(LOG_ERR,"Can't json_deep_copy (out of memory?)");
+	}else{
+		json_object_update_missing(json,_enrich_with);
+		json_decref(_enrich_with);
+	}
+}
+
+char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
+                                 const struct enrich_with *enrich_with){
 	assert(bsize);
+	assert(to);
 
 	json_error_t err;
 	json_t *json = json_loadb(buffer,*bsize,0,&err);
@@ -105,17 +163,19 @@ char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to){
 		goto err;
 	}
 
-	const int extract_rc = 
-		is_mse8_message(json)  ? extract_mse8_rich_data(json,to)  :
-		is_mse10_message(json) ? extract_mse10_rich_data(json,to) :
-		({rdlog(LOG_ERR,"This is not an valid MSE JSON: %s",buffer);-1;});
+	extract_client_mac(buffer,json,to);
 	
-	if(extract_rc < 0)
-		goto err;
-
-	to->client_mac = parse_mac(to->_client_mac);
-	if(!valid_mac(to->client_mac))
-		goto err;
+	if(enrich_with){
+		enrich_mse_json(json,enrich_with);
+		char *_buffer = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
+		if(_buffer){
+			free(buffer);
+			buffer = _buffer;
+			*bsize = strlen(buffer);
+		}else{
+			rdlog(LOG_ERR,"Can't dump JSON buffer (out of memory?)");
+		}
+	}
 
 	to->_client_mac = NULL;
 	json_decref(json);

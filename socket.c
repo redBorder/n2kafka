@@ -76,6 +76,7 @@ struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
 	enum decode_as decode_as;
+	struct enrich_with *enrich_with;
 };
 
 
@@ -220,7 +221,8 @@ struct json_data {
 	uint64_t client_mac;
 };
 
-static void process_data_received_from_socket0(char *buffer,size_t bsize,enum decode_as decode_as){
+static void process_data_received_from_socket0(char *buffer,size_t bsize,enum decode_as decode_as,
+                                                    const struct enrich_with *enrich_with){
 	assert(buffer);
 	struct mse_data data = {
 		.client_mac = 0,
@@ -229,21 +231,22 @@ static void process_data_received_from_socket0(char *buffer,size_t bsize,enum de
 	};
 
 	if(decode_as == DECODE_AS_MSE){
-		buffer = process_mse_buffer(buffer,&bsize,&data);
+		buffer = process_mse_buffer(buffer,&bsize,&data,enrich_with);
 	}
 
 	if(buffer)
 		send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
 }
 
-static void process_data_received_from_socket(char *buffer,const size_t recv_result,enum decode_as decode_as){
+static void process_data_received_from_socket(char *buffer,const size_t recv_result,
+                                              enum decode_as decode_as,struct enrich_with *enrich_with){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
 	if(unlikely(only_stdout_output())){
 		free(buffer);
 	} else {
-		process_data_received_from_socket0(buffer,recv_result,decode_as);
+		process_data_received_from_socket0(buffer,recv_result,decode_as,enrich_with);
 	}
 }
 
@@ -268,6 +271,7 @@ struct connection_private {
 	#endif
 	enum decode_as decode_as;
 	int first_response_sent;
+	struct enrich_with *enrich_with;
 };
 
 static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
@@ -294,7 +298,8 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
 	if(recv_result > 0){
-		process_data_received_from_socket(buffer,(size_t)recv_result,connection->decode_as);
+		process_data_received_from_socket(buffer,(size_t)recv_result,
+		            connection->decode_as,connection->enrich_with);
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
 			rdbg("Socket not ready. re-trying");
@@ -345,6 +350,7 @@ struct socket_listener_private {
 		bool tcp_keepalive;
 		enum thread_mode thread_mode;
 		enum decode_as decode_as;
+		struct enrich_with *enrich_with;
 	} config;
 
 	pthread_t threads[MAX_NUM_THREADS];
@@ -409,6 +415,7 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			conn_priv->magic = CONNECTION_PRIVATE_MAGIC;
 #endif
 			conn_priv->decode_as = accept_private->config.decode_as;
+			conn_priv->enrich_with = accept_private->config.enrich_with;
 			const size_t cur_idx = accept_private->accept_current_worker_idx++;
 			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
 				accept_private->accept_current_worker_idx = 0;
@@ -561,7 +568,8 @@ static void *main_consumer_loop_udp(void *_thread_info){
 				break;
 			}
 		} else {
-			process_data_received_from_socket(buffer,(size_t)recv_result,thread_info->decode_as);
+			process_data_received_from_socket(buffer,(size_t)recv_result,
+			                    thread_info->decode_as,thread_info->enrich_with);
 			
 		}
 	}
@@ -569,12 +577,15 @@ static void *main_consumer_loop_udp(void *_thread_info){
 	return NULL;
 }
 
-static void main_udp_loop(int listenfd,size_t udp_threads,enum decode_as decode_as){
+static void main_udp_loop(int listenfd,size_t udp_threads,enum decode_as decode_as,
+                            struct enrich_with *enrich_with){
 	/* Lots of threads listening  and processing*/
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
 	udp_thread_info.listenfd = listenfd;
 	udp_thread_info.decode_as = decode_as;
+	udp_thread_info.enrich_with = enrich_with;
+
 	assert(udp_threads>0);
 	pthread_t *threads = malloc(sizeof(threads[0])*udp_threads);
 
@@ -609,7 +620,8 @@ static void *main_socket_loop(void *_params) {
 	*/
 
 	if( 0 == strcmp(N2KAFKA_UDP,params->config.proto) ){
-		main_udp_loop(listenfd,params->config.threads,params->config.decode_as);
+		main_udp_loop(listenfd,params->config.threads,params->config.decode_as,
+		    params->config.enrich_with);
 	}else{
 		main_tcp_loop(listenfd,params);
 	}
@@ -644,12 +656,13 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 	priv->config.tcp_keepalive = 0;
 	priv->config.thread_mode = MODE_EPOLL;
 	const char *mode=NULL,*decode_as=NULL;
+	json_t *enrich_with = NULL;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
-		"{s:s,s:i,s?i,s?b,s?s,s?s}",
+		"{s:s,s:i,s?i,s?b,s?s,s?s,s?o}",
 		"proto",&proto,"port",&priv->config.listen_port,
 		"num_threads",&priv->config.threads,"tcp_keepalive",&priv->config.tcp_keepalive,
-		"mode",&mode,"decode_as",&decode_as);
+		"mode",&mode,"decode_as",&decode_as,"enrich_with",&enrich_with);
 
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
@@ -674,6 +687,12 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 
 	if(decode_as != NULL)
 		priv->config.decode_as = decode_as_str(decode_as);
+
+	if(enrich_with != NULL){
+		char *_buffer = json_dumps(enrich_with,0);
+		priv->config.enrich_with = process_enrich_with(_buffer);
+		free(_buffer);
+	}
 
 	priv->config.proto = strdup(proto);
 	if( NULL == priv->config.proto) {

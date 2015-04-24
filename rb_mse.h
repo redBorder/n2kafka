@@ -31,4 +31,9 @@ struct mse_data {
 	const char *_client_mac;
 };
 
-char *process_mse_buffer(char *from,size_t *bsize,struct mse_data *data);
+struct enrich_with;
+struct enrich_with *process_enrich_with(const char *enrich_with);
+void free_enrich_with(struct enrich_with *enrich_with);
+
+char *process_mse_buffer(char *from,size_t *bsize,struct mse_data *data,
+                                  const struct enrich_with *enrich_with);
