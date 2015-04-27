@@ -29,6 +29,8 @@
 #include <jansson.h>
 #include <stdint.h>
 #include <string.h>
+#include <pthread.h>
+#include <errno.h>
 
 static const char MSE8_STREAMING_NOTIFICATION_KEY[] = "StreamingNotification";
 static const char MSE8_LOCATION_KEY[] = "location";
@@ -38,6 +40,133 @@ static const char MSE_SUBSCRIPTION_NAME_KEY[] = "subscriptionName";
 static const char MSE_DEVICE_ID_KEY[] = "deviceId";
 
 static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
+
+/* 
+    VALIDATING MSE
+*/
+
+struct valid_mse_database{
+	/* Root with all valid MSE. We trust in jansson hashtable performance here */
+	pthread_rwlock_t rwlock;
+	char *path;
+	json_t *root;
+};
+
+int reload_valid_mse_database(struct valid_mse_database *db,char *err,size_t err_size){
+	assert(db);
+	assert(db->path);
+
+	json_error_t json_err;
+	json_t *value=NULL,*new_db = NULL;
+	size_t _index;
+
+	json_t *file = json_load_file(db->path,0,&json_err);
+	if(!file){
+		snprintf(err,err_size,"Can't load MSE database %s, line %d column %d: %s",
+			db->path,json_err.line,json_err.column,json_err.text);
+		goto err_tag;
+	}
+
+	if(!json_is_array(file)){
+		snprintf(err,err_size,"Can't load MSE database %s: Expected array",db->path);
+		json_decref(file);
+		goto free_file_error;
+	}
+
+	new_db = json_object();
+	if(!new_db){
+		snprintf(err,err_size,"Can't create json object (out of memory?)");
+		json_decref(file);
+		goto free_file_error;
+	}
+
+	json_array_foreach(file,_index,value){
+		const char *key = json_string_value(value);
+		if(NULL == key){
+			snprintf(err,err_size,"Can't extract string of element %zu",_index);
+			goto free_new_db;
+		}
+
+		json_object_set_new(new_db,key,json_object());
+	}
+
+	pthread_rwlock_wrlock(&db->rwlock);
+	json_t *old_db = db->root;
+	db->root = new_db;
+	pthread_rwlock_unlock(&db->rwlock);
+
+	if(old_db)
+		json_decref(old_db);
+
+	return 0;
+
+free_new_db:
+	json_decref(new_db);
+free_file_error:
+	json_decref(file);
+err_tag:
+	return -1;
+}
+
+struct valid_mse_database *parse_valid_mse_file(const char *path,char *err,size_t err_size){
+	assert(path);
+	assert(err);
+
+	char strerror_buf[BUFSIZ];
+	struct valid_mse_database *db = calloc(1,sizeof(*db));
+	if(NULL == db){
+		snprintf(err,err_size,"Can't allocate mse database (out of memory?)");
+		goto error;
+	}
+	
+	const int rc = pthread_rwlock_init(&db->rwlock,NULL);
+	if(rc != 0){
+		strerror_r(errno,strerror_buf,sizeof(strerror_buf));
+		snprintf(err,err_size,"Can't init mse database pthread lock: %s",strerror_buf);
+		goto free_db_error;
+	}
+
+	db->path = strdup(path);
+
+	if(NULL == db->path) {
+		snprintf(err,err_size,"Can't strdup (out of memory?)");
+		goto delete_lock_error;
+	}
+
+	const int read_rc = reload_valid_mse_database(db,err,err_size);
+	if(read_rc != 0){
+		goto free_strdupped_error;
+	}
+
+	return db;
+
+free_strdupped_error:
+	free(db->path);
+delete_lock_error:
+	pthread_rwlock_destroy(&db->rwlock);
+free_db_error:
+	free(db);
+error:
+	return NULL;
+}
+
+static int is_valid_mse(const char *mse,struct valid_mse_database *db){
+	assert(db);
+	pthread_rwlock_wrlock(&db->rwlock);
+	const int rc = json_object_get(db->root,mse) != NULL;
+	pthread_rwlock_unlock(&db->rwlock);
+	return rc;
+}
+
+void free_valid_mse_database(struct valid_mse_database *db){
+	pthread_rwlock_destroy(&db->rwlock);
+	free(db->path);
+	json_decref(db->root);
+}
+
+/* 
+    ENRICHMENT
+*/
 
 struct enrich_with {
 	json_t *json;
@@ -119,7 +248,7 @@ static int extract_mse10_rich_data(json_t *from,struct mse_data *to) {
 	return unpack_rc;
 }
 
-static int extract_client_mac(const char *buffer,json_t *json,struct mse_data *to){
+static int extract_mse_data(const char *buffer,json_t *json,struct mse_data *to){
 	const int extract_rc =  
 		is_mse8_message(json)  ? extract_mse8_rich_data(json,to)  :
 		is_mse10_message(json) ? extract_mse10_rich_data(json,to) :
@@ -151,7 +280,8 @@ static void enrich_mse_json(json_t *json,const struct enrich_with *enrich_with){
 }
 
 char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
-                                 const struct enrich_with *enrich_with){
+                                 const struct enrich_with *enrich_with,
+                                 struct valid_mse_database *db){
 	assert(bsize);
 	assert(to);
 
@@ -163,7 +293,11 @@ char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
 		goto err;
 	}
 
-	extract_client_mac(buffer,json,to);
+	extract_mse_data(buffer,json,to);
+	if(db && !is_valid_mse(to->subscriptionName,db)) {
+		free(buffer);
+		return NULL;
+	}
 	
 	if(enrich_with){
 		enrich_mse_json(json,enrich_with);

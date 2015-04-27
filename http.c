@@ -67,6 +67,7 @@ struct http_private{
 #endif
 	struct MHD_Daemon *d;
 	struct enrich_with *enrich_with;
+	struct valid_mse_database *valid_mse_db;
 	enum decode_as decode_as;
 };
 
@@ -136,7 +137,7 @@ static void request_completed (void *cls,
 
 		if(h->decode_as == DECODE_AS_MSE) {
 			con_info->str.buf = process_mse_buffer(con_info->str.buf,&con_info->str.used,
-				                &mse_data,h->enrich_with);
+				                &mse_data,h->enrich_with,h->valid_mse_db);
 		}
 
 		if(con_info->str.buf){
@@ -238,6 +239,7 @@ struct http_loop_args {
 	unsigned int num_threads;
 	enum decode_as decode_as;
 	json_t *enrich_with;
+	char *subcription_names_db_path;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -278,6 +280,13 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->enrich_with = process_enrich_with(enrich_with);
 	free(enrich_with);
 
+	if(args->subcription_names_db_path){
+		h->valid_mse_db = parse_valid_mse_file(args->subcription_names_db_path,err,errsize);
+		if(NULL == h->valid_mse_db) {
+			rdlog(LOG_ERR,"Can't parse MSE subscriptionName file: %s",err);
+			exit(-1);
+		}
+	}
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -330,12 +339,14 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	handler_args.num_threads = 1;
 	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o,s?s}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
 		"num_threads",&handler_args.num_threads,"decode_as",&decode_as,
-		"enrich_with",&handler_args.enrich_with);
+		"enrich_with",&handler_args.enrich_with,
+		"mse_subscription_name_database_path",&handler_args.subcription_names_db_path);
 	if( unpack_rc != 0 /* Failure */ ) {
-		snprintf(err,errsize,"Can't find server port: %s",error.text);
+		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
+		return NULL;
 	}
 
 	if(NULL==handler_args.mode)

@@ -77,6 +77,7 @@ struct udp_thread_info{
 	int listenfd;
 	enum decode_as decode_as;
 	struct enrich_with *enrich_with;
+	struct valid_mse_database *mse_subscription_names_db;
 };
 
 
@@ -222,7 +223,8 @@ struct json_data {
 };
 
 static void process_data_received_from_socket0(char *buffer,size_t bsize,enum decode_as decode_as,
-                                                    const struct enrich_with *enrich_with){
+                                                    const struct enrich_with *enrich_with,
+                                                    struct valid_mse_database *db){
 	assert(buffer);
 	struct mse_data data = {
 		.client_mac = 0,
@@ -231,7 +233,7 @@ static void process_data_received_from_socket0(char *buffer,size_t bsize,enum de
 	};
 
 	if(decode_as == DECODE_AS_MSE){
-		buffer = process_mse_buffer(buffer,&bsize,&data,enrich_with);
+		buffer = process_mse_buffer(buffer,&bsize,&data,enrich_with,db);
 	}
 
 	if(buffer)
@@ -239,14 +241,16 @@ static void process_data_received_from_socket0(char *buffer,size_t bsize,enum de
 }
 
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
-                                              enum decode_as decode_as,struct enrich_with *enrich_with){
+                                              enum decode_as decode_as,
+                                              struct enrich_with *enrich_with,
+                                              struct valid_mse_database *db){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
 	if(unlikely(only_stdout_output())){
 		free(buffer);
 	} else {
-		process_data_received_from_socket0(buffer,recv_result,decode_as,enrich_with);
+		process_data_received_from_socket0(buffer,recv_result,decode_as,enrich_with,db);
 	}
 }
 
@@ -272,6 +276,7 @@ struct connection_private {
 	enum decode_as decode_as;
 	int first_response_sent;
 	struct enrich_with *enrich_with;
+	struct valid_mse_database *mse_subscription_names_db;
 };
 
 static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
@@ -299,7 +304,8 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
 	if(recv_result > 0){
 		process_data_received_from_socket(buffer,(size_t)recv_result,
-		            connection->decode_as,connection->enrich_with);
+		            connection->decode_as,connection->enrich_with,
+		            connection->mse_subscription_names_db);
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
 			rdbg("Socket not ready. re-trying");
@@ -569,7 +575,8 @@ static void *main_consumer_loop_udp(void *_thread_info){
 			}
 		} else {
 			process_data_received_from_socket(buffer,(size_t)recv_result,
-			                    thread_info->decode_as,thread_info->enrich_with);
+			                    thread_info->decode_as,thread_info->enrich_with,
+			                    thread_info->mse_subscription_names_db);
 			
 		}
 	}

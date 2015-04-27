@@ -1,7 +1,7 @@
 {
 	"listeners":[
 		{"proto":"http","port":2057, "mode":"epoll","num_threads":20,"decode_as":"MSE","enrich_with":{"a":"b","c":1}},
-		{"proto":"tcp","port":2056,"tcp_keepalive":true,"num_threads":40,"decode_as":"MSE","enrich_with":{"d":3,"e":"f"}}
+		{"proto":"tcp","port":2056,"tcp_keepalive":true,"num_threads":40,"decode_as":"MSE","enrich_with":{"d":3,"e":"f"}, "mse_subscription_name_database_path": "/root/root_alt/mse_sn"}
 	],
 	"brokers":"eugeniodev",
 	"topic":"rb_flow",
