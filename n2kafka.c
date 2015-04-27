@@ -31,6 +31,8 @@
 
 #define DEFAULT_PORT 2057
 
+static int do_reload = 0;
+
 static void shutdown_process(){
 	printf("Exiting\n");
 	do_shutdown=1;
@@ -73,6 +75,10 @@ static int is_asking_help(const char *param){
 	return 0==strcmp(param,"-h") || 0==strcmp(param,"--help");
 }
 
+static void sighup_proc(int signum __attribute__((unused))){
+	do_reload = 1;
+}
+
 int main(int argc,char *argv[]){
 	if(argc != 2 || is_asking_help(argv[1])){
 		show_usage(argv[0]);
@@ -83,10 +89,19 @@ int main(int argc,char *argv[]){
 	parse_config(argv[1]);
 
 	signal(SIGINT,shutdown_process);
+	signal(SIGHUP,sighup_proc);
 
 	if(!only_stdout_output())
 		init_rdkafka();
-	main_loop();
+
+	while(!do_shutdown){
+		kafka_poll(1000 /* ms */);
+		if(do_reload){
+			reload_listeners(&global_config);
+			do_reload = 0;
+		}
+	}
+
 	if(!only_stdout_output()){
 		flush_kafka();
 		stop_rdkafka();

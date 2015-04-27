@@ -72,7 +72,6 @@ struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
 	enum decode_as decode_as;
-	struct enrich_with *enrich_with;
 };
 
 
@@ -252,7 +251,6 @@ struct connection_private {
 	#endif
 	enum decode_as decode_as;
 	int first_response_sent;
-	struct enrich_with *enrich_with;
 };
 
 static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
@@ -319,7 +317,12 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	}
 }
 
+#define SOCKET_LISTENER_PRIVATE_MAGIC 0xB0C31331AEA1CL
+
 struct socket_listener_private {
+#ifdef SOCKET_LISTENER_PRIVATE_MAGIC
+	uint64_t magic;
+#endif
 	pthread_t main_loop;
 	struct ev_loop *event_loop;
 	struct ev_async w_async;
@@ -331,7 +334,6 @@ struct socket_listener_private {
 		bool tcp_keepalive;
 		enum thread_mode thread_mode;
 		enum decode_as decode_as;
-		struct enrich_with *enrich_with;
 	} config;
 
 	pthread_t threads[MAX_NUM_THREADS];
@@ -396,7 +398,6 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			conn_priv->magic = CONNECTION_PRIVATE_MAGIC;
 #endif
 			conn_priv->decode_as = accept_private->config.decode_as;
-			conn_priv->enrich_with = accept_private->config.enrich_with;
 			const size_t cur_idx = accept_private->accept_current_worker_idx++;
 			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
 				accept_private->accept_current_worker_idx = 0;
@@ -431,7 +432,9 @@ static void async_cb(struct ev_loop *loop, ev_async *w __attribute__((unused)),
 	if(1 == do_shutdown) {
 		/* The signal was for end the loop */
 		ev_break(loop,EVBREAK_ALL);
-	} else if(args) {
+	}
+
+	if(args) {
 		/* The signal was alerting a new socket to watch */
 		size_t i = args->idx;
 		rd_fifoq_elm_t *qelm = NULL;
@@ -494,6 +497,7 @@ static void main_tcp_loop(int listenfd,struct socket_listener_private *priv) {
 
 		rd_fifoq_init(&priv->watchers_queue[i]);
 		ev_async_init(&priv->event_asyncs[i],async_cb);
+		priv->event_asyncs[i].data = priv;
 		ev_async_start(priv->event_loops[i],&priv->event_asyncs[i]);
 
 		pthread_create(&priv->threads[i],NULL,worker,args);
@@ -558,15 +562,12 @@ static void *main_consumer_loop_udp(void *_thread_info){
 	return NULL;
 }
 
-static void main_udp_loop(int listenfd,size_t udp_threads,enum decode_as decode_as,
-                            struct enrich_with *enrich_with){
+static void main_udp_loop(int listenfd,size_t udp_threads,enum decode_as decode_as){
 	/* Lots of threads listening  and processing*/
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
 	udp_thread_info.listenfd = listenfd;
 	udp_thread_info.decode_as = decode_as;
-	udp_thread_info.enrich_with = enrich_with;
-
 	assert(udp_threads>0);
 	pthread_t *threads = malloc(sizeof(threads[0])*udp_threads);
 
@@ -601,8 +602,7 @@ static void *main_socket_loop(void *_params) {
 	*/
 
 	if( 0 == strcmp(N2KAFKA_UDP,params->config.proto) ){
-		main_udp_loop(listenfd,params->config.threads,params->config.decode_as,
-		    params->config.enrich_with);
+		main_udp_loop(listenfd,params->config.threads,params->config.decode_as);
 	}else{
 		main_tcp_loop(listenfd,params);
 	}
@@ -622,6 +622,10 @@ static void join_listener_socket(void *_private){
 	free(private);
 }
 
+static void reload_listener_socket(void *_private){
+	(void)(_private);
+}
+
 struct listener *create_socket_listener(struct json_t *config,char *err,size_t errsize){
 	json_error_t error;
 	char *proto;
@@ -638,12 +642,14 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 	priv->config.thread_mode = MODE_EPOLL;
 	const char *mode=NULL,*decode_as=NULL;
 	json_t *enrich_with = NULL;
+	const char *mse_db_path = NULL;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
-		"{s:s,s:i,s?i,s?b,s?s,s?s,s?o}",
+		"{s:s,s:i,s?i,s?b,s?s,s?s,s?o,s?s}",
 		"proto",&proto,"port",&priv->config.listen_port,
 		"num_threads",&priv->config.threads,"tcp_keepalive",&priv->config.tcp_keepalive,
-		"mode",&mode,"decode_as",&decode_as,"enrich_with",&enrich_with);
+		"mode",&mode,"decode_as",&decode_as,"enrich_with",&enrich_with,
+		"mse_subscription_name_database_path",&mse_db_path);
 
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
@@ -685,6 +691,7 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 
 	l->join    = join_listener_socket;
 	l->private = priv;
+	l->reload  = reload_listener_socket;
 
 	const int pcreate_rc = pthread_create(&priv->main_loop,NULL,
 		main_socket_loop,priv);

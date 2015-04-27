@@ -35,10 +35,12 @@ typedef struct listener* (*listener_creator)(struct json_t *config,char *err,siz
 typedef void (*listener_join)(void *listener_private);
 // @TODO we need this callback to split data acquiring || data processing
 // typedef void (*data_process)(void *data_process_private,const char *buffer,size_t bsize);
+typedef void (*listener_reload)(void *listener_private);
 struct listener{
     void *private;
     listener_creator create;
     listener_join join;
+    listener_reload reload;
     LIST_ENTRY(listener) entry;
 };
 
@@ -75,5 +77,7 @@ static inline bool only_stdout_output(){
 void init_global_config();
 
 void parse_config(const char *config_file_path);
+
+void reload_listeners(struct n2kafka_config *config);
 
 void free_global_config();
