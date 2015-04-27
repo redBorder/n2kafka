@@ -33,6 +33,8 @@ struct json_t;
 struct listener;
 typedef struct listener* (*listener_creator)(struct json_t *config,char *err,size_t errsize);
 typedef void (*listener_join)(void *listener_private);
+// @TODO we need this callback to split data acquiring || data processing
+// typedef void (*data_process)(void *data_process_private,const char *buffer,size_t bsize);
 struct listener{
     void *private;
     listener_creator create;
