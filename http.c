@@ -193,7 +193,7 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
-static int post_handle(void *_cls,
+static int post_handle(void *_cls HTTP_UNUSED,
 						 struct MHD_Connection *connection,
 						 const char *url HTTP_UNUSED,
 						 const char *method,
@@ -201,12 +201,6 @@ static int post_handle(void *_cls,
 						 const char *upload_data,
 						 size_t *upload_data_size,
 						 void **ptr) {
-
-	struct http_private *cls = _cls;
-
-#ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == cls->magic);
-#endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
 		return MHD_NO; /* unexpected method */
