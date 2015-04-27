@@ -21,6 +21,7 @@
 #include "util.h"
 #include "global_config.h"
 #include "librd/rdfile.h"
+#include "librd/rdsysqueue.h"
 
 #include "http.h"
 #include "socket.h"
@@ -30,6 +31,13 @@
 #include <string.h>
 #include <jansson.h>
 #include <arpa/inet.h>
+
+#ifndef LIST_FOREACH_SAFE
+#define	LIST_FOREACH_SAFE(var, head, field, tvar)			\
+	for ((var) = LIST_FIRST((head));				\
+	    (var) && ((tvar) = LIST_NEXT((var), field), 1);		\
+	    (var) = (tvar))
+#endif
 
 #define CONFIG_LISTENERS_ARRAY "listeners"
 #define CONFIG_PROTO_KEY "proto"
@@ -63,7 +71,7 @@ void init_global_config(){
 	global_config.kafka_conf = rd_kafka_conf_new();
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
 	global_config.blacklist = in_addr_list_new();
-	rd_log_set_severity(LOG_ERR);
+	rd_log_set_severity(LOG_INFO);
 	LIST_INIT(&global_config.listeners);
 }
 
@@ -274,18 +282,26 @@ void parse_config(const char *config_file_path){
 }
 
 static void shutdown_listeners(struct n2kafka_config *config){
-	struct listener *l = LIST_FIRST(&config->listeners);
-	while( NULL != l ) {
-		struct listener *aux = LIST_NEXT(l,entry);
-
-		if (NULL == l->join) {
+	struct listener *i = NULL,*aux=NULL;
+	LIST_FOREACH_SAFE(i,&config->listeners,entry,aux){
+		if (NULL == i->join) {
 			rblog(LOG_CRIT,"One listener does not have join() function.");
 		} else {
-			l->join(l->private);
+			i->join(i->private);
 		}
 
-		free(l);
-		l = aux;
+		free(i);
+	}
+}
+
+void reload_listeners(struct n2kafka_config *config){
+	struct listener *i = NULL;
+	LIST_FOREACH(i,&config->listeners,entry){
+		if (NULL == i->reload) {
+			rblog(LOG_WARNING,"One listener does not have reload() function.");
+		} else {
+			i->reload(i->private);
+		}
 	}
 }
 

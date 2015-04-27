@@ -32,7 +32,3 @@
 
 int do_shutdown = 0;
 
-void main_loop(){
-	while(!do_shutdown)
-		kafka_poll(1000 /* ms */);
-}
