@@ -60,31 +60,12 @@ enum thread_mode{
 	MODE_INVALID
 };
 
-enum decode_as{
-	DECODE_AS_NONE=0,
-};
-
-static const char *decode_as_str_v[] = {
-	[DECODE_AS_NONE] = "",
-};
-
 struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
-	enum decode_as decode_as;
+	listener_callback callback;
+	void *callback_opaque;
 };
-
-
-static enum decode_as decode_as_str(const char *mode_str){
-	size_t i;
-	for(i=0;i<sizeof(decode_as_str_v)/sizeof(decode_as_str_v[0]);++i){
-		if(0==strcmp(mode_str,decode_as_str_v[i]))
-			return i;
-	}
-
-	rdlog(LOG_ERR,"Invalid \"decode as\" specified: %s",mode_str);
-	exit(-1);
-}
 
 static enum thread_mode thread_mode_str(const char *mode_str) {
 	if(NULL==mode_str || 0==strcmp(STR_MODE_THREAD_PER_CONNECTION,mode_str))
@@ -212,21 +193,16 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
-static void process_data_received_from_socket0(char *buffer,size_t bsize,enum decode_as decode_as){
-	assert(buffer);
-	(void) decode_as;
-	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,NULL);
-}
-
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
-                                              enum decode_as decode_as){
+                                              listener_callback callback,
+                                              void *callback_opaque){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
 	if(unlikely(only_stdout_output())){
 		free(buffer);
 	} else {
-		process_data_received_from_socket0(buffer,recv_result,decode_as);
+		callback(buffer,recv_result,callback_opaque);
 	}
 }
 
@@ -249,8 +225,9 @@ struct connection_private {
 	#ifdef CONNECTION_PRIVATE_MAGIC
 	uint64_t magic;
 	#endif
-	enum decode_as decode_as;
 	int first_response_sent;
+	void *callback_opaque;
+    listener_callback callback;
 };
 
 static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
@@ -278,7 +255,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
 	if(recv_result > 0){
 		process_data_received_from_socket(buffer,(size_t)recv_result,
-		            connection->decode_as);
+		            connection->callback,connection->callback_opaque);
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
 			rdbg("Socket not ready. re-trying");
@@ -333,7 +310,8 @@ struct socket_listener_private {
 		size_t threads;
 		bool tcp_keepalive;
 		enum thread_mode thread_mode;
-		enum decode_as decode_as;
+		listener_callback callback;
+		void *callback_opaque;
 	} config;
 
 	pthread_t threads[MAX_NUM_THREADS];
@@ -397,7 +375,9 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 #if CONNECTION_PRIVATE_MAGIC
 			conn_priv->magic = CONNECTION_PRIVATE_MAGIC;
 #endif
-			conn_priv->decode_as = accept_private->config.decode_as;
+			conn_priv->callback = accept_private->config.callback;
+			conn_priv->callback_opaque = accept_private->config.callback_opaque;
+
 			const size_t cur_idx = accept_private->accept_current_worker_idx++;
 			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
 				accept_private->accept_current_worker_idx = 0;
@@ -554,20 +534,21 @@ static void *main_consumer_loop_udp(void *_thread_info){
 			}
 		} else {
 			process_data_received_from_socket(buffer,(size_t)recv_result,
-			                    thread_info->decode_as);
-			
+				thread_info->callback,thread_info->callback_opaque);
 		}
 	}
 
 	return NULL;
 }
 
-static void main_udp_loop(int listenfd,size_t udp_threads,enum decode_as decode_as){
+static void main_udp_loop(int listenfd,size_t udp_threads,listener_callback callback,void *callback_opaque){
 	/* Lots of threads listening  and processing*/
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
 	udp_thread_info.listenfd = listenfd;
-	udp_thread_info.decode_as = decode_as;
+	udp_thread_info.callback = callback;
+	udp_thread_info.callback_opaque = callback_opaque;
+
 	assert(udp_threads>0);
 	pthread_t *threads = malloc(sizeof(threads[0])*udp_threads);
 
@@ -602,7 +583,8 @@ static void *main_socket_loop(void *_params) {
 	*/
 
 	if( 0 == strcmp(N2KAFKA_UDP,params->config.proto) ){
-		main_udp_loop(listenfd,params->config.threads,params->config.decode_as);
+		main_udp_loop(listenfd,params->config.threads,params->config.callback,
+		    params->config.callback_opaque);
 	}else{
 		main_tcp_loop(listenfd,params);
 	}
@@ -622,11 +604,11 @@ static void join_listener_socket(void *_private){
 	free(private);
 }
 
-static void reload_listener_socket(void *_private){
-	(void)(_private);
+static void reload_listener_socket(void *_private __attribute__((unused))){
+
 }
 
-struct listener *create_socket_listener(struct json_t *config,char *err,size_t errsize){
+struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque,char *err,size_t errsize){
 	json_error_t error;
 	char *proto;
 
@@ -640,16 +622,13 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 	priv->config.threads = 1; 
 	priv->config.tcp_keepalive = 0;
 	priv->config.thread_mode = MODE_EPOLL;
-	const char *mode=NULL,*decode_as=NULL;
-	json_t *enrich_with = NULL;
-	const char *mse_db_path = NULL;
+	const char *mode=NULL;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,
-		"{s:s,s:i,s?i,s?b,s?s,s?s,s?o,s?s}",
+		"{s:s,s:i,s?i,s?b,s?s}",
 		"proto",&proto,"port",&priv->config.listen_port,
 		"num_threads",&priv->config.threads,"tcp_keepalive",&priv->config.tcp_keepalive,
-		"mode",&mode,"decode_as",&decode_as,"enrich_with",&enrich_with,
-		"mse_subscription_name_database_path",&mse_db_path);
+		"mode",&mode);
 
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't decode listener: %s",error.text);
@@ -672,9 +651,6 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 		priv->config.thread_mode = thread_mode_str(mode);
 	}
 
-	if(decode_as != NULL)
-		priv->config.decode_as = decode_as_str(decode_as);
-
 	priv->config.proto = strdup(proto);
 	if( NULL == priv->config.proto) {
 		snprintf(err,errsize,"Error: Can't strdup protocol (out of memory?)");
@@ -691,6 +667,8 @@ struct listener *create_socket_listener(struct json_t *config,char *err,size_t e
 
 	l->join    = join_listener_socket;
 	l->private = priv;
+	l->callback = priv->config.callback = callback;
+	l->callback_opaque = priv->config.callback_opaque = callback_opaque;
 	l->reload  = reload_listener_socket;
 
 	const int pcreate_rc = pthread_create(&priv->main_loop,NULL,

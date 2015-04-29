@@ -64,6 +64,8 @@ struct http_private{
 #endif
 	struct MHD_Daemon *d;
 	enum decode_as decode_as;
+    listener_callback callback;
+	void *callback_opaque;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -117,12 +119,10 @@ static void request_completed (void *cls HTTP_UNUSED,
 	}
 
 	struct conn_info *con_info = *con_cls;
+	struct http_private *h = cls;
 	
-	/// @TODO duplicated code in 'socket.c'. We have to join both.
-	if( con_info->str.buf ) {
-		send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,NULL);
-		con_info->str.buf = NULL; /* librdkafka will free it */
-	}
+	h->callback(con_info->str.buf,con_info->str.used,h->callback_opaque);
+	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);
 	*con_cls = NULL;
@@ -218,7 +218,8 @@ struct http_loop_args {
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
                                             char *err,
-                                            size_t errsize) {
+                                            size_t errsize,
+                                            listener_callback callback,void *cb_opaque) {
 	struct http_private *h = NULL;
 
 	unsigned int flags = 0;
@@ -249,8 +250,8 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 #ifdef HTTP_PRIVATE_MAGIC
 	h->magic = HTTP_PRIVATE_MAGIC;
 #endif
-	h->decode_as = args->decode_as;
-
+	h->callback = callback;
+	h->callback_opaque = cb_opaque;
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -293,7 +294,7 @@ static void break_http_loop(void *_h){
 	free(h);
 }
 
-struct listener *create_http_listener(struct json_t *config,char *err,
+struct listener *create_http_listener(struct json_t *config,listener_callback cb,void *cb_opaque,char *err,
 	size_t errsize) {
 
 	json_error_t error;
@@ -303,10 +304,9 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	handler_args.num_threads = 1;
 	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads,"decode_as",&decode_as,
-		"enrich_with",&handler_args.enrich_with);
+		"num_threads",&handler_args.num_threads);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't find server port: %s",error.text);
 	}
@@ -326,7 +326,7 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 		}
 	}
 
-	struct http_private *priv = start_http_loop(&handler_args,err,errsize);
+	struct http_private *priv = start_http_loop(&handler_args,err,errsize,cb,cb_opaque);
 	if( NULL == priv ) {
 		return NULL;
 	}
@@ -338,9 +338,11 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 		return NULL;
 	}
 
-	listener->create  = create_http_listener;
-	listener->join    = break_http_loop;
-	listener->private = priv;
+	listener->create          = create_http_listener;
+	listener->callback_opaque = cb_opaque;
+	listener->callback        = cb;
+	listener->join            = break_http_loop;
+	listener->private         = priv;
 
 	return listener;
 }

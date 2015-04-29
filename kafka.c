@@ -126,6 +126,10 @@ void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 	}while(1);
 }
 
+void dumb_decoder(char *buffer,size_t buf_size,void *listener_callback_opaque){
+	send_to_kafka(buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
+}
+
 void flush_kafka(){
 	flush_kafka0(1000);
 }

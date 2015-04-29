@@ -102,11 +102,6 @@ int main(int argc,char *argv[]){
 		}
 	}
 
-	if(!only_stdout_output()){
-		flush_kafka();
-		stop_rdkafka();
-	}
-
 	free_global_config();
 
 	return 0;
