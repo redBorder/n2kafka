@@ -50,6 +50,7 @@
 #define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
+#define CONFIG_DECODE_AS_MSE_PARAMETERS "mse-sensors"
 
 #define CONFIG_PROTO_TCP  "tcp"
 #define CONFIG_PROTO_UDP  "udp"
@@ -242,6 +243,8 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		parse_rdkafka_config_json(key,value);
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
+	}else if(!strcasecmp(key,CONFIG_DECODE_AS_MSE_PARAMETERS)){
+		// Do nothing at this moment
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
