@@ -19,10 +19,10 @@
 */
 
 #include "parse.h"
-#include <librdkafka/rdkafka.h>
 
 void init_rdkafka();
 void send_to_kafka(char *buffer,const size_t bufsize,int flags,void *opaque);
+void dumb_decoder(char *buffer,size_t buf_size,void *listener_callback_opaque);
 
 void kafka_poll();
 

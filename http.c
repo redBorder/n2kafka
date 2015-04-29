@@ -31,7 +31,6 @@
 #define MODE_EPOLL "epoll"
 
 #include "http.h"
-#include "rb_mse.h"
 
 #include "global_config.h"
 
@@ -66,9 +65,8 @@ struct http_private{
 	uint64_t magic;
 #endif
 	struct MHD_Daemon *d;
-	struct enrich_with *enrich_with;
-	struct valid_mse_database *valid_mse_db;
-	enum decode_as decode_as;
+    listener_callback callback;
+	void *callback_opaque;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -127,25 +125,9 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 	
-	/// @TODO duplicated code in 'socket.c'. We have to join both.
-	if( con_info->str.buf ) {
-		struct mse_data mse_data = {
-			.client_mac = 0,
-			._client_mac = NULL,
-			.subscriptionName = NULL,
-		};
 
-		if(h->decode_as == DECODE_AS_MSE) {
-			con_info->str.buf = process_mse_buffer(con_info->str.buf,&con_info->str.used,
-				                &mse_data,h->enrich_with,h->valid_mse_db);
-		}
-
-		if(con_info->str.buf){
-			send_to_kafka(con_info->str.buf,con_info->str.used,RD_KAFKA_MSG_F_FREE,
-				                            (void *)(intptr_t)mse_data.client_mac);
-			con_info->str.buf = NULL; /* librdkafka will free it */
-		}
-	}
+	h->callback(con_info->str.buf,con_info->str.used,h->callback_opaque);
+	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);
 	*con_cls = NULL;
@@ -232,13 +214,13 @@ struct http_loop_args {
 	int port;
 	unsigned int num_threads;
 	enum decode_as decode_as;
-	json_t *enrich_with;
 	char *subcription_names_db_path;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
                                             char *err,
-                                            size_t errsize) {
+                                            size_t errsize,
+                                            listener_callback callback,void *cb_opaque) {
 	struct http_private *h = NULL;
 
 	unsigned int flags = 0;
@@ -269,18 +251,8 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 #ifdef HTTP_PRIVATE_MAGIC
 	h->magic = HTTP_PRIVATE_MAGIC;
 #endif
-	h->decode_as = args->decode_as;
-	char *enrich_with = json_dumps(args->enrich_with,0);
-	h->enrich_with = process_enrich_with(enrich_with);
-	free(enrich_with);
-
-	if(args->subcription_names_db_path){
-		h->valid_mse_db = parse_valid_mse_file(args->subcription_names_db_path,err,errsize);
-		if(NULL == h->valid_mse_db) {
-			rdlog(LOG_ERR,"Can't parse MSE subscriptionName file: %s",err);
-			exit(-1);
-		}
-	}
+	h->callback = callback;
+	h->callback_opaque = cb_opaque;
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -323,7 +295,7 @@ static void break_http_loop(void *_h){
 	free(h);
 }
 
-struct listener *create_http_listener(struct json_t *config,char *err,
+struct listener *create_http_listener(struct json_t *config,listener_callback cb,void *cb_opaque,char *err,
 	size_t errsize) {
 
 	json_error_t error;
@@ -333,11 +305,9 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 	handler_args.num_threads = 1;
 	const char *decode_as = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?s,s?o,s?s}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads,"decode_as",&decode_as,
-		"enrich_with",&handler_args.enrich_with,
-		"mse_subscription_name_database_path",&handler_args.subcription_names_db_path);
+		"num_threads",&handler_args.num_threads);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
 		return NULL;
@@ -358,7 +328,7 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 		}
 	}
 
-	struct http_private *priv = start_http_loop(&handler_args,err,errsize);
+	struct http_private *priv = start_http_loop(&handler_args,err,errsize,cb,cb_opaque);
 	if( NULL == priv ) {
 		return NULL;
 	}
@@ -370,9 +340,11 @@ struct listener *create_http_listener(struct json_t *config,char *err,
 		return NULL;
 	}
 
-	listener->create  = create_http_listener;
-	listener->join    = break_http_loop;
-	listener->private = priv;
+	listener->create          = create_http_listener;
+	listener->callback_opaque = cb_opaque;
+	listener->callback        = cb;
+	listener->join            = break_http_loop;
+	listener->private         = priv;
 
 	return listener;
 }

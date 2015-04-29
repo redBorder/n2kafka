@@ -1,4 +1,4 @@
-/*
+ /*
 ** Copyright (C) 2014 Eneo Tecnologia S.L.
 ** Author: Eugenio Perez <eupm90@gmail.com>
 **
@@ -31,6 +31,7 @@
 #include <string.h>
 #include <jansson.h>
 #include <arpa/inet.h>
+#include <assert.h>
 
 #ifndef LIST_FOREACH_SAFE
 #define	LIST_FOREACH_SAFE(var, head, field, tvar)			\
@@ -48,6 +49,7 @@
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
 #define CONFIG_BLACKLIST_KEY "blacklist"
+#define CONFIG_MSE_SENSORS_KEY "mse-sensors"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
 #define CONFIG_DECODE_AS_MSE_PARAMETERS "mse-sensors"
@@ -56,7 +58,20 @@
 #define CONFIG_PROTO_UDP  "udp"
 #define CONFIG_PROTO_HTTP "http"
 
+#define CONFIG_DECODE_AS_NULL           ""
+#define CONFIG_DECODE_AS_MSE            "MSE"
+
 struct n2kafka_config global_config;
+
+static const struct registered_decoder{
+	const char *decode_as;
+	const char *config_parameters;
+	listener_callback cb;
+	void *opaque;
+} registered_decoders[] = {
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL},
+	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,&global_config.mse}
+};
 
 static const struct registered_listener{
 	const char *proto;
@@ -74,6 +89,8 @@ void init_global_config(){
 	global_config.blacklist = in_addr_list_new();
 	rd_log_set_severity(LOG_INFO);
 	LIST_INIT(&global_config.listeners);
+
+	init_mse_database(&global_config.mse.database);
 }
 
 static const char *assert_json_string(const char *key,const json_t *value){
@@ -182,13 +199,34 @@ static const listener_creator *protocol_creator(const char *proto){
 	return NULL;
 }
 
+static const struct registered_decoder *locate_registered_decoder(const char *decode_as) {
+	assert(decode_as);
+
+	size_t i;
+	const size_t decoders_length 
+	    = sizeof(registered_decoders)/sizeof(registered_decoders[0]);
+
+	for(i=0;i<decoders_length;++i) {
+		if ( NULL==registered_decoders[i].decode_as ) {
+			rdlog(LOG_CRIT,"Error: NULL proto in registered_listeners");
+			continue;
+		}
+
+		if( 0 == strcmp(registered_decoders[i].decode_as, decode_as) ) {
+			return &registered_decoders [i];
+		}
+	}
+
+	return NULL;
+}
+
 static void parse_listener(json_t *config){
-	char *proto = NULL;
+	char *proto = NULL,*decode_as="";
 	json_error_t json_err;
 	char err[512];
 
-	const int unpack_rc = json_unpack_ex(config,&json_err,0,"{s:s}",
-		"proto",&proto);
+	const int unpack_rc = json_unpack_ex(config,&json_err,0,"{s:s,s?s}",
+		"proto",&proto,"decode_as",&decode_as);
 
 	if( unpack_rc != 0 ) {
 		rdlog(LOG_ERR,"Can't parse listener: %s",json_err.text);
@@ -206,7 +244,15 @@ static void parse_listener(json_t *config){
 		return;
 	}
 
-	struct listener *listener = (*_listener_creator)(config,err,sizeof(err));
+	assert(decode_as);
+	const struct registered_decoder *decoder = locate_registered_decoder(decode_as);
+	if(NULL == decoder){
+		rdlog(LOG_ERR,"Can't locate decoder type %s",decode_as);
+		exit(-1);
+	}
+
+	struct listener *listener = (*_listener_creator)(config,
+		decoder->cb,decoder->opaque,err,sizeof(err));
 
 	if( NULL == listener ) {
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
@@ -243,8 +289,9 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		parse_rdkafka_config_json(key,value);
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
-	}else if(!strcasecmp(key,CONFIG_DECODE_AS_MSE_PARAMETERS)){
-		// Do nothing at this moment
+	}else if(!strcasecmp(key,CONFIG_MSE_SENSORS_KEY)){
+		char err[BUFSIZ];
+		parse_mse_array(&global_config.mse.database, value,err,sizeof(err));
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
@@ -310,11 +357,8 @@ void reload_listeners(struct n2kafka_config *config){
 
 void free_global_config(){
 	shutdown_listeners(&global_config);
+	free_valid_mse_database(&global_config.mse.database);
 
-	// @TODO SIGSEGV wen calling this functions.
-	// Not memory-leak produced because they are called at the end of execution
-	//rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
-	//rd_kafka_conf_destroy(global_config.kafka_conf);
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);

@@ -20,28 +20,31 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#pragma once
+
 #include <stdint.h>
 #include <string.h>
+#include <pthread.h>
 
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 
-struct mse_data {
-	/* is NULL in some flows, so we need to save them here */
-	uint64_t client_mac;
-	const char *subscriptionName;
-	/* private */
-	const char *_client_mac;
+struct json_t;
+struct mse_database {
+	/* Private */
+	pthread_rwlock_t rwlock;
+	struct json_t *root;
+};
+void init_mse_database(struct mse_database *db);
+int parse_mse_array(struct mse_database *db, const struct json_t *mse_array,char *err,size_t errsize);
+void free_valid_mse_database(struct mse_database *db);
+
+struct mse_config {
+	struct mse_database database;
 };
 
-struct valid_mse_database;
-struct valid_mse_database *parse_valid_mse_file(const char *path,char *err,size_t err_size);
-void free_valid_mse_database(struct valid_mse_database *db);
-int reload_valid_mse_database(struct valid_mse_database *db,char *err,size_t err_size);
-
-struct enrich_with;
+#if 0
 struct enrich_with *process_enrich_with(const char *enrich_with);
 void free_enrich_with(struct enrich_with *enrich_with);
 
-char *process_mse_buffer(char *from,size_t *bsize,struct mse_data *data,
-                                  const struct enrich_with *enrich_with,
-                                  struct valid_mse_database *db);
+#endif
+void mse_decode(char *buffer,size_t buf_size,void *listener_callback_opaque);

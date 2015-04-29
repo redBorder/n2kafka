@@ -23,6 +23,7 @@
 
 #include "rb_mse.h"
 #include "rb_mac.h"
+#include "kafka.h"
 
 #include <librd/rdlog.h>
 #include <assert.h>
@@ -31,6 +32,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
+#include <librdkafka/rdkafka.h>
 
 static const char MSE8_STREAMING_NOTIFICATION_KEY[] = "StreamingNotification";
 static const char MSE8_LOCATION_KEY[] = "location";
@@ -45,49 +47,65 @@ static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
     VALIDATING MSE
 */
 
-struct valid_mse_database{
-	/* Root with all valid MSE. We trust in jansson hashtable performance here */
-	pthread_rwlock_t rwlock;
-	char *path;
-	json_t *root;
+struct mse_data {
+	uint64_t client_mac;
+	const char *subscriptionName;
+	/* private */
+	const char *_client_mac;
 };
 
-int reload_valid_mse_database(struct valid_mse_database *db,char *err,size_t err_size){
-	assert(db);
-	assert(db->path);
+void init_mse_database(struct mse_database *db){
+	memset(db,0,sizeof(db));
+	pthread_rwlock_init(&db->rwlock,0);
+}
 
-	json_error_t json_err;
+static int parse_sensor(json_t *sensor,json_t *streams_db){
+	json_error_t err;
+	const char *stream=NULL;
+	const json_t *enrichment=NULL;
+
+	const int unpack_rc = json_unpack_ex((json_t *)sensor,&err,0,
+		"{s:s,s?o}","stream",&stream,"enrichment",&enrichment);
+
+	if(unpack_rc != 0){
+		rdlog(LOG_ERR,"Can't parse sensor (%s): %s",json_dumps(sensor,0),err.text);
+		return -1;
+	}
+
+	if(stream == NULL){
+		rdlog(LOG_ERR,"Can't parse sensor (%s): %s",json_dumps(sensor,0),"No \"stream\"");
+		return -1;
+	}
+
+	json_t *_enrich = enrichment ? json_deep_copy(enrichment) : json_object();
+	
+	const int set_rc = json_object_set_new(streams_db,stream,_enrich);
+	if(set_rc != 0){
+		rdlog(LOG_ERR,"Can't set new MSE enrichment db entry (out of memory?)");
+	}
+
+	return 0;
+}
+
+int parse_mse_array(struct mse_database *db,const struct json_t *mse_array,char *err,size_t err_size){
+	assert(db);
+
 	json_t *value=NULL,*new_db = NULL;
 	size_t _index;
 
-	json_t *file = json_load_file(db->path,0,&json_err);
-	if(!file){
-		snprintf(err,err_size,"Can't load MSE database %s, line %d column %d: %s",
-			db->path,json_err.line,json_err.column,json_err.text);
-		goto err_tag;
-	}
-
-	if(!json_is_array(file)){
-		snprintf(err,err_size,"Can't load MSE database %s: Expected array",db->path);
-		json_decref(file);
-		goto free_file_error;
+	if(!json_is_array(mse_array)){
+		snprintf(err,err_size,"Expected array");
+		return -1;
 	}
 
 	new_db = json_object();
 	if(!new_db){
 		snprintf(err,err_size,"Can't create json object (out of memory?)");
-		json_decref(file);
-		goto free_file_error;
+		return -1;
 	}
 
-	json_array_foreach(file,_index,value){
-		const char *key = json_string_value(value);
-		if(NULL == key){
-			snprintf(err,err_size,"Can't extract string of element %zu",_index);
-			goto free_new_db;
-		}
-
-		json_object_set_new(new_db,key,json_object());
+	json_array_foreach(mse_array,_index,value){
+		parse_sensor(value,new_db);
 	}
 
 	pthread_rwlock_wrlock(&db->rwlock);
@@ -99,100 +117,25 @@ int reload_valid_mse_database(struct valid_mse_database *db,char *err,size_t err
 		json_decref(old_db);
 
 	return 0;
-
-free_new_db:
-	json_decref(new_db);
-free_file_error:
-	json_decref(file);
-err_tag:
-	return -1;
 }
 
-struct valid_mse_database *parse_valid_mse_file(const char *path,char *err,size_t err_size){
-	assert(path);
-	assert(err);
-
-	char strerror_buf[BUFSIZ];
-	struct valid_mse_database *db = calloc(1,sizeof(*db));
-	if(NULL == db){
-		snprintf(err,err_size,"Can't allocate mse database (out of memory?)");
-		goto error;
-	}
-	
-	const int rc = pthread_rwlock_init(&db->rwlock,NULL);
-	if(rc != 0){
-		strerror_r(errno,strerror_buf,sizeof(strerror_buf));
-		snprintf(err,err_size,"Can't init mse database pthread lock: %s",strerror_buf);
-		goto free_db_error;
-	}
-
-	db->path = strdup(path);
-
-	if(NULL == db->path) {
-		snprintf(err,err_size,"Can't strdup (out of memory?)");
-		goto delete_lock_error;
-	}
-
-	const int read_rc = reload_valid_mse_database(db,err,err_size);
-	if(read_rc != 0){
-		goto free_strdupped_error;
-	}
-
-	return db;
-
-free_strdupped_error:
-	free(db->path);
-delete_lock_error:
-	pthread_rwlock_destroy(&db->rwlock);
-free_db_error:
-	free(db);
-error:
-	return NULL;
-}
-
-static int is_valid_mse(const char *mse,struct valid_mse_database *db){
+static json_t *mse_database_entry_copy(const char *subscriptionName,struct mse_database *db){
+	assert(subscriptionName);
 	assert(db);
-	pthread_rwlock_wrlock(&db->rwlock);
-	const int rc = json_object_get(db->root,mse) != NULL;
+	pthread_rwlock_rdlock(&db->rwlock);
+	json_t *ret = json_object_get(db->root,subscriptionName);
 	pthread_rwlock_unlock(&db->rwlock);
-	return rc;
+	return ret;
 }
 
-void free_valid_mse_database(struct valid_mse_database *db){
-	pthread_rwlock_destroy(&db->rwlock);
-	free(db->path);
-	json_decref(db->root);
+void free_valid_mse_database(struct mse_database *db){
+	if(db && db->root)
+		json_decref(db->root);
 }
 
 /* 
     ENRICHMENT
 */
-
-struct enrich_with {
-	json_t *json;
-};
-
-struct enrich_with *process_enrich_with(const char *_enrich_with){
-	json_error_t err;
-
-	struct enrich_with *ret = calloc(1,sizeof(ret[0]));
-	if(ret){
-		ret->json = json_loads(_enrich_with,0,&err);
-		if(NULL == ret->json){
-			rdlog(LOG_ERR,"Can't parse entich with (%s): %s",
-				_enrich_with,err.text);
-			free(ret);
-			ret = NULL;
-		}
-	}
-
-	return ret;
-}
-
-void free_enrich_with(struct enrich_with *enrich_with){
-	json_decref(enrich_with->json);
-	free(enrich_with);
-}
 
 static int is_mse8_message(const json_t *json){
 	return NULL != json_object_get(json,MSE8_STREAMING_NOTIFICATION_KEY);
@@ -269,19 +212,15 @@ static int extract_mse_data(const char *buffer,json_t *json,struct mse_data *to)
 	return 0;
 }
 
-static void enrich_mse_json(json_t *json,const struct enrich_with *enrich_with){
-	json_t *_enrich_with = json_deep_copy(enrich_with->json);
-	if(NULL == _enrich_with){
-		rdlog(LOG_ERR,"Can't json_deep_copy (out of memory?)");
-	}else{
-		json_object_update_missing(json,_enrich_with);
-		json_decref(_enrich_with);
-	}
+static void enrich_mse_json(json_t *json,json_t *enrichment_data){
+	assert(json);
+	assert(enrichment_data);
+
+	json_object_update_missing(json,enrichment_data);
 }
 
-char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
-                                 const struct enrich_with *enrich_with,
-                                 struct valid_mse_database *db){
+static char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
+                                 struct mse_database *db){
 	assert(bsize);
 	assert(to);
 
@@ -294,13 +233,18 @@ char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
 	}
 
 	extract_mse_data(buffer,json,to);
-	if(db && !is_valid_mse(to->subscriptionName,db)) {
-		free(buffer);
-		return NULL;
+	if(!to->subscriptionName){
+		/* Does not have subscriptionName -> we should drop */
+		goto err;
 	}
 	
-	if(enrich_with){
-		enrich_mse_json(json,enrich_with);
+	json_t *enrichment = mse_database_entry_copy(to->subscriptionName,db);
+	if(db && !enrichment) {
+		goto err;
+	}
+	
+	if(enrichment){
+		enrich_mse_json(json,enrichment);
 		char *_buffer = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
 		if(_buffer){
 			free(buffer);
@@ -322,4 +266,19 @@ err:
 	*bsize = 0;
 	free(buffer);
 	return NULL;
+}
+
+void mse_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
+	struct mse_data data = {
+		.client_mac = 0,
+		._client_mac = NULL,
+		.subscriptionName = NULL
+	};
+
+	struct mse_config *mse_cfg = _listener_callback_opaque;
+
+	char *_buffer = process_mse_buffer(buffer,&buf_size,&data,&mse_cfg->database);
+	if(_buffer){
+		send_to_kafka(_buffer,buf_size,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
+	}
 }
