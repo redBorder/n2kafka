@@ -306,6 +306,7 @@ static void check_config(){
 
 void parse_config(const char *config_file_path){
 	json_error_t error;
+	global_config.config_path = strdup(config_file_path);
 	json_t *root = json_load_file(config_file_path,0,&error);
 	if(root==NULL){
 		rblog(LOG_ERR,"Error parsing config file, line %d: %s\n",error.line,error.text);
@@ -348,6 +349,11 @@ void reload_listeners(struct n2kafka_config *config){
 
 void free_global_config(){
 	shutdown_listeners(&global_config);
+
+	if(!only_stdout_output()){
+		flush_kafka();
+		stop_rdkafka();
+	}
 
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);

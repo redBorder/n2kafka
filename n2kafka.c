@@ -98,6 +98,7 @@ int main(int argc,char *argv[]){
 		kafka_poll(1000 /* ms */);
 		if(do_reload){
 			reload_listeners(&global_config);
+			reload_decoders(&global_config);
 			do_reload = 0;
 		}
 	}
