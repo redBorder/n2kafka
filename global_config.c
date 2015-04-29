@@ -315,6 +315,7 @@ static void check_config(){
 
 void parse_config(const char *config_file_path){
 	json_error_t error;
+	global_config.config_path = strdup(config_file_path);
 	json_t *root = json_load_file(config_file_path,0,&error);
 	if(root==NULL){
 		rblog(LOG_ERR,"Error parsing config file, line %d: %s\n",error.line,error.text);
@@ -355,9 +356,60 @@ void reload_listeners(struct n2kafka_config *config){
 	}
 }
 
+static void reload_mse_config(struct n2kafka_config *config){
+	/// @TODO merge with config parse
+	rblog(LOG_INFO,"Reloading MSE sensors");
+
+	char err[BUFSIZ];
+	json_error_t json_err;
+	if(config->config_path==NULL){
+		rblog(LOG_ERR,"Have no config file to reload");
+	}
+
+	json_t *root = json_load_file(config->config_path,0,&json_err);
+	if(root==NULL){
+		rblog(LOG_ERR,"Can't reload, Error parsing config file, line %d: %s\n",
+			json_err.line,json_err.text);
+		return;
+	}
+
+	if(!json_is_object(root)){
+		rblog(LOG_ERR,"Can't reload, JSON config is not an object\n");
+		goto error_free_root;
+	}
+
+	json_t *mse_sensors_array = NULL;
+	const int unpack_rc = json_unpack_ex(root,&json_err,0,"{s:o}",
+		CONFIG_MSE_SENSORS_KEY,&mse_sensors_array);
+	if(unpack_rc != 0){
+		rdlog(LOG_ERR,"Can't reload, can't parse config file line %d col %d: %s",
+			json_err.line,json_err.column,json_err.text);
+		goto error_free_root;
+	}
+
+	if(NULL == mse_sensors_array){
+		rdlog(LOG_ERR,"Can't reload, can't extract mse_sensors_array");
+		goto error_free_root;
+	}
+
+	parse_mse_array(&config->mse.database, mse_sensors_array,err,sizeof(err));
+
+error_free_root:
+	json_decref(root);
+}
+
+void reload_decoders(struct n2kafka_config *config){
+	reload_mse_config(config);
+}
+
 void free_global_config(){
 	shutdown_listeners(&global_config);
+
 	free_valid_mse_database(&global_config.mse.database);
+	if(!only_stdout_output()){
+		flush_kafka();
+		stop_rdkafka();
+	}
 
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);

@@ -57,6 +57,10 @@ struct n2kafka_config{
 #ifdef HAVE_LIBMICROHTTPD
 #define N2KAFKA_HTTP 3
 #endif
+
+    /// Path to reload
+    char *config_path;
+
     char *format;
 
     char *topic;
@@ -90,5 +94,6 @@ void init_global_config();
 void parse_config(const char *config_file_path);
 
 void reload_listeners(struct n2kafka_config *config);
+void reload_decoders(struct n2kafka_config *config);
 
 void free_global_config();

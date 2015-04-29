@@ -43,6 +43,8 @@ static const char MSE_DEVICE_ID_KEY[] = "deviceId";
 
 static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
 
+static const char CONFIG_MSE_SENSORS_KEY[] = "mse-sensors";
+
 /* 
     VALIDATING MSE
 */
