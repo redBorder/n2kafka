@@ -92,7 +92,7 @@ static size_t string_free_space(const struct string *str) {
 
 static size_t string_grow(struct string *str,size_t delta) {
 	const size_t newsize = smax(str->allocated + delta,str->allocated*2);
-	char *new_buf = realloc(&str->buf,newsize);
+	char *new_buf = realloc(str->buf,newsize);
 	if(NULL != new_buf) {
 		str->buf = new_buf;
 		str->allocated = newsize;
