@@ -69,7 +69,7 @@ static const struct registered_decoder{
 	listener_callback cb;
 	void *opaque;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL},
+	{CONFIG_DECODE_AS_NULL,"",dumb_decoder,NULL},
 	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,&global_config.mse}
 };
 
@@ -207,10 +207,7 @@ static const struct registered_decoder *locate_registered_decoder(const char *de
 	    = sizeof(registered_decoders)/sizeof(registered_decoders[0]);
 
 	for(i=0;i<decoders_length;++i) {
-		if ( NULL==registered_decoders[i].decode_as ) {
-			rdlog(LOG_CRIT,"Error: NULL proto in registered_listeners");
-			continue;
-		}
+		assert( NULL!=registered_decoders[i].decode_as );
 
 		if( 0 == strcmp(registered_decoders[i].decode_as, decode_as) ) {
 			return &registered_decoders [i];
