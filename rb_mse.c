@@ -52,6 +52,14 @@ struct mse_data {
 	const char *subscriptionName;
 	/* private */
 	const char *_client_mac;
+	json_t *json;
+	char *string;
+	size_t string_size;
+};
+
+struct mse_array {
+	struct mse_data *data;
+	size_t size;
 };
 
 void init_mse_database(struct mse_database *db){
@@ -146,7 +154,7 @@ static int is_mse10_message(const json_t *json){
 	return NULL != json_object_get(json,MSE10_NOTIFICATIONS_KEY);
 }
 
-static int extract_mse8_rich_data(json_t *from,struct mse_data *to){
+static int extract_mse8_rich_data0(json_t *from,struct mse_data *to){
 	json_error_t err;
 	const char *macAddress=NULL;
 	const int unpack_rc = json_unpack_ex(from, &err, 0, 
@@ -174,42 +182,109 @@ static int extract_mse8_rich_data(json_t *from,struct mse_data *to){
 			rdlog(LOG_WARNING,"deviceId != macAddress: [%s]!=[%s]. Using deviceId",
 				to->_client_mac,macAddress);
 		}
+
+		to->json = json_object_get(from,MSE8_STREAMING_NOTIFICATION_KEY);
 	}
 
 	return unpack_rc;
 }
 
-static int extract_mse10_rich_data(json_t *from,struct mse_data *to) {
+
+static struct mse_array *extract_mse8_rich_data(json_t *from,int *extract_rc) {
+	assert(extract_rc);
+
+	struct mse_array *array = calloc(1,sizeof(struct mse_array) + sizeof(struct mse_data));
+	if(!array){
+		*extract_rc = -1;
+		return NULL;
+	}
+
+	array->size = 1;
+	array->data = (void *)&array[1];
+	*extract_rc = extract_mse8_rich_data0(from,array->data);
+
+	return array;
+}
+
+static int extract_mse10_rich_data0(json_t *from,struct mse_data *to) {
 	json_error_t err;
 
 	const int unpack_rc = json_unpack_ex(from, &err, 0, 
 		"{s:s,"  /* deviceId */
 		"s:s}",  /* subscriptionName */
-		MSE_DEVICE_ID_KEY,&to->client_mac,
+		MSE_DEVICE_ID_KEY,&to->_client_mac,
 		MSE_SUBSCRIPTION_NAME_KEY,&to->subscriptionName);
+
+	if(unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't extract mse 10 rich data: %s",err.text);
+	}
 
 	return unpack_rc;
 }
 
-static int extract_mse_data(const char *buffer,json_t *json,struct mse_data *to){
-	const int extract_rc =  
-		is_mse8_message(json)  ? extract_mse8_rich_data(json,to)  :
-		is_mse10_message(json) ? extract_mse10_rich_data(json,to) :
-		({rdlog(LOG_ERR,"This is not an valid MSE JSON: %s",buffer);-1;});
+static struct mse_array *extract_mse10_rich_data(json_t *from,int *extract_rc) {
+	assert(from);
+	assert(extract_rc);
 
+	size_t i;
+	json_error_t err;
+	json_t *notifications_array;
 
-	if(extract_rc < 0)
-		return -1;
+	*extract_rc = json_unpack_ex(from, &err, 0, 
+		"{s:o}",  /* subscriptionName */
+		MSE10_NOTIFICATIONS_KEY,&notifications_array);
 
-	to->client_mac = parse_mac(to->_client_mac);
-	if(!valid_mac(to->client_mac)){
-		rdlog(LOG_WARNING,"Can't found client mac in (%s), using random partitioner",
-			buffer);
-		to->client_mac = 0;
-		return -1;
+	if(*extract_rc != 0) {
+		rdlog(LOG_ERR, "Can't parse MSE10 JSON notifications array: %s",err.text);
+		return NULL;
 	}
 
-	return 0;
+	const size_t mse_array_size = json_array_size(notifications_array);
+	const size_t alloc_size = sizeof(struct mse_array) + mse_array_size*sizeof(struct mse_data);
+	
+	struct mse_array *mse_array = calloc(1,alloc_size);
+	mse_array->size = mse_array_size;
+	mse_array->data = (void *)&mse_array[1];
+
+	for(i=0;i<mse_array_size;++i) {
+		mse_array->data[i].json = json_array_get(notifications_array, i);
+		if(NULL == mse_array->data[i].json) {
+			rdlog(LOG_ERR,"Can't extract MSE10 notification position %zu",i);
+		} else {
+			extract_mse10_rich_data0(mse_array->data[i].json,&mse_array->data[i]);
+		}
+	}
+
+	return mse_array;
+}
+
+static void parse_mac_addresses(const char *buffer,struct mse_array *mse_array){
+	size_t i;
+	for(i=0;i<mse_array->size;++i){
+		struct mse_data *to = &mse_array->data[i];
+		to->client_mac = parse_mac(to->_client_mac);
+		if(!valid_mac(to->client_mac)){
+			rdlog(LOG_WARNING,"Can't found client mac in (%s), using random partitioner",
+				buffer);
+			to->client_mac = 0;
+		}
+	}
+}
+
+static struct mse_array *extract_mse_data(const char *buffer,json_t *json){
+	int extract_rc =  0;
+	struct mse_array *mse_array = 
+		is_mse8_message(json)  ? extract_mse8_rich_data(json,&extract_rc)  :
+		is_mse10_message(json) ? extract_mse10_rich_data(json,&extract_rc) :
+		({rdlog(LOG_ERR,"This is not an valid MSE JSON: %s",buffer);NULL;});
+
+
+	if(extract_rc < 0 || mse_array == NULL)
+		return NULL;
+
+	parse_mac_addresses(buffer,mse_array);
+
+	return mse_array;
 }
 
 static void enrich_mse_json(json_t *json,json_t *enrichment_data){
@@ -219,66 +294,92 @@ static void enrich_mse_json(json_t *json,json_t *enrichment_data){
 	json_object_update_missing(json,enrichment_data);
 }
 
-static char *process_mse_buffer(char *buffer,size_t *bsize,struct mse_data *to,
+static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
                                  struct mse_database *db){
+	size_t i;
 	assert(bsize);
 	assert(to);
 
 	json_error_t err;
-	json_t *json = json_loadb(buffer,*bsize,0,&err);
+	json_t *json = json_loadb(buffer,bsize,0,&err);
 	if(NULL == json){
 		rdlog(LOG_ERR,"Error decoding MSE JSON (%s), line %d column %d: %s",
 			buffer,err.line,err.column,err.text);
 		goto err;
 	}
 
-	extract_mse_data(buffer,json,to);
-	if(!to->subscriptionName){
-		/* Does not have subscriptionName -> we should drop */
+	struct mse_array *notifications = extract_mse_data(buffer,json);
+	if(!notifications || notifications->size == 0) {
+		/* Nothing to do here */
+		free(notifications);
+		notifications = NULL;
 		goto err;
 	}
-	
-	json_t *enrichment = mse_database_entry_copy(to->subscriptionName,db);
-	if(db && !enrichment) {
-		goto err;
-	}
-	
-	if(enrichment){
-		enrich_mse_json(json,enrichment);
-		char *_buffer = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
-		if(_buffer){
-			free(buffer);
-			buffer = _buffer;
-			*bsize = strlen(buffer);
-		}else{
-			rdlog(LOG_ERR,"Can't dump JSON buffer (out of memory?)");
+
+	for(i=0;i<notifications->size;++i) {
+		struct mse_data *to = &notifications->data[i];
+		json_t *enrichment = NULL;
+		json_error_t _err;
+
+		if(db && !to->subscriptionName) {
+			rdlog(LOG_ERR,"Received MSE message with no subscription name. Discarding.");
+		}
+		
+		if(db && to->subscriptionName) {
+			enrichment = mse_database_entry_copy(to->subscriptionName,db);
+			if(NULL == enrichment) {
+				rdlog(LOG_ERR,"MSE message (%s) has unknown subscription name %s. Discarding.",
+					buffer,to->subscriptionName);
+				memset(to,0,sizeof(to[0]));
+				continue;
+			}
+		}
+		
+		if(db && enrichment){
+			enrich_mse_json(to->json,enrichment);
+		}
+
+		if(notifications->size > 1) {
+			/* Creating a new MSE notification mesage dissecting notifications in array.
+			   This is due a kafka partitioner: We couldn't partition if >1 MACS come in the same
+			   message */
+
+			json_t *out = json_pack_ex(&_err,0,"{s:[O]}",MSE10_NOTIFICATIONS_KEY,to->json);
+			if(NULL == out) {
+				rdlog(LOG_ERR,"Can't pack a new value: %s",err.text);
+			} else {
+				to->string = json_dumps(out,
+					JSON_COMPACT|JSON_ENSURE_ASCII);
+				json_decref(out);
+			}
+
+			json_decref(to->json);
+			to->json = NULL;
+		} else {
+			/* We can use the current json, no need to create a new one.
+			   This is MSE8 case too. */
+			to->string = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
 		}
 	}
-
-	to->_client_mac = NULL;
-	json_decref(json);
-
-	return buffer; /* @TODO If we change buffer, we have to modify bsize */
 
 err:
 	if(json)
 		json_decref(json);
-	*bsize = 0;
-	free(buffer);
-	return NULL;
+	return notifications;
 }
 
 void mse_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
-	struct mse_data data = {
-		.client_mac = 0,
-		._client_mac = NULL,
-		.subscriptionName = NULL
-	};
-
+	size_t i;
 	struct mse_config *mse_cfg = _listener_callback_opaque;
 
-	char *_buffer = process_mse_buffer(buffer,&buf_size,&data,&mse_cfg->database);
-	if(_buffer){
-		send_to_kafka(_buffer,buf_size,RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)data.client_mac);
+	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,&mse_cfg->database);
+	free(buffer);
+
+	for(i=0;i<notifications->size;++i) {
+		if(notifications->data[i].string){
+			send_to_kafka(notifications->data[i].string,
+				notifications->data[i].string_size,
+				RD_KAFKA_MSG_F_FREE,(void *)(intptr_t)notifications->data[i].client_mac);
+		}
 	}
 }
