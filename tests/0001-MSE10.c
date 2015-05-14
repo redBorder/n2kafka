@@ -224,7 +224,6 @@ static void testMSE10Decoder_novalid_enrich() {
 	json_decref(mse_array);
 }
 
-#if 0
 /// @TODO use a for loop
 static void testMSE10Decoder_valid_enrich_multi() {
 	const char *subscriptionName1=NULL,*sensor_name1=NULL;
@@ -286,7 +285,6 @@ static void testMSE10Decoder_valid_enrich_multi() {
 	free_valid_mse_database(&mse_config.database);
 	json_decref(mse_array);
 }
-#endif
 
 int main() {
 	testMSE10Decoder_valid_enrich();

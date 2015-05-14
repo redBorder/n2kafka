@@ -353,7 +353,6 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 				json_decref(out);
 			}
 
-			json_decref(to->json);
 			to->json = NULL;
 		} else {
 			/* We can use the current json, no need to create a new one.
