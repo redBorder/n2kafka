@@ -90,6 +90,8 @@ static const char MSE10_MANY[] =
 	    "]"
 	"}";
 
+static const char MSE10_ZERO_NOTIFICATIONS[] = "{\"notifications\":[]}";
+
 static const char MSE_ARRAY_IN[] = \
 	"[\n" \
 		"{\n" \
@@ -286,10 +288,36 @@ static void testMSE10Decoder_valid_enrich_multi() {
 	json_decref(mse_array);
 }
 
+static void testMSE10Decoder_empty_array() {
+	json_error_t jerr;
+	char err[BUFSIZ];
+	struct mse_config mse_config;
+	memset(&mse_config,0,sizeof(mse_config));
+	// init_mse_database(&mse_config.database);
+	
+	json_t *mse_array = json_loadb(MSE_ARRAY_IN,strlen(MSE_ARRAY_IN),0,&jerr);
+	assert(mse_array);
+	const int parse_rc = parse_mse_array(&mse_config.database, mse_array,err,sizeof(err));
+	assert(parse_rc == 0);
+
+	char *aux = strdup(MSE10_ZERO_NOTIFICATIONS);
+	struct mse_array *notifications_array = process_mse_buffer(aux,
+		strlen(MSE10_ZERO_NOTIFICATIONS),&mse_config.database);
+
+	/* No database -> output == input */
+	assert(!notifications_array ||  notifications_array->size == 0);
+
+	free(aux);
+	free(notifications_array);	
+	free_valid_mse_database(&mse_config.database);
+	json_decref(mse_array);
+}
+
 int main() {
 	testMSE10Decoder_valid_enrich();
 	testMSE10Decoder_novalid_enrich();
 	testMSE10Decoder_valid_enrich_multi();
+	testMSE10Decoder_empty_array();
 	
 	return 0;
 }
