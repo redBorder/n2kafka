@@ -342,6 +342,10 @@ void reload_listeners(struct n2kafka_config *config){
 	}
 }
 
+void reload_decoders(struct n2kafka_config *config) {
+	(void)config;
+}
+
 void free_global_config(){
 	shutdown_listeners(&global_config);
 
