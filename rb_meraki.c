@@ -39,6 +39,7 @@ static const char MERAKI_TYPE_VALUE[] = "meraki";
 static const char MERAKI_WIRELESS_STATION_KEY[] = "wireless_station";
 
 static const char MERAKI_SRC_ORIGINAL_KEY[] = "ipv4";
+static const char MERAKI_SRCv6_ORIGINAL_KEY[] = "ipv6";
 static const char MERAKI_SRC_DESTINATION_KEY[] = "src";
 
 static const char MERAKI_CLIENT_OS_ORIGINAL_KEY[] = "os";
@@ -51,6 +52,7 @@ static const char MERAKI_CLIENT_MAC_ORIGINAL_KEY[] = "clientMac";
 static const char MERAKI_CLIENT_MAC_DESTINATION_KEY[] = "client_mac";
 
 static const char MERAKI_TIMESTAMP_ORIGINAL_KEY[] = "seenEpoch";
+static const char MERAKI_SEEN_TIME_KEY[] = "seenTime";
 static const char MERAKI_TIMESTAMP_DESTINATION_KEY[] = "timestamp";
 
 static const char MERAKI_CLIENT_RSSI_NUM_ORIGINAL_KEY[] = "rssi";
@@ -71,6 +73,9 @@ static const char MERAKI_CLIENT_LATLON_DESTINATION_KEY[] = "client_latlong";
 int parse_meraki_secrets(struct meraki_database *db,const struct json_t *meraki_secrets,char *err,size_t err_size){
 	assert(db);
 
+	const char *key;
+	json_t *value;
+
 	json_t *new_db = NULL;
 
 	new_db = json_deep_copy(meraki_secrets);
@@ -82,6 +87,14 @@ int parse_meraki_secrets(struct meraki_database *db,const struct json_t *meraki_
 	pthread_rwlock_wrlock(&db->rwlock);
 	json_t *old_db = db->root;
 	db->root = new_db;
+	if(new_db) {
+		json_object_foreach(new_db,key,value) {
+			// This field is needed in all output messages
+			json_t *meraki_type = json_string(MERAKI_TYPE_VALUE);
+			json_object_set_new(value,MERAKI_TYPE_KEY,meraki_type);
+		}
+	}
+
 	pthread_rwlock_unlock(&db->rwlock);
 
 	if(old_db)
@@ -116,6 +129,20 @@ static int double_cmp(const double a,const double b) {
 	return (a>b) - (a<b);
 }
 
+static void enrich_meraki_observation(json_t *observation,
+                             struct meraki_transversal_data *transversal_data) {
+
+	if(!transversal_data->enrichment) {
+		rdlog(LOG_WARNING,"No enrichment, cannot add extra data like type");
+		return;
+	} 
+
+	const int update_rc = json_object_update_missing(observation,transversal_data->enrichment);
+	if(update_rc != 0) {
+		rdlog(LOG_ERR,"Error on update missing.");
+	}
+}
+
 /* transform meraki observation in our suitable keys/values */
 static void transform_meraki_observation(json_t *observation,
                            struct meraki_transversal_data *transversal_data) {
@@ -125,20 +152,8 @@ static void transform_meraki_observation(json_t *observation,
 	       *timestamp=NULL,*client_rssi_num=NULL,*wireless_id=NULL;
 	double location_lat=0,location_lon=0;
 
-	/*
-	if(!transversal_data->enrichment) {
-		rdlog(LOG_WARNING,"No enrichment, cannot add %s",MERAKI_WIRELESS_STATION_KEY);
-	} else {
-		json_t *wireless_station = json_object_get(transversal_data->enrichment,
-			                                       MERAKI_WIRELESS_STATION_KEY);
-		if(NULL == wireless_station) {
-			rdlog(LOG_WARNING,"No %s enrichment", MERAKI_WIRELESS_STATION_KEY);
-		} else {
-			json_object_set(observation,MERAKI_WIRELESS_STATION_KEY,wireless_station);
-		}
-
-	}
-	*/
+	/* Unused */
+	json_object_del(observation,MERAKI_SEEN_TIME_KEY);
 
 	if(NULL == transversal_data->wireless_station) {
 		rdlog(LOG_WARNING,"No %s in meraki message", MERAKI_WIRELESS_STATION_KEY);
@@ -178,9 +193,7 @@ static void transform_meraki_observation(json_t *observation,
 		return;
 	}
 
-	json_t *meraki_type = json_string(MERAKI_TYPE_VALUE);
-	json_object_set_new(observation,MERAKI_TYPE_KEY,meraki_type);
-
+	/// @TODO ipv6 treatment
 	if(src) {
 		const char *_src = json_string_value(src);
 		if(_src) {
@@ -192,6 +205,7 @@ static void transform_meraki_observation(json_t *observation,
 
 		// Delete original form
 		json_object_del(observation,MERAKI_SRC_ORIGINAL_KEY);
+		json_object_del(observation,MERAKI_SRCv6_ORIGINAL_KEY);
 	}
 
 	if(0!=double_cmp(0,location_lat) && 0!=double_cmp(0,location_lon)) {
@@ -209,13 +223,14 @@ static void transform_meraki_observation(json_t *observation,
 	        MERAKI_CLIENT_MAC_VENDOR_ORIGINAL_KEY,MERAKI_CLIENT_MAC_VENDOR_DESTINATION_KEY);
 	rename_key_if_exists(observation,client_mac,
 	        MERAKI_CLIENT_MAC_ORIGINAL_KEY,MERAKI_CLIENT_MAC_DESTINATION_KEY);
-	rename_key_if_exists(observation,timestamp,
-	        MERAKI_TIMESTAMP_ORIGINAL_KEY,MERAKI_TIMESTAMP_DESTINATION_KEY);
 	rename_key_if_exists(observation,client_rssi_num,
 	        MERAKI_CLIENT_RSSI_NUM_ORIGINAL_KEY,MERAKI_CLIENT_RSSI_NUM_DESTINATION_KEY);
 	rename_key_if_exists(observation,wireless_id,
 	        MERAKI_WIRELESS_ID_ORIGINAL_KEY,MERAKI_WIRELESS_ID_DESTINATION_KEY);
+	rename_key_if_exists(observation,timestamp,
+	        MERAKI_TIMESTAMP_ORIGINAL_KEY,MERAKI_TIMESTAMP_DESTINATION_KEY);
 
+	enrich_meraki_observation(observation,transversal_data);
 }
 
 static void extract_meraki_observation(struct kafka_message_array *msgs,size_t idx,
