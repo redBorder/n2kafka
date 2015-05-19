@@ -335,11 +335,16 @@ err:
 }
 
 void meraki_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
+	assert(buffer);
+	assert(_listener_callback_opaque);
+
 	struct meraki_config *meraki_cfg = _listener_callback_opaque;
 
 	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,&meraki_cfg->database);
 
-	send_array_to_kafka(notifications);
-	free(notifications);
+	if(notifications){
+		send_array_to_kafka(notifications);
+		free(notifications);
+	}
 	free(buffer);
 }
