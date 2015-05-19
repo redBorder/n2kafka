@@ -2,6 +2,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include <jansson.h>
+#include <librdkafka.h>
 
 typedef json_error_t rb_json_err_t;
 
@@ -102,15 +103,22 @@ static void rb_assert_json_value(const struct checkdata_value *chk_value,const j
 	}
 }
 
-static void rb_assert_json(const char *str,const struct checkdata *checkdata) __attribute__((unused));
-static void rb_assert_json(const char *str,const struct checkdata *checkdata){
-	size_t i=0;
+static json_t *rb_assert_json_unpack(const char *src) {
 	json_error_t error;
 	json_t *root = json_loads(str, 0, &error);
+
 	if(root==NULL){
 		fprintf(stderr,"[EROR PARSING JSON][%s][%s]\n",error.text,error.source);
 		assert(0);
 	}
+
+	return root;
+}
+
+static void rb_assert_json(const char *str,const struct checkdata *checkdata) __attribute__((unused));
+static void rb_assert_json(const char *str,const struct checkdata *checkdata){
+	size_t i=0;
+	json_t *root = rb_assert_json_unpack(str);
 
 	for(i=0;i<checkdata->size;++i){
 		const json_t *json_value = json_object_get(root,checkdata->checks[i].key);
