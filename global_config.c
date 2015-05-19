@@ -48,9 +48,9 @@
 #define CONFIG_RESPONSE_KEY "response"
 #define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_MSE_SENSORS_KEY "mse-sensors"
+#define CONFIG_MERAKI_SECRETS_KEY "meraki-secrets"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
-#define CONFIG_DECODE_AS_MSE_PARAMETERS "mse-sensors"
 
 #define CONFIG_PROTO_TCP  "tcp"
 #define CONFIG_PROTO_UDP  "udp"
@@ -58,6 +58,7 @@
 
 #define CONFIG_DECODE_AS_NULL           ""
 #define CONFIG_DECODE_AS_MSE            "MSE"
+#define CONFIG_DECODE_AS_MERAKI         "meraki"
 
 struct n2kafka_config global_config;
 
@@ -68,7 +69,8 @@ static const struct registered_decoder{
 	void *opaque;
 } registered_decoders[] = {
 	{CONFIG_DECODE_AS_NULL,"",dumb_decoder,NULL},
-	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,&global_config.mse}
+	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,&global_config.mse},
+	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,&global_config.meraki}
 };
 
 static const struct registered_listener{
@@ -287,6 +289,10 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_MSE_SENSORS_KEY)){
 		char err[BUFSIZ];
 		parse_mse_array(&global_config.mse.database, value,err,sizeof(err));
+	}else if(!strcasecmp(key,CONFIG_MERAKI_SECRETS_KEY)){
+		char err[BUFSIZ];
+		parse_meraki_secrets(&global_config.meraki.database, value,err,sizeof(err));
+
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}

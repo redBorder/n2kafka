@@ -2,7 +2,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include <jansson.h>
-#include <librdkafka.h>
+#include <librdkafka/rdkafka.h>
 
 typedef json_error_t rb_json_err_t;
 
@@ -58,6 +58,11 @@ struct checkdata{
 	const struct checkdata_value *checks;
 };
 
+struct checkdata_array{
+	size_t size;
+	const struct checkdata **checks;
+};
+
 static void assertEqual(const int64_t a, const int64_t b,const char *key,const char *src) __attribute__((unused));
 static void assertEqual(const int64_t a, const int64_t b,const char *key,const char *src){
 	if(a != b) {
@@ -103,9 +108,9 @@ static void rb_assert_json_value(const struct checkdata_value *chk_value,const j
 	}
 }
 
-static json_t *rb_assert_json_unpack(const char *src) {
+static json_t *rb_assert_json_loadb(const char *buf,size_t buflen) {
 	json_error_t error;
-	json_t *root = json_loads(str, 0, &error);
+	json_t *root = json_loadb(buf, buflen, 0, &error);
 
 	if(root==NULL){
 		fprintf(stderr,"[EROR PARSING JSON][%s][%s]\n",error.text,error.source);
@@ -115,17 +120,37 @@ static json_t *rb_assert_json_unpack(const char *src) {
 	return root;
 }
 
-static void rb_assert_json(const char *str,const struct checkdata *checkdata) __attribute__((unused));
-static void rb_assert_json(const char *str,const struct checkdata *checkdata){
+static void rb_assert_json_n(const char *str,size_t sz,const struct checkdata *checkdata) __attribute__((unused));
+static void rb_assert_json_n(const char *str,size_t sz,const struct checkdata *checkdata){
 	size_t i=0;
-	json_t *root = rb_assert_json_unpack(str);
+	json_t *root = rb_assert_json_loadb(str,sz);
 
-	for(i=0;i<checkdata->size;++i){
+	for(i=0;i<checkdata->size;++i) {
 		const json_t *json_value = json_object_get(root,checkdata->checks[i].key);
 		rb_assert_json_value(&checkdata->checks[i],json_value,str);
 	}
 
 	json_decref(root);
+}
+
+static void rb_assert_json(const char *str,const struct checkdata *checkdata) __attribute__((unused));
+static void rb_assert_json(const char *str,const struct checkdata *checkdata){
+	rb_assert_json_n(str,strlen(str),checkdata);
+}
+
+
+static void rb_assert_json_array(const rd_kafka_message_t *msgs,size_t msgs_size,
+	const struct checkdata_array *checkdata_array) __attribute__((unused));
+static void rb_assert_json_array(const rd_kafka_message_t *msgs,size_t msgs_size,
+	const struct checkdata_array *checkdata_array) {
+
+	size_t i;
+
+	assert(msgs_size == checkdata_array->size);
+	for(i=0;i<checkdata_array->size;++i){
+		size_t payload_size = msgs[i].len;
+		rb_assert_json_n(msgs[i].payload,payload_size,checkdata_array->checks[i]);
+	}
 }
 
 #endif

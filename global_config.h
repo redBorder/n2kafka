@@ -21,6 +21,7 @@
 #include "config.h"
 
 #include "rb_mse.h"
+#include "rb_meraki.h"
 #include "kafka.h"
 #include "in_addr_list.h"
 
@@ -70,6 +71,7 @@ struct n2kafka_config{
     in_addr_list_t *blacklist;
 
     struct mse_config mse;
+    struct meraki_config meraki;
 
     char *response;
     int response_len;
