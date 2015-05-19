@@ -64,12 +64,7 @@ static const struct registered_decoder{
 	listener_callback cb;
 	void *opaque;
 } registered_decoders[] = {
-<<<<<<< HEAD
 	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL},
-=======
-	{CONFIG_DECODE_AS_NULL,"",dumb_decoder,NULL},
-	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,&global_config.mse}
->>>>>>> f6af9b7... Falling back on dumb_decoder when no proto specified
 };
 
 static const struct registered_listener{

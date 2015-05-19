@@ -16,13 +16,28 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#pragma once
 #include "parse.h"
 
 #include <string.h>
 
+/* Private data */
+struct rd_kafka_message_s;
+
+struct kafka_message_array{
+	size_t count; /* Number of used elements in msgs */
+	size_t size;  /* Number of elements in msgs */
+	struct rd_kafka_message_s *msgs; /* Real msgs */
+};
+
 void init_rdkafka();
 void send_to_kafka(char *buffer,const size_t bufsize,int flags,void *opaque);
 void dumb_decoder(char *buffer,size_t buf_size,void *listener_callback_opaque);
+
+struct kafka_message_array *new_kafka_message_array(size_t size);
+int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_t buf_size,void *opaque);
+void send_array_to_kafka(struct kafka_message_array *);
+
 
 void kafka_poll();
 

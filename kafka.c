@@ -124,6 +124,54 @@ void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 	}while(1);
 }
 
+struct kafka_message_array *new_kafka_message_array(size_t size){
+	const size_t memsize = sizeof(struct kafka_message_array) + size*sizeof(rd_kafka_message_t);
+	struct kafka_message_array *ret = calloc(1,memsize);
+	if(NULL == ret) {
+		rdlog(LOG_ERR,"Error allocating kafka message array (out of memory?)");
+	} else {
+		ret->size = size;
+		ret->msgs = (void *)&ret[1];
+	}
+
+	return ret;
+}
+
+int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_t buf_size,
+                                                                               void *opaque) {
+	if(array->count == array->size) {
+		rdlog(LOG_ERR,"Can't save msg in array: Not enough space");
+		return -1;
+	}
+
+	const size_t i = array->count;
+	array->msgs[i].rkt = rkt;
+	array->msgs[i].partition = RD_KAFKA_PARTITION_UA;
+	array->msgs[i].payload = buffer;
+	array->msgs[i].len = buf_size;
+	array->msgs[i]._private = opaque;
+
+	array->count++;
+
+	return 0;
+}
+
+void send_array_to_kafka(struct kafka_message_array *msgs) {
+	size_t i;
+	rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,msgs->msgs,msgs->count);
+
+	for(i=0; i<msgs->count; ++i) {
+		if(msgs->msgs[i].err) {
+			const char *payload = msgs->msgs[i].payload;
+			int payload_len = msgs->msgs[i].len;
+			const char *msg_error = rd_kafka_err2str(msgs->msgs[i].err);
+			rdlog(LOG_ERR,"Couldn't produce message [%.*s]: %s",payload_len,payload,msg_error);
+			free(msgs->msgs[i].payload);
+		}
+	}
+}
+
+
 void dumb_decoder(char *buffer,size_t buf_size,void *listener_callback_opaque){
 	send_to_kafka(buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
 }
