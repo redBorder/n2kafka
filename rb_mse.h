@@ -33,7 +33,7 @@ struct mse_database {
 	struct json_t *root;
 };
 void init_mse_database(struct mse_database *db);
-int parse_mse_array(struct mse_database *db, const struct json_t *mse_array,char *err,size_t errsize);
+int parse_mse_array(void *_db,const struct json_t *mse_array,char *err,size_t err_size);
 void free_valid_mse_database(struct mse_database *db);
 
 struct mse_config {

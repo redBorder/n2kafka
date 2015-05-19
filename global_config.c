@@ -357,12 +357,13 @@ void reload_listeners(struct n2kafka_config *config){
 	}
 }
 
-static void reload_mse_config(struct n2kafka_config *config){
-	/// @TODO merge with config parse
-	rblog(LOG_INFO,"Reloading MSE sensors");
+typedef int (*reload_cb)(void *database,const struct json_t *config,char *err,size_t err_size);
 
+static json_t *reload_decoder(struct n2kafka_config *config,const char *decoder_config_key,
+	void *database,reload_cb reload_callback) {
 	char err[BUFSIZ];
 	json_error_t json_err;
+	json_t *decoder_config = NULL;
 	if(config->config_path==NULL){
 		rblog(LOG_ERR,"Have no config file to reload");
 	}
@@ -371,7 +372,7 @@ static void reload_mse_config(struct n2kafka_config *config){
 	if(root==NULL){
 		rblog(LOG_ERR,"Can't reload, Error parsing config file, line %d: %s\n",
 			json_err.line,json_err.text);
-		return;
+		return NULL;
 	}
 
 	if(!json_is_object(root)){
@@ -379,28 +380,39 @@ static void reload_mse_config(struct n2kafka_config *config){
 		goto error_free_root;
 	}
 
-	json_t *mse_sensors_array = NULL;
-	const int unpack_rc = json_unpack_ex(root,&json_err,0,"{s:o}",
-		CONFIG_MSE_SENSORS_KEY,&mse_sensors_array);
-	if(unpack_rc != 0){
+	const int unpack_rc = json_unpack_ex(root,&json_err,0,"{s?o}",
+		decoder_config_key,&decoder_config);
+	if(unpack_rc != 0) {
 		rdlog(LOG_ERR,"Can't reload, can't parse config file line %d col %d: %s",
 			json_err.line,json_err.column,json_err.text);
 		goto error_free_root;
 	}
 
-	if(NULL == mse_sensors_array){
-		rdlog(LOG_ERR,"Can't reload, can't extract mse_sensors_array");
-		goto error_free_root;
+	if(NULL != decoder_config) {
+		reload_callback(database, decoder_config,err,sizeof(err));
 	}
-
-	parse_mse_array(&config->mse.database, mse_sensors_array,err,sizeof(err));
 
 error_free_root:
 	json_decref(root);
+
+	return decoder_config;
 }
 
-void reload_decoders(struct n2kafka_config *config){
+static void reload_mse_config(struct n2kafka_config *config){
+	/// @TODO merge with config parse
+	
+	rblog(LOG_INFO,"Reloading MSE sensors");
+	reload_decoder(config,CONFIG_MSE_SENSORS_KEY,&config->mse.database,parse_mse_array);
+}
+
+static void reload_meraki_config(struct n2kafka_config *config) {
+	rblog(LOG_INFO,"Reloading meraki sensors");
+	reload_decoder(config,CONFIG_MERAKI_SECRETS_KEY,&config->meraki.database,parse_meraki_secrets);
+}
+
+void reload_decoders(struct n2kafka_config *config) {
 	reload_mse_config(config);
+	reload_meraki_config(config);
 }
 
 void free_global_config(){

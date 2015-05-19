@@ -39,7 +39,7 @@ static void init_meraki_database(struct meraki_database *db) {
 	db->root = NULL;
 }
 
-int parse_meraki_secrets(struct meraki_database *db, const struct json_t *meraki_object,char *err,size_t errsize);
+int parse_meraki_secrets(void *db, const struct json_t *meraki_object,char *err,size_t errsize);
 
 void meraki_database_done(struct meraki_database *db);
 

@@ -70,8 +70,10 @@ static const char MERAKI_CLIENT_LATLON_DESTINATION_KEY[] = "client_latlong";
     VALIDATING MERAKI SECRET
 */
 
-int parse_meraki_secrets(struct meraki_database *db,const struct json_t *meraki_secrets,char *err,size_t err_size){
-	assert(db);
+int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets,char *err,size_t err_size){
+	assert(_db);
+
+	struct meraki_database *db = _db;
 
 	const char *key;
 	json_t *value;

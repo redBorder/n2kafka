@@ -95,8 +95,10 @@ static int parse_sensor(json_t *sensor,json_t *streams_db){
 	return 0;
 }
 
-int parse_mse_array(struct mse_database *db,const struct json_t *mse_array,char *err,size_t err_size){
-	assert(db);
+int parse_mse_array(void *_db,const struct json_t *mse_array,char *err,size_t err_size){
+	assert(_db);
+
+	struct mse_database *db = _db;
 
 	json_t *value=NULL,*new_db = NULL;
 	size_t _index;
