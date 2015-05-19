@@ -201,7 +201,7 @@ static void parse_listener(json_t *config){
 
 	if( NULL == listener ) {
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
-		return;
+		exit(-1);
 	}
 
 	LIST_INSERT_HEAD(&global_config.listeners,listener,entry);
