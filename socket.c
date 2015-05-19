@@ -191,14 +191,19 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
+static void process_data_received_from_socket0(char *buffer,const size_t bsize){
+	send_to_kafka(buffer,bsize,RD_KAFKA_MSG_F_FREE,NULL);
+}
+
 static void process_data_received_from_socket(char *buffer,const size_t recv_result){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
 
-	if(unlikely(only_stdout_output()))
+	if(unlikely(only_stdout_output())){
 		free(buffer);
-	else
-		send_to_kafka(buffer,recv_result,RD_KAFKA_MSG_F_FREE);
+	} else {
+		process_data_received_from_socket0(buffer,recv_result);
+	}
 }
 
 static int send_to_socket(int fd,const char *data,size_t len){

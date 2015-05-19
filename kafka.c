@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
 
 static rd_kafka_t *rk = NULL;
 static rd_kafka_topic_t *rkt = NULL;
@@ -59,22 +60,6 @@ void init_rdkafka(){
 
 	assert(global_config.kafka_conf);
 	assert(global_config.kafka_topic_conf);
-
-	#if 0
-	// @TODO workaround. Allow pass kafka parameters.
-	int res = rd_kafka_conf_set(global_config.kafka_conf, "socket.keepalive.enable", "true", errstr, sizeof(errstr));
-	if (res != RD_KAFKA_CONF_OK) {
-		rblog(LOG_ERR, "rd_kafka_conf_set %s\n", errstr);
-		exit(1);
-	}
-
-	res = rd_kafka_conf_set(global_config.kafka_conf, "socket.max.fails", "3", errstr, sizeof(errstr));
-	if (res != RD_KAFKA_CONF_OK) {
-		rblog(LOG_ERR, "rd_kafka_conf_set %s\n", errstr);
-		exit(1);
-	}
-	// @TODO end of workaround
-	#endif
 
 	if(only_stdout_output()){
 		rblog(LOG_DEBUG,"No brokers and no topic specified. Output will be printed in stdout.\n");
@@ -118,13 +103,13 @@ static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(rk,timeout_ms);
 }
 
-static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
+void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 	int retried = 0;
 	char errbuf[ERROR_BUFFER_SIZE];
 
 	do{
-		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,msgflags,
-			buf,bufsize,NULL,0,NULL);
+		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,flags,
+			buf,bufsize,NULL,0,opaque);
 
 		if(produce_ret == 0)
 			break;
@@ -134,17 +119,11 @@ static void send_to_kafka0(char *buf,const size_t bufsize,int msgflags){
 		}else{
 			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
 			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-			if(msgflags | RD_KAFKA_MSG_F_FREE)
+			if(flags | RD_KAFKA_MSG_F_FREE)
 				free(buf);
 			break;
 		}
 	}while(1);
-	
-	rd_kafka_poll(rk,0);
-}
-
-void send_to_kafka(char *buf,const size_t bufsize,int flags){
-	send_to_kafka0(buf,bufsize,flags);
 }
 
 void flush_kafka(){
