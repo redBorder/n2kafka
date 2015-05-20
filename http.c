@@ -47,16 +47,6 @@ struct string {
 	size_t allocated,used;
 };
 
-enum decode_as{
-	DECODE_AS_NONE=0,
-	DECODE_AS_MSE
-};
-
-static const char *decode_as_strs[] = {
-	[DECODE_AS_NONE] = "",
-	[DECODE_AS_MSE]  = "MSE"
-};
-
 #define HTTP_PRIVATE_MAGIC 0xC0B345FE
 struct http_private{
 #ifdef HTTP_PRIVATE_MAGIC
@@ -214,8 +204,6 @@ struct http_loop_args {
 	const char *mode;
 	int port;
 	unsigned int num_threads;
-	enum decode_as decode_as;
-	char *subcription_names_db_path;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -304,7 +292,6 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	struct http_loop_args handler_args;
 	memset(&handler_args,0,sizeof(handler_args));
 	handler_args.num_threads = 1;
-	const char *decode_as = NULL;
 
 	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
@@ -316,18 +303,6 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 
 	if(NULL==handler_args.mode)
 		handler_args.mode = MODE_SELECT;
-
-	if(NULL != decode_as){
-		size_t i;
-		for(i=0;i<sizeof(decode_as_strs)/sizeof(decode_as_strs[i]);++i)
-			if(0==strcmp(decode_as_strs[i],decode_as))
-				handler_args.decode_as = i;
-
-		if(0==handler_args.decode_as){
-			rdlog(LOG_ERR,"Can't decode as %s",decode_as);
-			exit(-1);
-		}
-	}
 
 	struct http_private *priv = start_http_loop(&handler_args,err,errsize,cb,cb_opaque);
 	if( NULL == priv ) {
