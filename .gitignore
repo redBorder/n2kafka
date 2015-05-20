@@ -21,3 +21,17 @@
 *.i*86
 *.x86_64
 *.hex
+
+# Dependendes
+*.d
+
+# mklove
+Makefile.config
+config.cache
+config.h
+config.log
+config.log.old
+version.c
+
+#Binary
+n2kafka
