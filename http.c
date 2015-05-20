@@ -122,7 +122,6 @@ static void request_completed (void *cls,
 #ifdef HTTP_PRIVATE_MAGIC
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
-	
 
 	h->callback(con_info->str.buf,con_info->str.used,h->callback_opaque);
 	con_info->str.buf = NULL; /* librdkafka will free it */
@@ -181,6 +180,10 @@ static int post_handle(void *_cls HTTP_UNUSED,
 						 const char *upload_data,
 						 size_t *upload_data_size,
 						 void **ptr) {
+
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == cls->magic);
+#endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
 		return MHD_NO; /* unexpected method */

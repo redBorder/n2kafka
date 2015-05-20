@@ -551,7 +551,6 @@ static void main_udp_loop(int listenfd,size_t udp_threads,listener_callback call
 	udp_thread_info.listenfd = listenfd;
 	udp_thread_info.callback = callback;
 	udp_thread_info.callback_opaque = callback_opaque;
-	
 
 	assert(udp_threads>0);
 	pthread_t *threads = malloc(sizeof(threads[0])*udp_threads);

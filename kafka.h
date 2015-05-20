@@ -19,6 +19,8 @@
 #pragma once
 #include "parse.h"
 
+#include <string.h>
+
 /* Private data */
 struct rd_kafka_message_s;
 
