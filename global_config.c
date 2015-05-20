@@ -21,7 +21,9 @@
 #include "librd/rdfile.h"
 #include "librd/rdsysqueue.h"
 
+#ifdef HAVE_LIBMICROHTTPD
 #include "http.h"
+#endif
 #include "socket.h"
 
 #include <errno.h>
@@ -77,7 +79,9 @@ static const struct registered_listener{
 	const char *proto;
 	listener_creator creator;
 } registered_listeners[] = {
+#ifdef HAVE_LIBMICROHTTPD
 	{CONFIG_PROTO_HTTP, create_http_listener},
+#endif
 	{CONFIG_PROTO_TCP, create_tcp_listener},
 	{CONFIG_PROTO_UDP, create_udp_listener},
 };
