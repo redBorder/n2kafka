@@ -192,10 +192,6 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 	return recvfrom(fd,buffer,buffer_size,MSG_DONTWAIT,(struct sockaddr *)addr,&socklen);
 }
 
-struct json_data {
-	uint64_t client_mac;
-};
-
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
                                               listener_callback callback,
                                               void *callback_opaque){
