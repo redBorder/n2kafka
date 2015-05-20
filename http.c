@@ -201,7 +201,6 @@ struct http_loop_args {
 	const char *mode;
 	int port;
 	unsigned int num_threads;
-	json_t *enrich_with;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
