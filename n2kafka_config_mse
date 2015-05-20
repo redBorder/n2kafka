@@ -1,0 +1,58 @@
+{
+	"listeners":[
+		{"proto":"http","port":2057, "mode":"epoll","num_threads":20},
+		{"proto":"tcp","port":2056,"tcp_keepalive":true,"num_threads":40,"decode_as":"MSE"}
+	],
+	"brokers":"eugeniodev",
+	"topic":"rb_flow",
+	"rdkafka.socket.max.fails":"3",
+	"rdkafka.socket.keepalive.enable":"true",
+	"blacklist":["192.168.101.3"],
+ "mse-sensors": [
+     {
+      "stream": "stream_test" 
+      ,"enrichment":{
+          "sensor_name": "MSE_testing"
+          , "sensor_id": 255
+      }
+    }
+    ,{
+      "stream": "streamstream2" 
+      ,"enrichment":{
+          "sensor_name": "MSE_testing223"
+          , "sensor_id": 256
+      }
+    }
+    ,{
+      "stream": "streamsss" 
+      ,"enrichment":{
+          "sensor_name": "MSE_testing4"
+          , "sensor_id": 257
+          , "market": "Spain"
+          , "organization": "Adamo"
+      }
+    }
+    ,{
+      "stream": "streamtest" 
+      ,"enrichment":{
+          "sensor_name": "Mse_test"
+          , "sensor_id": 258
+      }
+    }
+    ,{
+      "stream": "StreamTest" 
+      ,"enrichment":{
+          "sensor_name": "MsE_test"
+          , "sensor_id": 308
+      }
+    }
+    ,{
+      "stream": "khgfkghf" 
+      ,"enrichment":{
+          "sensor_name": "njgdjhdgf"
+          , "sensor_id": 310
+      }
+    }
+  ]
+
+}

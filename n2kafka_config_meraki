@@ -1,0 +1,17 @@
+{
+	"listeners":[
+		{"proto":"http","port":2057, "mode":"epoll","num_threads":20},
+		{"proto":"http","port":2056,"tcp_keepalive":true,"num_threads":40,"decode_as":"meraki"}
+	],
+	"brokers":"eugeniodev",
+	"topic":"rb_flow",
+	"rdkafka.socket.max.fails":"3",
+	"rdkafka.socket.keepalive.enable":"true",
+	"blacklist":["192.168.101.3"],
+	"meraki-secrets": {
+		"r3dB0rder": {
+			"sensor_name": "MSE_testing"
+			, "sensor_id": 255
+		}
+	} 
+}
