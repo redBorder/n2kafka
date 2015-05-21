@@ -157,7 +157,7 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	}
 
 	size_t ncopy = smin(upload_data_size,string_free_space(&con_info->str));
-	strncpy(con_info->str.buf,upload_data,ncopy);
+	strncpy(&con_info->str.buf[con_info->str.used],upload_data,ncopy);
 	con_info->str.used += ncopy;
 	return ncopy;
 }
