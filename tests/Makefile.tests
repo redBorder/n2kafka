@@ -24,7 +24,7 @@ all: test
 		false ; \
 	else \
 		echo -n "Test $< "; \
-		(LD_LIBRARY_PATH=../ ./$@ && echo "passed") || \
+		(LD_LIBRARY_PATH=../ ./$@ &> /dev/null && echo "passed") || \
 			 (echo "failed";\
 			  echo "########################################";\
 			  echo "########################################";\
