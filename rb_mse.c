@@ -361,6 +361,7 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 			   This is MSE8 case too. */
 			to->string = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
 		}
+		to->string_size = strlen(to->string);
 	}
 
 err:
