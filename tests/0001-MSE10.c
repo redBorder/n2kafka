@@ -176,6 +176,7 @@ static void testMSE10Decoder_valid_enrich() {
 
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
+	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
 
 	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
 	assert(ret);
@@ -251,6 +252,8 @@ static void testMSE10Decoder_valid_enrich_multi() {
 	/* No database -> output == input */
 	assert(notifications_array->size == 2);
 
+	assert(notifications_array->data[0].string);
+	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
 	json_t *ret1 = json_loads(notifications_array->data[0].string,0,&jerr);
 	assert(ret1);
 	const int unpack_rc1 = json_unpack_ex(ret1,&jerr,0,
@@ -260,6 +263,8 @@ static void testMSE10Decoder_valid_enrich_multi() {
 		"sensor_name",&sensor_name1,
 		"sensor_id",&sensor_id1);
 
+	assert(notifications_array->data[1].string);
+	assert(notifications_array->data[1].string_size == strlen(notifications_array->data[1].string));
 	json_t *ret2 = json_loads(notifications_array->data[1].string,0,&jerr);
 	assert(ret2);
 	const int unpack_rc2 = json_unpack_ex(ret2,&jerr,0,
