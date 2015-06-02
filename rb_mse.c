@@ -378,6 +378,9 @@ void mse_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
 	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,&mse_cfg->database);
 	free(buffer);
 
+	if(NULL == notifications)
+		return;
+
 	for(i=0;i<notifications->size;++i) {
 		if(notifications->data[i].string){
 			send_to_kafka(notifications->data[i].string,
