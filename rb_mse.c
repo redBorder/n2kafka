@@ -298,6 +298,7 @@ static void enrich_mse_json(json_t *json,json_t *enrichment_data){
 
 static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
                                  struct mse_database *db){
+	struct mse_array *notifications = NULL;
 	size_t i;
 	assert(bsize);
 	assert(to);
@@ -310,7 +311,7 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 		goto err;
 	}
 
-	struct mse_array *notifications = extract_mse_data(buffer,json);
+	notifications = extract_mse_data(buffer,json);
 	if(!notifications || notifications->size == 0) {
 		/* Nothing to do here */
 		free(notifications);
