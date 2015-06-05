@@ -40,9 +40,5 @@ struct mse_config {
 	struct mse_database database;
 };
 
-#if 0
-struct enrich_with *process_enrich_with(const char *enrich_with);
-void free_enrich_with(struct enrich_with *enrich_with);
-
-#endif
+int mse_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
 void mse_decode(char *buffer,size_t buf_size,void *listener_callback_opaque);

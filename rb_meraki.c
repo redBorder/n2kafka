@@ -22,6 +22,7 @@
 #include "rb_meraki.h"
 #include "rb_mac.h"
 #include "kafka.h"
+#include "global_config.h"
 
 #include <librd/rdlog.h>
 #include <assert.h>
@@ -113,6 +114,15 @@ void meraki_database_done(struct meraki_database *db) {
 /* 
     ENRICHMENT
 */
+
+int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize){
+	assert(opaque);
+	(void)config;
+	(void)err;
+	(void)errsize;
+    *opaque = &global_config.meraki;
+	return 0;
+}
 
 /* Data that should be in all kafka messages */
 struct meraki_transversal_data {

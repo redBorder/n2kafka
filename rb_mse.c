@@ -22,6 +22,7 @@
 #include "rb_mse.h"
 #include "rb_mac.h"
 #include "kafka.h"
+#include "global_config.h"
 
 #include <librd/rdlog.h>
 #include <assert.h>
@@ -65,6 +66,15 @@ struct mse_array {
 void init_mse_database(struct mse_database *db){
 	memset(db,0,sizeof(db));
 	pthread_rwlock_init(&db->rwlock,0);
+}
+
+int mse_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize){
+	assert(opaque);
+	(void)config;
+	(void)err;
+	(void)errsize;
+	*opaque = &global_config.mse;
+	return 0;
 }
 
 static int parse_sensor(json_t *sensor,json_t *streams_db){
