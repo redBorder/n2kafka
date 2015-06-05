@@ -65,8 +65,9 @@ static const struct registered_decoder{
 	const char *config_parameters;
 	listener_callback cb;
 	listener_opaque_creator opaque_creator;
+	listener_opaque_destructor opaque_destructor;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL},
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL},
 };
 
 static const struct registered_listener{
