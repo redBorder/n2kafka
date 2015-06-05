@@ -302,18 +302,45 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
 	}else if(!strcasecmp(key,CONFIG_MSE_SENSORS_KEY)){
-		char err[BUFSIZ];
-		parse_mse_array(&global_config.mse.database, value,err,sizeof(err));
+		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_MERAKI_SECRETS_KEY)){
-		char err[BUFSIZ];
-		parse_meraki_secrets(&global_config.meraki.database, value,err,sizeof(err));
-
+		// Already parsed
 	}else{
 		fatal("Unknown config key %s\n",key);
 	}
 }
 
 static void parse_config0(json_t *root){
+	json_error_t jerr;
+	json_t *mse=NULL,*meraki=NULL;
+	char err[BUFSIZ];
+
+	const int unpack_rc = json_unpack_ex(root,&jerr,0,"{s?o,s?o}",
+		CONFIG_MSE_SENSORS_KEY,&mse,
+		CONFIG_MERAKI_SECRETS_KEY,&meraki);
+
+	if(unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't parse config file: %s",jerr.text);
+		exit(-1);
+	}
+
+	if(mse) {
+		const int parse_rc = parse_mse_array(&global_config.mse.database, mse,err,
+			                                                                    sizeof(err));
+		if(0 != parse_rc) {
+			rdlog(LOG_ERR,"Can't parse MSE array: %s",err);
+			exit(-1);
+		}
+	}
+	if(meraki) {
+		const int parse_rc = parse_meraki_secrets(&global_config.meraki.database, meraki,err,
+			                                                                    sizeof(err));
+		if(0 != parse_rc) {
+			rdlog(LOG_ERR,"Can't parse meraki secrets: %s",err);
+			exit(-1);
+		}
+	}
+
 	const char *key;
 	json_t *value;
 	json_object_foreach(root, key, value)
