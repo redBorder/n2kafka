@@ -115,14 +115,70 @@ void meraki_database_done(struct meraki_database *db) {
     ENRICHMENT
 */
 
-int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize){
-	assert(opaque);
-	(void)config;
-	(void)err;
-	(void)errsize;
-    *opaque = &global_config.meraki;
-	return 0;
+#define MERAKI_OPAQUE_MAGIC 0x3A10AEA1C
+struct meraki_opaque{
+#ifdef MERAKI_OPAQUE_MAGIC
+	uint64_t magic;
+#endif
+	struct meraki_config *meraki_config;
+	json_t *per_listener_enrichment;
+};
+
+static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
+	assert(_opaque);
+
+	struct meraki_opaque *opaque = _opaque;
+	assert(MERAKI_OPAQUE_MAGIC == opaque->magic);
+	return opaque;
 }
+
+int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize) {
+	assert(config);
+	assert(opaque);
+	const json_t *enrichment=NULL;
+	json_error_t jerr;
+
+	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?o}","enrichment",&enrichment);
+	if(unpack_rc != 0) {
+		snprintf(err,errsize,"%s",jerr.text);
+		goto err;
+	}
+
+	*opaque = calloc(1,sizeof(struct meraki_opaque));
+	if(NULL == *opaque) {
+		snprintf(err,errsize,"%s","Can't allocate meraki opaque (out of memory?)");
+		goto err;
+	}
+
+	struct meraki_opaque *_opaque = *opaque;
+	_opaque->meraki_config = &global_config.meraki;
+	if(enrichment){
+		_opaque->per_listener_enrichment = json_deep_copy(enrichment);
+		if(NULL == _opaque->per_listener_enrichment) {
+			snprintf(err,errsize,"%s","Can't copy enrichment (out of memory?)");
+			goto err_free_opaque;
+		}
+	}
+
+	return 0;
+
+err_free_opaque:
+	free(*opaque);
+	*opaque = NULL;
+err:
+	return -1;
+}
+
+void meraki_opaque_destructor(void *_opaque) {
+	struct meraki_opaque *opaque = _opaque;
+#ifdef MERAKI_OPAQUE_MAGIC
+	assert(MERAKI_OPAQUE_MAGIC == opaque->magic);
+#endif
+	if(opaque->per_listener_enrichment)
+		json_decref(opaque->per_listener_enrichment);
+	free(opaque);
+}
+
 
 /* Data that should be in all kafka messages */
 struct meraki_transversal_data {
@@ -262,7 +318,28 @@ static void extract_meraki_observation(struct kafka_message_array *msgs,size_t i
 	save_kafka_msg_in_array(msgs,buf,strlen(buf),NULL);
 }
 
-static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_database *db) {
+static int json_object_update_missing_copy(json_t *dst, json_t *src) {
+	const char *key=NULL;
+	json_t *value = NULL;
+
+	if(!json_is_object(src) || !json_is_object(dst))
+		return -1;
+
+	json_object_foreach(src,key,value) {
+		if(NULL == json_object_get(dst,key)){
+			json_t *new_json = json_deep_copy(value);
+			json_object_set_new_nocheck(dst,key,new_json);
+		}
+	}
+
+	return 0;
+}
+
+static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_opaque *opaque) {
+	assert(json);
+	assert(opaque);
+
+	struct meraki_database *db = &opaque->meraki_config->database;
 	size_t i;
 	json_error_t jerr;
 	struct meraki_transversal_data meraki_transversal = {NULL,NULL};
@@ -307,6 +384,8 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 		return NULL;
 	}
 
+	json_object_update_missing_copy(meraki_transversal.enrichment,opaque->per_listener_enrichment);
+
 	const size_t msgs_size = json_array_size(observations);
 	struct kafka_message_array *msgs = new_kafka_message_array(msgs_size);
 
@@ -319,7 +398,7 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 }
 
 static struct kafka_message_array *process_meraki_buffer(const char *buffer,size_t bsize,
-                                 struct meraki_database *db){
+                                 struct meraki_opaque *opaque){
 	struct kafka_message_array *notifications = NULL;
 	assert(bsize);
 	assert(to);
@@ -332,7 +411,7 @@ static struct kafka_message_array *process_meraki_buffer(const char *buffer,size
 		goto err;
 	}
 
-	notifications = extract_meraki_data(json,db);
+	notifications = extract_meraki_data(json,opaque);
 	if(!notifications || notifications->size == 0) {
 		/* Nothing to do here */
 		free(notifications);
@@ -350,9 +429,9 @@ void meraki_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque)
 	assert(buffer);
 	assert(_listener_callback_opaque);
 
-	struct meraki_config *meraki_cfg = _listener_callback_opaque;
+	struct meraki_opaque *meraki_opaque = meraki_opaque_cast(_listener_callback_opaque);
 
-	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,&meraki_cfg->database);
+	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,meraki_opaque);
 
 	if(notifications){
 		send_array_to_kafka(notifications);

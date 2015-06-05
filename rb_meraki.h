@@ -40,6 +40,7 @@ static void init_meraki_database(struct meraki_database *db) {
 }
 
 int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
+void meraki_opaque_destructor(void *opaque);
 
 int parse_meraki_secrets(void *db, const struct json_t *meraki_object,char *err,size_t errsize);
 

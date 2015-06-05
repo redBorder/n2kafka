@@ -162,9 +162,15 @@ static void MerakiDecoder_valid_enrich() {
 	size_t i;
 	json_error_t jerr;
 	char err[BUFSIZ];
+	
 	struct meraki_config meraki_config;
 	memset(&meraki_config,0,sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
+
+	struct meraki_opaque meraki_opaque;
+	memset(&meraki_opaque,0,sizeof(meraki_opaque));
+	meraki_opaque.meraki_config = &meraki_config;
+	meraki_opaque.per_listener_enrichment = NULL;
 	
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,strlen(MERAKI_SECRETS_IN),0,&jerr);
 	assert(meraki_secrets_array);
@@ -174,7 +180,7 @@ static void MerakiDecoder_valid_enrich() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-		strlen(MERAKI_MSG),&meraki_config.database);
+		strlen(MERAKI_MSG),&meraki_opaque);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -313,11 +319,125 @@ static void testMSE10Decoder_empty_array() {
 
 #endif
 
+/*
+ *
+ */
+
+static const struct checkdata_value checks1_listener_enrich[] = {
+		{.key = "type", .value ="meraki"},
+		{.key = "wireless_station", .value = "55:55:55:55:55:55"},
+		{.key = "src", .value ="10.1.3.38"},
+		{.key = "client_os", .value = "Apple iOS"},
+		{.key = "client_mac_vendor", .value = "Apple"},
+		{.key = "client_mac", .value = "78:3a:84:11:22:33"},
+		{.key = "timestamp", .value ="1432020634"},
+		{.key = "client_rssi_num", .value = "0"},
+		{.key = "client_latlong", .value = "37.42205,-122.20766"},
+		{.key = "wireless_id", .value = "Trinity"},
+		{.key = "a", .value = "1"},
+		{.key = "b", .value = "c"}
+	};
+
+static const struct checkdata_value checks2_listener_enrich[] = {
+		{.key = "type", .value ="meraki"},
+		{.key = "wireless_station", .value = "55:55:55:55:55:55"},
+		{.key = "src", .value =NULL},
+		{.key = "client_os", .value = NULL},
+		{.key = "client_mac_vendor", .value = "Hon Hai/Foxconn"},
+		{.key = "client_mac", .value = "80:56:f2:44:55:66"},
+		{.key = "timestamp", .value ="1432020630"},
+		{.key = "client_rssi_num", .value = "13"},
+		{.key = "client_latlong", .value = "37.42201,-122.20751"},
+		{.key = "wireless_id", .value = NULL},
+		{.key = "a", .value = "1"},
+		{.key = "b", .value = "c"}
+	};
+
+static const struct checkdata_value checks3_listener_enrich[] = {
+		{.key = "type", .value ="meraki"},
+		{.key = "wireless_station", .value = "55:55:55:55:55:55"},
+		{.key = "src", .value ="10.1.3.41"},
+		{.key = "client_os", .value = "Apple iOS"},
+		{.key = "client_mac_vendor", .value = "Apple"},
+		{.key = "client_mac", .value = "3c:ab:8e:77:88:99"},
+		{.key = "timestamp", .value ="1432020634"},
+		{.key = "client_rssi_num", .value = "0"},
+		{.key = "client_latlong", .value = "37.42206,-122.20763"},
+		{.key = "wireless_id", .value = "Trinity"},
+		{.key = "a", .value = "1"},
+		{.key = "b", .value = "c"}
+	};
+
+static const struct checkdata check1_listener_enrich = {
+	.size = sizeof(checks1_listener_enrich)/sizeof(checks1_listener_enrich[0]), 
+	.checks = checks1_listener_enrich
+};
+
+static const struct checkdata check2_listener_enrich = {
+	.size = sizeof(checks2_listener_enrich)/sizeof(checks2_listener_enrich[0]), 
+	.checks = checks2_listener_enrich
+};
+
+static const struct checkdata check3_listener_enrich = {
+	.size = sizeof(checks3_listener_enrich)/sizeof(checks3_listener_enrich[0]), 
+	.checks = checks3_listener_enrich
+};
+
+static void MerakiDecoder_valid_enrich_per_listener() {
+	size_t i;
+	json_error_t jerr;
+	char err[BUFSIZ];
+	
+	struct meraki_config meraki_config;
+	memset(&meraki_config,0,sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
+
+	struct meraki_opaque *meraki_opaque;
+	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",0,NULL);
+	assert(config_str);
+	meraki_opaque_creator(config_str,(void **)&meraki_opaque,NULL,0);
+	assert(meraki_opaque->per_listener_enrichment);
+	// Workaround
+	meraki_opaque->meraki_config = &meraki_config;
+	
+	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,strlen(MERAKI_SECRETS_IN),0,&jerr);
+	assert(meraki_secrets_array);
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database, meraki_secrets_array,err,sizeof(err));
+	assert(parse_rc == 0);
+	json_decref(meraki_secrets_array);
+
+	char *aux = strdup(MERAKI_MSG);
+	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
+		strlen(MERAKI_MSG),meraki_opaque);
+	free(aux);
+
+	static const struct checkdata *checkdata_array[] = {
+		&check1_listener_enrich,&check2_listener_enrich,&check3_listener_enrich
+	};
+
+	static const struct checkdata_array checkdata = {
+		.checks = checkdata_array,
+		.size = sizeof(checkdata_array)/sizeof(checkdata_array[0]),
+	};
+
+	rb_assert_json_array(notifications_array->msgs,
+		notifications_array->count,&checkdata);
+
+	for(i=0;i<notifications_array->count;++i)
+		free(notifications_array->msgs[i].payload);
+	free(notifications_array);	
+
+	meraki_opaque_destructor(meraki_opaque);
+	json_decref(config_str);
+	meraki_database_done(&meraki_config.database);
+}
+
 int main() {
 	MerakiDecoder_valid_enrich();
 	// testMSE10Decoder_novalid_enrich();
 	// testMSE10Decoder_valid_enrich_multi();
 	// testMSE10Decoder_empty_array();
+	MerakiDecoder_valid_enrich_per_listener();
 	
 	return 0;
 }
