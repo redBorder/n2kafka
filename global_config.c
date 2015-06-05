@@ -64,7 +64,7 @@ static const struct registered_decoder{
 	const char *decode_as;
 	const char *config_parameters;
 	listener_callback cb;
-	void *opaque;
+	listener_opaque_creator opaque_creator;
 } registered_decoders[] = {
 	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL},
 };
@@ -216,7 +216,7 @@ static const struct registered_decoder *locate_registered_decoder(const char *de
 static void parse_listener(json_t *config){
 	char *proto = NULL,*decode_as="";
 	json_error_t json_err;
-	char err[512];
+	char err[BUFSIZ];
 
 	const int unpack_rc = json_unpack_ex(config,&json_err,0,"{s:s,s?s}",
 		"proto",&proto,"decode_as",&decode_as);
@@ -244,8 +244,18 @@ static void parse_listener(json_t *config){
 		exit(-1);
 	}
 
+	void *decoder_opaque = NULL;
+	if(decoder->opaque_creator) {
+		const int opaque_creator_rc = decoder->opaque_creator(config,&decoder_opaque,err,
+			sizeof(err));
+		if(opaque_creator_rc != 0) {
+			rdlog(LOG_ERR,"Can't create opaque for listener %s: %s",proto,err);
+			exit(-1);
+		}
+	}
+
 	struct listener *listener = (*_listener_creator)(config,
-		decoder->cb,decoder->opaque,err,sizeof(err));
+		decoder->cb,decoder_opaque,err,sizeof(err));
 
 	if( NULL == listener ) {
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
