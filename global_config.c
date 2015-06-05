@@ -69,10 +69,11 @@ static const struct registered_decoder{
 	const char *config_parameters;
 	listener_callback cb;
 	listener_opaque_creator opaque_creator;
+	listener_opaque_destructor opaque_destructor;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,"",dumb_decoder,NULL},
-	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator},
-	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator}
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL},
+	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,NULL},
+	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,NULL}
 };
 
 static const struct registered_listener{
