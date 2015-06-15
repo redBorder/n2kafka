@@ -350,22 +350,11 @@ static void shutdown_listeners(struct n2kafka_config *config){
 		shutdown_listener(i);
 }
 
-static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
+/// Close listener that are not valid anymore, and reload present ones
+static void reload_listeners_check_already_present(json_t *new_listeners,
+                                                  struct n2kafka_config *config) {
 	json_error_t jerr;
 	size_t _index = 0;
-	json_t *new_config_listener = NULL;
-
-	
-	json_t *listeners_array = NULL;
-	const int json_unpack_rc = json_unpack_ex(new_config,&jerr,0,
-		"{s:o}","listeners",&listeners_array);
-
-	if(json_unpack_rc != 0) {
-		rdlog(LOG_ERR,"Can't extract listeners array: %s",jerr.text);
-		return;
-	}
-
-	// Close listener that are not valid anymore, and reload present ones
 	struct listener *i = NULL,*aux=NULL;
 	LIST_FOREACH_SAFE(i,&config->listeners,entry,aux) {
 		const uint16_t i_port = i->port;
@@ -373,7 +362,7 @@ static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
 		json_t *found_value = NULL;
 		json_t *value = NULL;
 
-		json_array_foreach(listeners_array, _index, value) {
+		json_array_foreach(new_listeners, _index, value) {
 			int port = 0;
 
 			if(NULL != found_value)
@@ -393,9 +382,16 @@ static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
 			shutdown_listener(i);
 		}
 	}
+}
 
-	// Creating new declared listeners
-	json_array_foreach(listeners_array, _index, new_config_listener) {
+/// Creating new declared listeners
+static void reload_listeners_create_new_ones(json_t *new_listeners_array,
+                                   struct n2kafka_config *config) {
+	json_error_t jerr;
+	size_t _index = 0;
+	json_t *new_config_listener = 0;
+	struct listener *i = NULL;
+	json_array_foreach(new_listeners_array, _index, new_config_listener) {
 		uint16_t searched_port = 0;
 
 		struct listener *found_value = NULL;
@@ -419,6 +415,22 @@ static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
 			parse_listener(new_config_listener);
 		}
 	}
+}
+
+static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
+	json_error_t jerr;
+	
+	json_t *listeners_array = NULL;
+	const int json_unpack_rc = json_unpack_ex(new_config,&jerr,0,
+		"{s:o}","listeners",&listeners_array);
+
+	if(json_unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't extract listeners array: %s",jerr.text);
+		return;
+	}
+
+	reload_listeners_check_already_present(listeners_array,config);
+	reload_listeners_create_new_ones(listeners_array,config);
 }
 
 static void reload_decoders(struct n2kafka_config *config) {
