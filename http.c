@@ -317,12 +317,15 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 		return NULL;
 	}
 
+	rdlog(LOG_INFO,"Creating new HTTP listener on port %d",handler_args.port);
+
 	listener->create          = create_http_listener;
 	listener->callback_opaque = cb_opaque;
 	listener->callback        = cb;
 	listener->join            = break_http_loop;
 	listener->private         = priv;
 	listener->reload          = reload_listener_http;
+	listener->port            = handler_args.port;
 
 	return listener;
 }

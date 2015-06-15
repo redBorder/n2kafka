@@ -333,32 +333,116 @@ void parse_config(const char *config_file_path){
 	check_config();
 }
 
+static void shutdown_listener(struct listener *i) {
+	if (NULL == i->join) {
+		rblog(LOG_CRIT,"One listener does not have join() function.");
+	} else {
+		rblog(LOG_INFO,"Joining listener on port %d.",i->port);
+		i->join(i->private);
+	}
+
+	free(i);
+}
+
 static void shutdown_listeners(struct n2kafka_config *config){
 	struct listener *i = NULL,*aux=NULL;
-	LIST_FOREACH_SAFE(i,&config->listeners,entry,aux){
-		if (NULL == i->join) {
-			rblog(LOG_CRIT,"One listener does not have join() function.");
-		} else {
-			i->join(i->private);
+	LIST_FOREACH_SAFE(i,&config->listeners,entry,aux)
+		shutdown_listener(i);
+}
+
+static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
+	json_error_t jerr;
+	size_t _index = 0;
+	json_t *new_config_listener = NULL;
+
+	
+	json_t *listeners_array = NULL;
+	const int json_unpack_rc = json_unpack_ex(new_config,&jerr,0,
+		"{s:o}","listeners",&listeners_array);
+
+	if(json_unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't extract listeners array: %s",jerr.text);
+		return;
+	}
+
+	// Close listener that are not valid anymore, and reload present ones
+	struct listener *i = NULL,*aux=NULL;
+	LIST_FOREACH_SAFE(i,&config->listeners,entry,aux) {
+		const uint16_t i_port = i->port;
+
+		json_t *found_value = NULL;
+		json_t *value = NULL;
+
+		json_array_foreach(listeners_array, _index, value) {
+			int port = 0;
+
+			if(NULL != found_value)
+				break;
+
+			json_unpack_ex(value,&jerr,0,
+				"{s:i}","port",&port);
+
+			if(port > 0 && port == i_port)
+				found_value = value;
 		}
 
-		free(i);
+		if(found_value) {
+			i->reload(found_value,i->private);
+		} else {
+			LIST_REMOVE(i,entry);
+			shutdown_listener(i);
+		}
+	}
+
+	// Creating new declared listeners
+	json_array_foreach(listeners_array, _index, new_config_listener) {
+		uint16_t searched_port = 0;
+
+		struct listener *found_value = NULL;
+		i = NULL;
+
+		json_unpack_ex(new_config_listener,&jerr,0,
+			"{s:i}","port",&searched_port);
+
+		LIST_FOREACH(i,&config->listeners,entry) {
+			uint16_t port = i->port;
+
+			if(NULL != found_value)
+				break;
+
+			if(port > 0 && port == searched_port)
+				found_value = i;
+		}
+
+		if(NULL == found_value) {
+			// new listener, need to create
+			parse_listener(new_config_listener);
+		}
 	}
 }
 
-void reload_listeners(struct n2kafka_config *config){
-	struct listener *i = NULL;
-	LIST_FOREACH(i,&config->listeners,entry){
-		if (NULL == i->reload) {
-			rblog(LOG_WARNING,"One listener does not have reload() function.");
-		} else {
-			i->reload(NULL,i->private);
-		}
-	}
-}
-
-void reload_decoders(struct n2kafka_config *config) {
+static void reload_decoders(struct n2kafka_config *config) {
 	(void)config;
+}
+
+void reload_config(struct n2kafka_config *config) {
+	json_error_t jerr;
+
+	assert(config);
+	if(config->config_path==NULL){
+		rblog(LOG_ERR,"Have no config file to reload");
+		return;
+	}
+
+	json_t *new_config_file = json_load_file(config->config_path,0,&jerr);
+	if(NULL == new_config_file) {
+		rdlog(LOG_ERR,"Can't parse new config file: %s at line %d, column %d",
+			jerr.text,jerr.line,jerr.column);
+	}
+
+	reload_listeners(new_config_file,config);
+	reload_decoders(config);
+	json_decref(new_config_file);
 }
 
 void free_global_config(){
