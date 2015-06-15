@@ -1,6 +1,7 @@
 #include "rb_mse.c"
 
 #include "rb_json_tests.c"
+#include "rb_mse_tests.h"
 
 static const char MSE10_ASSOC[] =
 	"{"
@@ -132,6 +133,7 @@ static const char MSE_ARRAY_MANY_IN[] = \
 
 	"]";
 
+static const char LISTENER_NULL_CONFIG[] = "{}";
 
 #if 0
 #define CHECKDATA_BASE(bytes,pkts) { \
@@ -154,44 +156,6 @@ static const char MSE_ARRAY_MANY_IN[] = \
 	{.key = "timestamp", .value="1382637021"}, \
 }
 #endif
-
-/// @TODO keep in sync with testMSE10Decoder
-static void testMSE10Decoder(const char *mse_array_str,const char *mse_input,void (*check_result)(struct mse_array *)){
-	char err[BUFSIZ];
-	json_error_t jerr;
-	size_t i;
-
-	struct mse_config mse_config;
-	memset(&mse_config,0,sizeof(mse_config));
-
-	// init_mse_database(&mse_config.database);
-	
-	struct mse_opaque *opaque = NULL;
-	json_t *listener_config = json_object();
-	const int opaque_creator_rc = mse_opaque_creator(listener_config,(void **)&opaque,err,sizeof(err));
-	assert(0==opaque_creator_rc);
-	json_decref(listener_config);
-	
-	json_t *mse_array = json_loads(mse_array_str,0,&jerr);
-	assert(mse_array);
-	const int parse_rc = parse_mse_array(&opaque->mse_config->database, mse_array,err,sizeof(err));
-	assert(parse_rc == 0);
-
-	char *aux = strdup(mse_input);
-	struct mse_array *notifications_array = process_mse_buffer(aux,
-		strlen(mse_input),opaque);
-
-	check_result(notifications_array);
-	
-	free(aux);
-	for(i=0;notifications_array && i<notifications_array->size;++i)
-		free(notifications_array->data[i].string);
-	
-	free(notifications_array);
-	mse_opaque_done((void **)&opaque);
-	free_valid_mse_database(&mse_config.database);
-	json_decref(mse_array);
-}
 
 static void checkMSE10Decoder_valid_enrich(struct mse_array *notifications_array) {
 	/* No database -> output == input */
@@ -219,7 +183,7 @@ static void checkMSE10Decoder_valid_enrich(struct mse_array *notifications_array
 }
 
 static void testMSE10Decoder_valid_enrich() {
-	testMSE10Decoder(MSE_ARRAY_IN,MSE10_ASSOC,checkMSE10Decoder_valid_enrich);
+	testMSE10Decoder(MSE_ARRAY_IN,LISTENER_NULL_CONFIG,MSE10_ASSOC,checkMSE10Decoder_valid_enrich);
 }
 
 static void checkMSE10Decoder_novalid_enrich(struct mse_array *notifications_array) {
@@ -230,7 +194,7 @@ static void checkMSE10Decoder_novalid_enrich(struct mse_array *notifications_arr
 }
 
 static void testMSE10Decoder_novalid_enrich() {
-	testMSE10Decoder(MSE_ARRAY_OUT,MSE10_ASSOC,checkMSE10Decoder_novalid_enrich);
+	testMSE10Decoder(MSE_ARRAY_OUT,LISTENER_NULL_CONFIG,MSE10_ASSOC,checkMSE10Decoder_novalid_enrich);
 }
 
 static void checkMSE10Decoder_multi(struct mse_array *notifications_array) {
@@ -279,7 +243,7 @@ static void checkMSE10Decoder_multi(struct mse_array *notifications_array) {
 
 /// @TODO use a for loop
 static void testMSE10Decoder_valid_enrich_multi() {
-	testMSE10Decoder(MSE_ARRAY_MANY_IN,MSE10_MANY,checkMSE10Decoder_multi);
+	testMSE10Decoder(MSE_ARRAY_MANY_IN,LISTENER_NULL_CONFIG,MSE10_MANY,checkMSE10Decoder_multi);
 }
 
 static void checkMSE10Decoder_empty_array(struct mse_array *notifications_array) {
@@ -288,7 +252,7 @@ static void checkMSE10Decoder_empty_array(struct mse_array *notifications_array)
 }
 
 static void testMSE10Decoder_empty_array() {
-	testMSE10Decoder(MSE_ARRAY_IN,MSE10_ZERO_NOTIFICATIONS,checkMSE10Decoder_empty_array);
+	testMSE10Decoder(MSE_ARRAY_IN,LISTENER_NULL_CONFIG,MSE10_ZERO_NOTIFICATIONS,checkMSE10Decoder_empty_array);
 }
 
 int main() {
