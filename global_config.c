@@ -69,11 +69,12 @@ static const struct registered_decoder{
 	const char *config_parameters;
 	listener_callback cb;
 	listener_opaque_creator opaque_creator;
+	listener_opaque_reload opaque_reload;
 	listener_opaque_destructor opaque_destructor;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL},
-	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,NULL},
-	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,NULL}
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL},
+	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,NULL,NULL},
+	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,NULL,NULL}
 };
 
 static const struct registered_listener{
@@ -528,7 +529,7 @@ static void reload_meraki_config(struct n2kafka_config *config) {
 	reload_decoder(config,CONFIG_MERAKI_SECRETS_KEY,&config->meraki.database,parse_meraki_secrets);
 }
 
-void reload_decoders(struct n2kafka_config *config) {
+static void reload_decoders(struct n2kafka_config *config) {
 	reload_mse_config(config);
 	reload_meraki_config(config);
 }
