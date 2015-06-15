@@ -275,6 +275,11 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	return h;
 }
 
+static void reload_listener_http(json_t *new_config __attribute__((unused)),
+                                       void *_private __attribute__((unused))){
+
+}
+
 static void break_http_loop(void *_h){
 	struct http_private *h = _h;
 	MHD_stop_daemon(h->d);
@@ -317,6 +322,7 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	listener->callback        = cb;
 	listener->join            = break_http_loop;
 	listener->private         = priv;
+	listener->reload          = reload_listener_http;
 
 	return listener;
 }

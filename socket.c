@@ -602,7 +602,7 @@ static void join_listener_socket(void *_private){
 	free(private);
 }
 
-static void reload_listener_socket(void *_private __attribute__((unused))){
+static void reload_listener_socket(json_t *new_config __attribute__((unused)),void *_private __attribute__((unused))){
 
 }
 

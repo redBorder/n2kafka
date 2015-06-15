@@ -352,7 +352,7 @@ void reload_listeners(struct n2kafka_config *config){
 		if (NULL == i->reload) {
 			rblog(LOG_WARNING,"One listener does not have reload() function.");
 		} else {
-			i->reload(i->private);
+			i->reload(NULL,i->private);
 		}
 	}
 }
