@@ -376,7 +376,7 @@ static void reload_listeners_check_already_present(json_t *new_listeners,
 		}
 
 		if(found_value) {
-			i->reload(found_value,i->private);
+			i->reload(found_value,i->cb.cb_opaque_reload,i->cb.cb_opaque,i->private);
 		} else {
 			LIST_REMOVE(i,entry);
 			shutdown_listener(i);

@@ -275,9 +275,9 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	return h;
 }
 
-static void reload_listener_http(json_t *new_config __attribute__((unused)),
-                                       void *_private __attribute__((unused))){
-
+static void reload_listener_http(json_t *new_config,listener_opaque_reload opaque_reload,
+                               void *cb_opaque, void *_private __attribute__((unused))) {
+	opaque_reload(new_config,cb_opaque);
 }
 
 static void break_http_loop(void *_h){
