@@ -394,6 +394,10 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 		if(db && !to->subscriptionName) {
 			rdlog(LOG_ERR,"Received MSE message with no subscription name. Discarding.");
 		}
+
+		if(db && opaque->per_listener_enrichment) {
+			enrich_mse_json(to->json,opaque->per_listener_enrichment);
+		}
 		
 		if(db && to->subscriptionName) {
 			enrichment = mse_database_entry_copy(to->subscriptionName,db);
