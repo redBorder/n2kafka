@@ -41,8 +41,9 @@ typedef void (*listener_join)(void *listener_private);
 typedef int (*listener_opaque_destructor)(void *opaque);
 // @TODO we need this callback to split data acquiring || data processing
 // typedef void (*data_process)(void *data_process_private,const char *buffer,size_t bsize);
-typedef void (*listener_reload)(void *listener_private);
+typedef void (*listener_reload)(struct json_t *new_config,void *listener_private);
 struct listener{
+    uint16_t port; // as listener ID
     void *private;
     void *callback_opaque;
     listener_callback callback;
@@ -95,7 +96,6 @@ void init_global_config();
 
 void parse_config(const char *config_file_path);
 
-void reload_listeners(struct n2kafka_config *config);
-void reload_decoders(struct n2kafka_config *config);
+void reload_config(struct n2kafka_config *config);
 
 void free_global_config();
