@@ -43,8 +43,12 @@ typedef void (*listener_reload)(struct json_t *new_config,void *listener_private
 struct listener{
     uint16_t port; // as listener ID
     void *private;
-    void *callback_opaque;
-    listener_callback callback;
+    
+    struct{
+        void *cb_opaque;
+        listener_callback callback;
+        listener_opaque_destructor cb_opaque_destructor;
+    }cb;
     listener_creator create;
     listener_join join;
     listener_reload reload;
