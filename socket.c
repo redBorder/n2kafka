@@ -603,8 +603,10 @@ static void join_listener_socket(void *_private){
 	free(private);
 }
 
-static void reload_listener_socket(json_t *new_config __attribute__((unused)),void *_private __attribute__((unused))){
-
+static void reload_listener_socket(json_t *new_config __attribute__((unused)),
+                                         listener_opaque_reload opaque_reload,
+                      void *cb_opaque,void *_private __attribute__((unused))) {
+	opaque_reload(new_config,cb_opaque);
 }
 
 struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque,char *err,size_t errsize){
@@ -666,12 +668,12 @@ struct listener *create_socket_listener(struct json_t *config,listener_callback 
 
 	rdlog(LOG_INFO,"Creating new %s listener on port %d",proto,priv->config.listen_port);
 
-	l->join    = join_listener_socket;
-	l->private = priv;
-	l->callback = priv->config.callback = callback;
-	l->callback_opaque = priv->config.callback_opaque = callback_opaque;
-	l->reload  = reload_listener_socket;
-	l->port    = priv->config.listen_port;
+	l->join         = join_listener_socket;
+	l->private      = priv;
+	l->cb.callback  = priv->config.callback = callback;
+	l->cb.cb_opaque = priv->config.callback_opaque = callback_opaque;
+	l->reload       = reload_listener_socket;
+	l->port         = priv->config.listen_port;
 
 	const int pcreate_rc = pthread_create(&priv->main_loop,NULL,
 		main_socket_loop,priv);
