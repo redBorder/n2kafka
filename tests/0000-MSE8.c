@@ -191,27 +191,52 @@ static const char MSE_ARRAY_OUT[] = \
 }
 #endif
 
-static void testMSE8Decoder_valid_enrich() {
-	const char *subscriptionName=NULL,*sensor_name=NULL;
-	json_int_t sensor_id=0;
-
-	json_error_t jerr;
+/// @TODO keep in sync with testMSE10Decoder
+static void testMSE8Decoder(const char *mse_array_str,const char *mse_input,void (*check_result)(struct mse_array *)){
 	char err[BUFSIZ];
+	json_error_t jerr;
+	size_t i;
+
 	struct mse_config mse_config;
 	memset(&mse_config,0,sizeof(mse_config));
+
 	// init_mse_database(&mse_config.database);
 	
-	json_t *mse_array = json_loadb(MSE_ARRAY_IN,strlen(MSE_ARRAY_IN),0,&jerr);
+	struct mse_opaque *opaque = NULL;
+	json_t *listener_config = json_object();
+	const int opaque_creator_rc = mse_opaque_creator(listener_config,(void **)&opaque,err,sizeof(err));
+	assert(0==opaque_creator_rc);
+	json_decref(listener_config);
+	
+	json_t *mse_array = json_loads(mse_array_str,0,&jerr);
 	assert(mse_array);
-	const int parse_rc = parse_mse_array(&mse_config.database, mse_array,err,sizeof(err));
+	const int parse_rc = parse_mse_array(&opaque->mse_config->database, mse_array,err,sizeof(err));
 	assert(parse_rc == 0);
 
-	char *aux = strdup(MSE8_PROBING);
+	char *aux = strdup(mse_input);
 	struct mse_array *notifications_array = process_mse_buffer(aux,
-		strlen(MSE8_PROBING),&mse_config.database);
+		strlen(mse_input),opaque);
 
+	check_result(notifications_array);
+	
+	free(aux);
+	for(i=0;notifications_array && i<notifications_array->size;++i)
+		free(notifications_array->data[i].string);
+	
+	free(notifications_array);
+	mse_opaque_done((void **)&opaque);
+	free_valid_mse_database(&mse_config.database);
+	json_decref(mse_array);
+}
+
+static void checkMSE8_valid_result(struct mse_array *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
+	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
+
+	const char *subscriptionName=NULL,*sensor_name=NULL;
+	json_int_t sensor_id=0;
+	json_error_t jerr;
 
 	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
 	assert(ret);
@@ -226,40 +251,22 @@ static void testMSE8Decoder_valid_enrich() {
 	assert(0==strcmp(subscriptionName,"MSE_SanCarlos"));
 	assert(0==strcmp(sensor_name,"MSE_testing"));
 	assert(255 == sensor_id);
-	
-	free(aux);
 	json_decref(ret);
-	free(notifications_array->data[0].string);
-	free(notifications_array);	
-	free_valid_mse_database(&mse_config.database);
-	json_decref(mse_array);
 }
 
-static void testMSE8Decoder_novalid_enrich() {
-	json_error_t jerr;
-	char err[BUFSIZ];
-	struct mse_config mse_config;
-	memset(&mse_config,0,sizeof(mse_config));
-	// init_mse_database(&mse_config.database);
-	
-	json_t *mse_array = json_loadb(MSE_ARRAY_OUT,strlen(MSE_ARRAY_OUT),0,&jerr);
-	assert(mse_array);
-	const int parse_rc = parse_mse_array(&mse_config.database, mse_array,err,sizeof(err));
-	assert(parse_rc == 0);
+static void testMSE8Decoder_valid_enrich() {
+	testMSE8Decoder(MSE_ARRAY_IN,MSE8_PROBING,checkMSE8_valid_result);
+}
 
-	char *aux = strdup(MSE8_PROBING);
-	struct mse_array *notifications_array = process_mse_buffer(aux,
-		strlen(MSE8_PROBING),&mse_config.database);
-
+static void checkMSE8_no_valid_result(struct mse_array *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
 	/* But invalid MSE => No string */
 	assert(notifications_array->data[0].string == NULL);
+}
 
-	free(aux);
-	free(notifications_array);	
-	free_valid_mse_database(&mse_config.database);
-	json_decref(mse_array);
+static void testMSE8Decoder_novalid_enrich() {
+	testMSE8Decoder(MSE_ARRAY_OUT,MSE8_PROBING,checkMSE8_no_valid_result);
 }
 
 int main() {

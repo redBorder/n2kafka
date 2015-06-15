@@ -41,4 +41,5 @@ struct mse_config {
 };
 
 int mse_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
+void mse_opaque_done(void **opaque);
 void mse_decode(char *buffer,size_t buf_size,void *listener_callback_opaque);

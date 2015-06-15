@@ -68,14 +68,70 @@ void init_mse_database(struct mse_database *db){
 	pthread_rwlock_init(&db->rwlock,0);
 }
 
-int mse_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize){
+#define MSE_OPAQUE_MAGIC 0xE0AEA1CE0AEA1CL
+struct mse_opaque {
+#ifdef MSE_OPAQUE_MAGIC
+	uint64_t magic;
+#endif
+
+	json_t *per_listener_enrichment;
+	struct mse_config *mse_config;
+};
+
+static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *config,char *err,size_t errsize) {
 	assert(opaque);
-	(void)config;
-	(void)err;
-	(void)errsize;
-	*opaque = &global_config.mse;
-	return 0;
+	assert(config);
+	assert(err);
+	json_error_t jerr;
+
+	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
+		"enrichment",&opaque->per_listener_enrichment);
+
+	if(0!=json_unpack_rc)
+		snprintf(err,errsize,"%s",jerr.text);
+	
+	return json_unpack_rc;
 }
+
+int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
+	assert(opaque);
+
+	struct mse_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
+	if(NULL == opaque) {
+		snprintf(err,errsize,"Can't alloc MSE opaque (out of memory?)");
+		return -1;
+	}
+
+#ifdef MSE_OPAQUE_MAGIC
+	opaque->magic = MSE_OPAQUE_MAGIC;
+#endif
+
+	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(
+		opaque,config,err,errsize);
+	if(per_listener_enrichment_rc != 0){
+		goto err;
+	}
+
+	/// @TODO move global_config to static allocated buffer
+	opaque->mse_config = &global_config.mse;
+
+	return 0;
+
+err:
+	free(opaque);
+	*_opaque = NULL;
+	return -1;
+}
+
+void mse_opaque_done(void **_opaque){
+	assert(_opaque);
+	assert(*_opaque);
+
+	struct mse_opaque *opaque = *_opaque;
+	if(opaque->per_listener_enrichment)
+		json_decref(opaque->per_listener_enrichment);
+}
+
 
 static int parse_sensor(json_t *sensor,json_t *streams_db){
 	json_error_t err;
@@ -307,7 +363,8 @@ static void enrich_mse_json(json_t *json,json_t *enrichment_data){
 }
 
 static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
-                                 struct mse_database *db){
+                                 struct mse_opaque *opaque){
+	struct mse_database *db = &opaque->mse_config->database;
 	struct mse_array *notifications = NULL;
 	size_t i;
 	assert(bsize);
@@ -383,9 +440,12 @@ err:
 
 void mse_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
 	size_t i;
-	struct mse_config *mse_cfg = _listener_callback_opaque;
+	struct mse_opaque *mse_opaque = _listener_callback_opaque;
+#ifdef MSE_OPAQUE_MAGIC
+	assert(MSE_OPAQUE_MAGIC == mse_opaque->magic);
+#endif
 
-	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,&mse_cfg->database);
+	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,mse_opaque);
 	free(buffer);
 
 	if(NULL == notifications)
