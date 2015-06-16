@@ -65,9 +65,10 @@ static const struct registered_decoder{
 	const char *config_parameters;
 	listener_callback cb;
 	listener_opaque_creator opaque_creator;
+	listener_opaque_reload opaque_reload;
 	listener_opaque_destructor opaque_destructor;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL},
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL},
 };
 
 static const struct registered_listener{
@@ -262,6 +263,9 @@ static void parse_listener(json_t *config){
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
 		exit(-1);
 	}
+
+	listener->cb.cb_opaque_destructor = decoder->opaque_destructor;
+	listener->cb.cb_opaque_reload = decoder->opaque_reload;
 
 	LIST_INSERT_HEAD(&global_config.listeners,listener,entry);
 }
