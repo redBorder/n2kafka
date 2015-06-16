@@ -280,7 +280,12 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 
 static void reload_listener_http(json_t *new_config,listener_opaque_reload opaque_reload,
                                void *cb_opaque, void *_private __attribute__((unused))) {
-	opaque_reload(new_config,cb_opaque);
+	if(opaque_reload){
+		rdlog(LOG_INFO,"Reloading opaque");
+		opaque_reload(new_config,cb_opaque);
+	} else {
+		rdlog(LOG_INFO,"Not reload opaque provided");
+	}
 }
 
 static void break_http_loop(void *_h){

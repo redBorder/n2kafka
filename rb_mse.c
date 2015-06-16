@@ -23,6 +23,7 @@
 #include "rb_mac.h"
 #include "kafka.h"
 #include "global_config.h"
+#include "rb_json.h"
 
 #include <librd/rdlog.h>
 #include <assert.h>
@@ -43,6 +44,7 @@ static const char MSE_DEVICE_ID_KEY[] = "deviceId";
 static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
 
 static const char CONFIG_MSE_SENSORS_KEY[] = "mse-sensors";
+static const char MSE_ENRICHMENT_KEY[] = "enrichment";
 
 /* 
     VALIDATING MSE
@@ -74,6 +76,7 @@ struct mse_opaque {
 	uint64_t magic;
 #endif
 
+	pthread_rwlock_t per_listener_enrichment_rwlock;
 	json_t *per_listener_enrichment;
 	struct mse_config *mse_config;
 };
@@ -85,7 +88,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *co
 	json_error_t jerr;
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
-		"enrichment",&opaque->per_listener_enrichment);
+		MSE_ENRICHMENT_KEY,&opaque->per_listener_enrichment);
 
 	if(0!=json_unpack_rc)
 		snprintf(err,errsize,"%s",jerr.text);
@@ -95,6 +98,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *co
 
 int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
 	assert(opaque);
+	char errbuf[BUFSIZ];
 
 	struct mse_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
@@ -106,10 +110,17 @@ int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
 	opaque->magic = MSE_OPAQUE_MAGIC;
 #endif
 
+	const int rwlock_init_rc = pthread_rwlock_init(&opaque->per_listener_enrichment_rwlock,NULL);
+	if(rwlock_init_rc != 0) {
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
+		goto _err;
+	}
+
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(
 		opaque,config,err,errsize);
 	if(per_listener_enrichment_rc != 0){
-		goto err;
+		goto err_rwlock;
 	}
 
 	/// @TODO move global_config to static allocated buffer
@@ -117,10 +128,43 @@ int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
 
 	return 0;
 
-err:
+err_rwlock:
+	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
+_err:
 	free(opaque);
 	*_opaque = NULL;
 	return -1;
+}
+
+int mse_opaque_reload(json_t *config,void *_opaque) {
+	struct mse_opaque *opaque = _opaque;
+	assert(opaque);
+	assert(config);
+#ifdef MSE_OPAQUE_MAGIC
+	assert(MSE_OPAQUE_MAGIC == opaque->magic);
+#endif
+
+	json_t *new_enrichment = NULL,*old_enrichment = opaque->per_listener_enrichment;
+	rdlog(LOG_INFO,"reloading with json %s",json_dumps(config,0));
+
+	json_error_t jerr;
+
+	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
+		MSE_ENRICHMENT_KEY,&new_enrichment);
+
+	if(unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't parse enrichment config: %s",jerr.text);
+		return -1;
+	}
+
+
+	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
+	opaque->per_listener_enrichment = new_enrichment;
+	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+
+	json_decref(old_enrichment);
+
+	return 0;
 }
 
 void mse_opaque_done(void **_opaque){
@@ -128,8 +172,13 @@ void mse_opaque_done(void **_opaque){
 	assert(*_opaque);
 
 	struct mse_opaque *opaque = *_opaque;
+#ifdef MSE_OPAQUE_MAGIC
+	assert(MSE_OPAQUE_MAGIC == opaque->magic);
+#endif
+	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
 	if(opaque->per_listener_enrichment)
 		json_decref(opaque->per_listener_enrichment);
+	free(opaque);
 }
 
 
@@ -139,7 +188,7 @@ static int parse_sensor(json_t *sensor,json_t *streams_db){
 	const json_t *enrichment=NULL;
 
 	const int unpack_rc = json_unpack_ex((json_t *)sensor,&err,0,
-		"{s:s,s?o}","stream",&stream,"enrichment",&enrichment);
+		"{s:s,s?o}","stream",&stream,MSE_ENRICHMENT_KEY,&enrichment);
 
 	if(unpack_rc != 0){
 		rdlog(LOG_ERR,"Can't parse sensor (%s): %s",json_dumps(sensor,0),err.text);
@@ -355,11 +404,11 @@ static struct mse_array *extract_mse_data(const char *buffer,json_t *json){
 	return mse_array;
 }
 
-static void enrich_mse_json(json_t *json,json_t *enrichment_data){
+static void enrich_mse_json(json_t *json, /* TODO const */ json_t *enrichment_data){
 	assert(json);
 	assert(enrichment_data);
 
-	json_object_update_missing(json,enrichment_data);
+	json_object_update_missing_copy(json,enrichment_data);
 }
 
 static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
@@ -394,11 +443,7 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 		if(db && !to->subscriptionName) {
 			rdlog(LOG_ERR,"Received MSE message with no subscription name. Discarding.");
 		}
-
-		if(db && opaque->per_listener_enrichment) {
-			enrich_mse_json(to->json,opaque->per_listener_enrichment);
-		}
-		
+	
 		if(db && to->subscriptionName) {
 			enrichment = mse_database_entry_copy(to->subscriptionName,db);
 			if(NULL == enrichment) {
@@ -407,6 +452,12 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 				memset(to,0,sizeof(to[0]));
 				continue;
 			}
+		}
+
+		if(db && opaque->per_listener_enrichment) {
+			pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
+			enrich_mse_json(to->json,opaque->per_listener_enrichment);
+			pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
 		}
 		
 		if(db && enrichment){

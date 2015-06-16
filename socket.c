@@ -606,7 +606,12 @@ static void join_listener_socket(void *_private){
 static void reload_listener_socket(json_t *new_config __attribute__((unused)),
                                          listener_opaque_reload opaque_reload,
                       void *cb_opaque,void *_private __attribute__((unused))) {
-	opaque_reload(new_config,cb_opaque);
+	if(opaque_reload){
+		rdlog(LOG_INFO,"Reloading opaque");
+		opaque_reload(new_config,cb_opaque);
+	} else {
+		rdlog(LOG_INFO,"Not reload opaque provided");
+	}
 }
 
 struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque,char *err,size_t errsize){

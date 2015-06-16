@@ -73,7 +73,8 @@ static const struct registered_decoder{
 	listener_opaque_destructor opaque_destructor;
 } registered_decoders[] = {
 	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL},
-	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,NULL,NULL},
+	// @TODO destructors
+	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,mse_opaque_reload,NULL},
 	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,NULL,NULL}
 };
 
@@ -272,6 +273,8 @@ static void parse_listener(json_t *config){
 		exit(-1);
 	}
 
+	listener->cb.cb_opaque_reload = decoder->opaque_reload;
+
 	LIST_INSERT_HEAD(&global_config.listeners,listener,entry);
 }
 
@@ -418,7 +421,8 @@ static void reload_listeners_check_already_present(json_t *new_listeners,
 				found_value = value;
 		}
 
-		if(found_value) {
+		if(found_value && i->reload) {
+			rdlog(LOG_INFO,"Reloading listener on port %d",i_port);
 			i->reload(found_value,i->cb.cb_opaque_reload,i->cb.cb_opaque,i->private);
 		} else {
 			LIST_REMOVE(i,entry);
