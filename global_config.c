@@ -343,6 +343,8 @@ static void shutdown_listener(struct listener *i) {
 	} else {
 		rblog(LOG_INFO,"Joining listener on port %d.",i->port);
 		i->join(i->private);
+		if(i->cb.cb_opaque_destructor)
+			i->cb.cb_opaque_destructor(i->cb.cb_opaque);
 	}
 
 	free(i);
