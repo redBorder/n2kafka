@@ -166,11 +166,11 @@ int mse_opaque_reload(json_t *config,void *_opaque) {
 	return 0;
 }
 
-void mse_opaque_done(void **_opaque){
+void mse_opaque_done(void *_opaque){
 	assert(_opaque);
 	assert(*_opaque);
 
-	struct mse_opaque *opaque = *_opaque;
+	struct mse_opaque *opaque = _opaque;
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
