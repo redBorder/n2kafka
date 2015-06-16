@@ -273,6 +273,7 @@ static void parse_listener(json_t *config){
 		exit(-1);
 	}
 
+	listener->cb.cb_opaque_destructor = decoder->opaque_destructor;
 	listener->cb.cb_opaque_reload = decoder->opaque_reload;
 
 	LIST_INSERT_HEAD(&global_config.listeners,listener,entry);
