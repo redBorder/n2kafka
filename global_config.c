@@ -75,7 +75,7 @@ static const struct registered_decoder{
 	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL},
 	// @TODO destructors
 	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,mse_opaque_reload,NULL},
-	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,NULL,NULL}
+	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,meraki_opaque_reload,NULL}
 };
 
 static const struct registered_listener{

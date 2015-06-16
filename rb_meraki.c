@@ -66,6 +66,7 @@ static const char MERAKI_LOCATION_KEY[] = "location";
 static const char MERAKI_LOCATION_LAT_KEY[] = "lat";
 static const char MERAKI_LOCATION_LNG_KEY[] = "lng";
 static const char MERAKI_CLIENT_LATLON_DESTINATION_KEY[] = "client_latlong";
+static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
 
 /* 
     VALIDATING MERAKI SECRET
@@ -120,6 +121,8 @@ struct meraki_opaque{
 #ifdef MERAKI_OPAQUE_MAGIC
 	uint64_t magic;
 #endif
+
+	pthread_rwlock_t per_listener_enrichment_rwlock;
 	struct meraki_config *meraki_config;
 	json_t *per_listener_enrichment;
 };
@@ -132,41 +135,90 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 	return opaque;
 }
 
-int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize) {
-	assert(config);
+static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t *config,char *err,size_t errsize) {
 	assert(opaque);
-	const json_t *enrichment=NULL;
+	assert(config);
+	assert(err);
 	json_error_t jerr;
 
-	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?o}","enrichment",&enrichment);
-	if(unpack_rc != 0) {
+	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
+		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment);
+
+	if(0!=json_unpack_rc)
 		snprintf(err,errsize,"%s",jerr.text);
-		goto err;
-	}
 
-	*opaque = calloc(1,sizeof(struct meraki_opaque));
-	if(NULL == *opaque) {
+	return json_unpack_rc;
+}
+
+int meraki_opaque_creator(struct json_t *config,void **_opaque,char *err,size_t errsize) {
+	assert(config);
+	assert(_opaque);
+	char errbuf[BUFSIZ];
+
+	struct meraki_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
+	if(NULL == opaque) {
 		snprintf(err,errsize,"%s","Can't allocate meraki opaque (out of memory?)");
-		goto err;
+		return -1;
 	}
 
-	struct meraki_opaque *_opaque = *opaque;
-	_opaque->meraki_config = &global_config.meraki;
-	if(enrichment){
-		_opaque->per_listener_enrichment = json_deep_copy(enrichment);
-		if(NULL == _opaque->per_listener_enrichment) {
-			snprintf(err,errsize,"%s","Can't copy enrichment (out of memory?)");
-			goto err_free_opaque;
-		}
+#ifdef MERAKI_OPAQUE_MAGIC
+	opaque->magic = MERAKI_OPAQUE_MAGIC;
+#endif
+
+	const int rwlock_init_rc = pthread_rwlock_init(&opaque->per_listener_enrichment_rwlock,NULL);
+	if(rwlock_init_rc != 0) {
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
+		goto _err;
 	}
+
+	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(
+		opaque,config,err,errsize);
+	if(per_listener_enrichment_rc != 0){
+		goto err_rwlock;
+	}
+
+	/// @TODO move global_config to static allocated buffer
+	opaque->meraki_config = &global_config.meraki;
 
 	return 0;
 
-err_free_opaque:
-	free(*opaque);
-	*opaque = NULL;
-err:
+err_rwlock:
+	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
+_err:
+	free(opaque);
+	*_opaque = NULL;
 	return -1;
+}
+
+int meraki_opaque_reload(json_t *config,void *_opaque) {
+	struct meraki_opaque *opaque = _opaque;
+	assert(opaque);
+	assert(config);
+#ifdef MSE_OPAQUE_MAGIC
+	assert(MSE_OPAQUE_MAGIC == opaque->magic);
+#endif
+
+	json_t *new_enrichment = NULL,*old_enrichment = opaque->per_listener_enrichment;
+	rdlog(LOG_INFO,"reloading with json %s",json_dumps(config,0));
+
+	json_error_t jerr;
+
+	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
+		MERAKI_ENRICHMENT_KEY,&new_enrichment);
+
+	if(unpack_rc != 0) {
+		rdlog(LOG_ERR,"Can't parse enrichment config: %s",jerr.text);
+		return -1;
+	}
+
+	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
+	opaque->per_listener_enrichment = new_enrichment;
+	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+
+	json_decref(old_enrichment);
+
+	return 0;
 }
 
 void meraki_opaque_destructor(void *_opaque) {
@@ -374,8 +426,16 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 
 	pthread_rwlock_rdlock(&db->rwlock);
 	json_t *enrichment_tmp = json_object_get(db->root,meraki_secret);
-	if(enrichment_tmp)
-		meraki_transversal.enrichment = json_deep_copy(enrichment_tmp);
+	if(enrichment_tmp){
+		pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
+		if(opaque->per_listener_enrichment)
+			meraki_transversal.enrichment = json_deep_copy(opaque->per_listener_enrichment);
+		pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+		if(meraki_transversal.enrichment)
+			json_object_update_missing_copy(meraki_transversal.enrichment,enrichment_tmp);
+		else
+			meraki_transversal.enrichment = json_deep_copy(enrichment_tmp);
+	}
 	pthread_rwlock_unlock(&db->rwlock);
 
 	if(NULL == meraki_transversal.enrichment) {
