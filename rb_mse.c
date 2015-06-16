@@ -145,7 +145,6 @@ int mse_opaque_reload(json_t *config,void *_opaque) {
 #endif
 
 	json_t *new_enrichment = NULL,*old_enrichment = opaque->per_listener_enrichment;
-	rdlog(LOG_INFO,"reloading with json %s",json_dumps(config,0));
 
 	json_error_t jerr;
 
