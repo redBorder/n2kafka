@@ -33,5 +33,8 @@ config.log
 config.log.old
 version.c
 
-#Binary
+# Tests
+tests/*.test
+
+# Binary
 n2kafka
