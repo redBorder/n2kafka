@@ -97,7 +97,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *co
 }
 
 int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
-	assert(opaque);
+	assert(_opaque);
 	char errbuf[BUFSIZ];
 
 	struct mse_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
@@ -168,7 +168,6 @@ int mse_opaque_reload(json_t *config,void *_opaque) {
 
 void mse_opaque_done(void *_opaque){
 	assert(_opaque);
-	assert(*_opaque);
 
 	struct mse_opaque *opaque = _opaque;
 #ifdef MSE_OPAQUE_MAGIC
@@ -416,7 +415,6 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 	struct mse_array *notifications = NULL;
 	size_t i;
 	assert(bsize);
-	assert(to);
 
 	json_error_t err;
 	json_t *json = json_loadb(buffer,bsize,0,&err);

@@ -460,7 +460,6 @@ static struct kafka_message_array *process_meraki_buffer(const char *buffer,size
                                  struct meraki_opaque *opaque){
 	struct kafka_message_array *notifications = NULL;
 	assert(bsize);
-	assert(to);
 
 	json_error_t err;
 	json_t *json = json_loadb(buffer,bsize,0,&err);

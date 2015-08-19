@@ -172,7 +172,7 @@ static int post_handle(void *_cls HTTP_UNUSED,
 						 void **ptr) {
 
 #ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == cls->magic);
+	assert(HTTP_PRIVATE_MAGIC == ((struct http_private *)_cls)->magic);
 #endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
