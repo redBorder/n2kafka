@@ -39,7 +39,7 @@ typedef struct listener* (*listener_creator)(struct json_t *config,
 typedef void (*listener_join)(void *listener_private);
 typedef int (*listener_opaque_creator)(struct json_t *config,void **opaque,char *err,size_t errsize);
 typedef int (*listener_opaque_reload)(struct json_t *config,void *opaque);
-typedef int (*listener_opaque_destructor)(void *opaque);
+typedef void (*listener_opaque_destructor)(void *opaque);
 // @TODO we need this callback to split data acquiring || data processing
 // typedef void (*data_process)(void *data_process_private,const char *buffer,size_t bsize);
 typedef void (*listener_reload)(struct json_t *new_config,listener_opaque_reload opaque_reload,
