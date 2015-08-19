@@ -113,7 +113,7 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 
-	h->callback(con_info->str.buf,con_info->str.used,h->callback_opaque);
+	h->callback(con_info->str.buf,con_info->str.used,NULL,h->callback_opaque);
 	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);

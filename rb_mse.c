@@ -490,7 +490,9 @@ err:
 	return notifications;
 }
 
-void mse_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
+void mse_decode(char *buffer,size_t buf_size,
+	                        const char *topic __attribute__((unused)),
+	                        void *_listener_callback_opaque) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
 #ifdef MSE_OPAQUE_MAGIC

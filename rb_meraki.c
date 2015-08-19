@@ -483,7 +483,9 @@ err:
 	return notifications;
 }
 
-void meraki_decode(char *buffer,size_t buf_size,void *_listener_callback_opaque){
+void meraki_decode(char *buffer,size_t buf_size,
+	            const char *topic __attribute__((unused)),
+	            void *_listener_callback_opaque) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 

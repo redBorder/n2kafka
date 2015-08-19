@@ -185,7 +185,8 @@ void send_array_to_kafka(struct kafka_message_array *msgs) {
 }
 
 
-void dumb_decoder(char *buffer,size_t buf_size,void *listener_callback_opaque){
+void dumb_decoder(char *buffer,size_t buf_size,const char *topic __attribute__((unused)),
+	                                                    void *listener_callback_opaque){
 	send_to_kafka(buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
 }
 
