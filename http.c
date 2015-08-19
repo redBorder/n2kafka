@@ -53,6 +53,7 @@ struct http_private{
 	uint64_t magic;
 #endif
 	struct MHD_Daemon *d;
+	int redborder_uri;
     listener_callback callback;
 	void *callback_opaque;
 };
@@ -162,7 +163,7 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
-static int post_handle(void *_cls HTTP_UNUSED,
+static int post_handle(void *_cls,
 						 struct MHD_Connection *connection,
 						 const char *url HTTP_UNUSED,
 						 const char *method,
@@ -170,9 +171,9 @@ static int post_handle(void *_cls HTTP_UNUSED,
 						 const char *upload_data,
 						 size_t *upload_data_size,
 						 void **ptr) {
-
+	struct http_private * cls = _cls;
 #ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == ((struct http_private *)_cls)->magic);
+	assert(HTTP_PRIVATE_MAGIC == cls->magic);
 #endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
@@ -184,6 +185,9 @@ static int post_handle(void *_cls HTTP_UNUSED,
 	}
 
 	if ( NULL == *ptr ) {
+		if (cls->redborder_uri) {
+			rdlog(LOG_INFO,"Using redborder URI!!");
+		}
 		*ptr = create_connection_info(STRING_INITIAL_SIZE);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if ( *upload_data_size > 0 ) {
@@ -204,6 +208,7 @@ struct http_loop_args {
 	const char *mode;
 	int port;
 	unsigned int num_threads;
+	int redborder_uri;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -242,6 +247,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 #endif
 	h->callback = callback;
 	h->callback_opaque = cb_opaque;
+	h->redborder_uri = args->redborder_uri;
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -303,9 +309,10 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	memset(&handler_args,0,sizeof(handler_args));
 	handler_args.num_threads = 1;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
-		"num_threads",&handler_args.num_threads);
+		"num_threads",&handler_args.num_threads,
+		"redborder_uri",&handler_args.redborder_uri);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
 		return NULL;
