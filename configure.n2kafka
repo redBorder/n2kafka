@@ -6,7 +6,6 @@ mkl_require socket
 mkl_require gitversion as GITVERSION
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
@@ -54,6 +53,8 @@ function checks {
     mkl_lib_check --static=-ljansson "libjansson" "" fail CC "-ljansson" \
        "#include <jansson.h>"
 
-    mkl_in_list "$*" "--disable-optimization" || mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
+    if [[ "x$WITHOUT_OPTIMIZATION" != "xy" ]]; then
+      mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
+    fi
 
 }
