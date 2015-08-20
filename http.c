@@ -56,6 +56,7 @@ struct http_private{
 	int redborder_uri;
     listener_callback callback;
 	void *callback_opaque;
+	json_t *uuid_enrichment;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -163,9 +164,23 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
+static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
+								const char **uuid, const char **topic) {
+	assert(url);
+	assert(dst);
+	assert(uuid);
+	assert(topic);
+
+	char *aux=NULL;
+	memcpy(dst,url,url_len+1);
+
+	*uuid = strtok_r(dst,"/",&aux);
+	*topic = strtok_r(NULL,"/",&aux);
+}
+
 static int post_handle(void *_cls,
 						 struct MHD_Connection *connection,
-						 const char *url HTTP_UNUSED,
+						 const char *url,
 						 const char *method,
 						 const char *version HTTP_UNUSED,
 						 const char *upload_data,
@@ -186,7 +201,18 @@ static int post_handle(void *_cls,
 
 	if ( NULL == *ptr ) {
 		if (cls->redborder_uri) {
-			rdlog(LOG_INFO,"Using redborder URI!!");
+			const char *uuid=NULL,*topic=NULL;
+			const size_t url_len = strlen(url);
+			char my_url[url_len+1];
+			extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
+
+			rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s'",uuid,topic);
+
+			const json_t *uuid_enrichment = json_object_get(cls->uuid_enrichment,uuid);
+			if(!uuid_enrichment) {
+				rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
+				return MHD_NO;
+			}
 		}
 		*ptr = create_connection_info(STRING_INITIAL_SIZE);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
@@ -209,6 +235,7 @@ struct http_loop_args {
 	int port;
 	unsigned int num_threads;
 	int redborder_uri;
+	json_t *uuid_enrichment;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -248,6 +275,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->callback = callback;
 	h->callback_opaque = cb_opaque;
 	h->redborder_uri = args->redborder_uri;
+	h->uuid_enrichment = args->uuid_enrichment;
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -309,10 +337,11 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	memset(&handler_args,0,sizeof(handler_args));
 	handler_args.num_threads = 1;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b,s:O}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
 		"num_threads",&handler_args.num_threads,
-		"redborder_uri",&handler_args.redborder_uri);
+		"redborder_uri",&handler_args.redborder_uri,
+		"uuid_enrichment",&handler_args.uuid_enrichment);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
 		return NULL;
