@@ -56,7 +56,6 @@ struct http_private{
 	int redborder_uri;
     listener_callback callback;
 	void *callback_opaque;
-	json_t *uuid_enrichment;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -208,9 +207,15 @@ static int post_handle(void *_cls,
 
 			rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s'",uuid,topic);
 
-			const json_t *uuid_enrichment = json_object_get(cls->uuid_enrichment,uuid);
-			if(!uuid_enrichment) {
+			const int valid_uuid = rb_http2k_validate_uuid(&global_config.rb.database,uuid);
+			if(!valid_uuid) {
 				rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
+				return MHD_NO;
+			}
+
+			const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
+			if(!valid_topic) {
+				rdlog(LOG_WARNING,"Received topic %s. Closing connection.",uuid);
 				return MHD_NO;
 			}
 			/// @TODO check uuid url/message equality
@@ -236,7 +241,6 @@ struct http_loop_args {
 	int port;
 	unsigned int num_threads;
 	int redborder_uri;
-	json_t *uuid_enrichment;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -276,7 +280,6 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->callback = callback;
 	h->callback_opaque = cb_opaque;
 	h->redborder_uri = args->redborder_uri;
-	h->uuid_enrichment = args->uuid_enrichment;
 
 	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
 		h->d = MHD_start_daemon(flags,
@@ -338,11 +341,10 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	memset(&handler_args,0,sizeof(handler_args));
 	handler_args.num_threads = 1;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b,s:O}",
+	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
 		"num_threads",&handler_args.num_threads,
-		"redborder_uri",&handler_args.redborder_uri,
-		"uuid_enrichment",&handler_args.uuid_enrichment);
+		"redborder_uri",&handler_args.redborder_uri);
 	if( unpack_rc != 0 /* Failure */ ) {
 		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
 		return NULL;

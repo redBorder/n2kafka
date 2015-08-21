@@ -186,6 +186,24 @@ void free_valid_rb_database(struct rb_database *db){
 		json_decref(db->uuid_enrichment);
 }
 
+/*
+	PRE-PROCESSING VALIDATIONS
+*/
+
+int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid) {
+	pthread_rwlock_rdlock(&db->rwlock);
+	const int ret = NULL != json_object_get(db->uuid_enrichment,uuid);
+	pthread_rwlock_unlock(&db->rwlock);
+
+	return ret;
+}
+
+int rb_http2k_validate_topic(struct rb_database *db __attribute__((unused)),
+				const char *topic __attribute__((unused))) {
+	return 1;
+}
+
+
 /* 
     ENRICHMENT
 */

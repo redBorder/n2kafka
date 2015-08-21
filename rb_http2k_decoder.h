@@ -44,3 +44,7 @@ int rb_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsi
 int rb_opaque_reload(struct json_t *config,void *opaque);
 void rb_opaque_done(void *opaque);
 void rb_decode(char *buffer,size_t buf_size,const char *topic,void *listener_callback_opaque);
+
+/// @TODO make more generic
+int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid);
+int rb_http2k_validate_topic(struct rb_database *db,const char *topic);
