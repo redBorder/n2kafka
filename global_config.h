@@ -22,6 +22,7 @@
 
 #include "rb_mse.h"
 #include "rb_meraki.h"
+#include "rb_http2k_decoder.h"
 #include "kafka.h"
 #include "in_addr_list.h"
 
@@ -82,6 +83,7 @@ struct n2kafka_config{
 
     struct mse_config mse;
     struct meraki_config meraki;
+    struct rb_config rb;
 
     char *response;
     int response_len;

@@ -51,6 +51,7 @@
 #define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_MSE_SENSORS_KEY "mse-sensors"
 #define CONFIG_MERAKI_SECRETS_KEY "meraki-secrets"
+#define CONFIG_RBHTTP2K_CONFIG "rb_http2k_config"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
 
@@ -61,6 +62,7 @@
 #define CONFIG_DECODE_AS_NULL           ""
 #define CONFIG_DECODE_AS_MSE            "MSE"
 #define CONFIG_DECODE_AS_MERAKI         "meraki"
+#define CONFIG_DECODE_AS_RBHTTP2K       "rb_http2k"
 
 struct n2kafka_config global_config;
 
@@ -77,7 +79,9 @@ static const struct registered_decoder{
 	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,mse_opaque_reload,
 	                                                                            mse_opaque_done},
 	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,
-	                                         meraki_opaque_reload,meraki_opaque_destructor}
+	                                         meraki_opaque_reload,meraki_opaque_destructor},
+	{CONFIG_DECODE_AS_RBHTTP2K,CONFIG_RBHTTP2K_CONFIG,rb_decode,rb_opaque_creator,
+	                                         rb_opaque_reload,rb_opaque_done}
 };
 
 static const struct registered_listener{
@@ -308,9 +312,12 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		parse_rdkafka_config_json(key,value);
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
+	/// @TODO replace next entries by a for in decoders
 	}else if(!strcasecmp(key,CONFIG_MSE_SENSORS_KEY)){
 		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_MERAKI_SECRETS_KEY)){
+		// Already parsed
+	}else if(!strcasecmp(key,CONFIG_RBHTTP2K_CONFIG)){
 		// Already parsed
 	}else{
 		fatal("Unknown config key %s\n",key);
@@ -319,12 +326,14 @@ static void parse_config_keyval(const char *key,const json_t *value){
 
 static void parse_config0(json_t *root){
 	json_error_t jerr;
-	json_t *mse=NULL,*meraki=NULL;
+	json_t *mse=NULL,*meraki=NULL,*rb_http2k=NULL;
 	char err[BUFSIZ];
 
-	const int unpack_rc = json_unpack_ex(root,&jerr,0,"{s?o,s?o}",
+	/// @TODO replace next unpack by a for loop in decoders struct
+	const int unpack_rc = json_unpack_ex(root,&jerr,0,"{s?o,s?o,s?o}",
 		CONFIG_MSE_SENSORS_KEY,&mse,
-		CONFIG_MERAKI_SECRETS_KEY,&meraki);
+		CONFIG_MERAKI_SECRETS_KEY,&meraki,
+		CONFIG_RBHTTP2K_CONFIG,&rb_http2k);
 
 	if(unpack_rc != 0) {
 		rdlog(LOG_ERR,"Can't parse config file: %s",jerr.text);
@@ -344,6 +353,14 @@ static void parse_config0(json_t *root){
 			                                                                    sizeof(err));
 		if(0 != parse_rc) {
 			rdlog(LOG_ERR,"Can't parse meraki secrets: %s",err);
+			exit(-1);
+		}
+	}
+	if(rb_http2k) {
+		const int parse_rc = parse_rb_config(&global_config.rb.database, rb_http2k,err,
+			                                                                    sizeof(err));
+		if(0 != parse_rc) {
+			rdlog(LOG_ERR,"Can't parse rb_http2k config: %s",err);
 			exit(-1);
 		}
 	}
