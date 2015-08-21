@@ -177,6 +177,30 @@ static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
 	*topic = strtok_r(NULL,"/",&aux);
 }
 
+static int rb_http2k_validation(const char *url,struct rb_database *rb_database) {
+	const char *uuid=NULL,*topic=NULL;
+	const size_t url_len = strlen(url);
+	char my_url[url_len+1];
+	extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
+
+	rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s'",uuid,topic);
+
+	/// @TODO check uuid url/message equality
+	const int valid_uuid = rb_http2k_validate_uuid(rb_database,uuid);
+	if(!valid_uuid) {
+		rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
+		return MHD_NO;
+	}
+
+	const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
+	if(!valid_topic) {
+		rdlog(LOG_WARNING,"Received topic %s. Closing connection.",uuid);
+		return MHD_NO;
+	}
+
+	return MHD_YES;
+}
+
 static int post_handle(void *_cls,
 						 struct MHD_Connection *connection,
 						 const char *url,
@@ -199,26 +223,10 @@ static int post_handle(void *_cls,
 	}
 
 	if ( NULL == *ptr ) {
-		if (cls->redborder_uri) {
-			const char *uuid=NULL,*topic=NULL;
-			const size_t url_len = strlen(url);
-			char my_url[url_len+1];
-			extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
+		if (cls->redborder_uri 
+			&& MHD_NO == rb_http2k_validation(url,&global_config.rb.database)) {
 
-			rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s'",uuid,topic);
-
-			const int valid_uuid = rb_http2k_validate_uuid(&global_config.rb.database,uuid);
-			if(!valid_uuid) {
-				rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
-				return MHD_NO;
-			}
-
-			const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
-			if(!valid_topic) {
-				rdlog(LOG_WARNING,"Received topic %s. Closing connection.",uuid);
-				return MHD_NO;
-			}
-			/// @TODO check uuid url/message equality
+			return MHD_NO;
 		}
 		*ptr = create_connection_info(STRING_INITIAL_SIZE);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
