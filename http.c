@@ -213,6 +213,7 @@ static int post_handle(void *_cls,
 				rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
 				return MHD_NO;
 			}
+			/// @TODO check uuid url/message equality
 		}
 		*ptr = create_connection_info(STRING_INITIAL_SIZE);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
