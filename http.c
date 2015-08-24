@@ -136,13 +136,18 @@ static struct conn_info *create_connection_info(size_t string_size) {
 }
 
 static int send_buffered_response(struct MHD_Connection *con,size_t sz,
-                   char *buf,int buf_kind,unsigned int response_code) {
+                   char *buf,int buf_kind,unsigned int response_code,
+                   int (*custom_response)(struct MHD_Response *)) {
 	struct MHD_Response *http_response = MHD_create_response_from_buffer(
 		sz,buf,buf_kind);
 
 	if(NULL == http_response) {
 		rdlog(LOG_CRIT,"Can't create HTTP response");
 		return MHD_NO;
+	}
+
+	if(custom_response) {
+		custom_response(http_response);
 	}
 
 	const int ret = MHD_queue_response(con,response_code,http_response);
@@ -152,7 +157,17 @@ static int send_buffered_response(struct MHD_Connection *con,size_t sz,
 
 static int send_http_ok(struct MHD_Connection *connection) {
 	return send_buffered_response(connection,0,NULL,MHD_RESPMEM_PERSISTENT,
-		MHD_HTTP_OK);
+		MHD_HTTP_OK,NULL);
+}
+
+static int customize_method_not_allowed_response(struct MHD_Response *response) {
+	return MHD_add_response_header(response, "Allow", "POST");
+}
+
+
+static int send_http_method_not_allowed(struct MHD_Connection *connection) {
+	return send_buffered_response(connection,0,NULL,MHD_RESPMEM_PERSISTENT,
+		MHD_HTTP_METHOD_NOT_ALLOWED,customize_method_not_allowed_response);
 }
 
 static size_t append_http_data_to_connection_data(struct conn_info *con_info,
@@ -222,7 +237,7 @@ static int post_handle(void *_cls,
 #endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
-		return MHD_NO; /* unexpected method */
+		return send_http_method_not_allowed(connection);
 	}
 
 	if ( NULL == ptr) {
