@@ -170,6 +170,16 @@ static int send_http_method_not_allowed(struct MHD_Connection *connection) {
 		MHD_HTTP_METHOD_NOT_ALLOWED,customize_method_not_allowed_response);
 }
 
+static int send_http_forbidden(struct MHD_Connection *connection) {
+	return send_buffered_response(connection,0,NULL,MHD_RESPMEM_PERSISTENT,
+		MHD_HTTP_FORBIDDEN,NULL);
+}
+
+static int send_http_unauthorized(struct MHD_Connection *connection) {
+	return send_buffered_response(connection,0,NULL,MHD_RESPMEM_PERSISTENT,
+		MHD_HTTP_UNAUTHORIZED,NULL);
+}
+
 static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 												  const char *upload_data,
 												  size_t upload_data_size) {
@@ -199,7 +209,8 @@ static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
 	*topic = strtok_r(NULL,"/",&aux);
 }
 
-static int rb_http2k_validation(const char *url,struct rb_database *rb_database) {
+static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
+							struct rb_database *rb_database, int *allok) {
 	const char *uuid=NULL,*topic=NULL;
 	const size_t url_len = strlen(url);
 	char my_url[url_len+1];
@@ -210,15 +221,19 @@ static int rb_http2k_validation(const char *url,struct rb_database *rb_database)
 	/// @TODO check uuid url/message equality
 	const int valid_uuid = rb_http2k_validate_uuid(rb_database,uuid);
 	if(!valid_uuid) {
-		rdlog(LOG_WARNING,"Received uuid %s. Closing connection.",uuid);
-		return MHD_NO;
+		rdlog(LOG_WARNING,"Received invalid uuid %s. Closing connection.",uuid);
+		*allok = 0;
+		return send_http_unauthorized(con_info);
 	}
 
 	const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
 	if(!valid_topic) {
 		rdlog(LOG_WARNING,"Received topic %s. Closing connection.",uuid);
-		return MHD_NO;
+		*allok = 0;
+		return send_http_forbidden(con_info);
 	}
+
+	*allok = 1;
 
 	return MHD_YES;
 }
@@ -237,6 +252,8 @@ static int post_handle(void *_cls,
 #endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
+		rdlog(LOG_WARNING,"Received invalid method %s. "
+			"Returning METHOD NOT ALLOWED.",method);
 		return send_http_method_not_allowed(connection);
 	}
 
@@ -245,10 +262,13 @@ static int post_handle(void *_cls,
 	}
 
 	if ( NULL == *ptr ) {
-		if (cls->redborder_uri 
-			&& MHD_NO == rb_http2k_validation(url,&global_config.rb.database)) {
-
-			return MHD_NO;
+		if (cls->redborder_uri) {
+			int aok = 1;
+			const int rc = rb_http2k_validation(connection,url,
+				&global_config.rb.database,&aok);
+			if(0 == aok) {
+				return rc;
+			}
 		}
 		*ptr = create_connection_info(STRING_INITIAL_SIZE);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
