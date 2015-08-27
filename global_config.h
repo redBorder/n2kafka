@@ -77,7 +77,7 @@ struct n2kafka_config{
     char *brokers;
 
     rd_kafka_conf_t *kafka_conf;
-    rd_kafka_topic_conf_t *kafka_topic_conf;
+    rd_kafka_topic_conf_t *kafka_topic_conf;rd_kafka_t *rk;
 
     in_addr_list_t *blacklist;
 

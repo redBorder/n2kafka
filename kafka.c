@@ -29,7 +29,6 @@
 #include <errno.h>
 #include <unistd.h>
 
-static rd_kafka_t *rk = NULL;
 static rd_kafka_topic_t *rkt = NULL;
 
 #define ERROR_BUFFER_SIZE   256
@@ -77,21 +76,21 @@ void init_rdkafka(){
 	}
 
 	rd_kafka_conf_set_dr_cb(global_config.kafka_conf, msg_delivered);
-	rk = rd_kafka_new(RD_KAFKA_PRODUCER,global_config.kafka_conf,errstr,RDKAFKA_ERRSTR_SIZE);
+	global_config.rk = rd_kafka_new(RD_KAFKA_PRODUCER,global_config.kafka_conf,errstr,RDKAFKA_ERRSTR_SIZE);
 
-	if(!rk){
+	if(!global_config.rk){
 		fatal("%% Failed to create new producer: %s\n",errstr);
 	}
 
 	if(global_config.debug){
-		rd_kafka_set_log_level (rk, LOG_DEBUG);
+		rd_kafka_set_log_level (global_config.rk, LOG_DEBUG);
 	}
 
 	if(global_config.brokers == NULL){
 		fatal("%% No brokers specified\n");
 	}
 
-	const int brokers_res = rd_kafka_brokers_add(rk,global_config.brokers);
+	const int brokers_res = rd_kafka_brokers_add(global_config.rk,global_config.brokers);
 	if(brokers_res==0){
 		fatal( "%% No valid brokers specified\n");
 	}
@@ -101,7 +100,8 @@ void init_rdkafka(){
 	}
 
 	rd_kafka_topic_conf_set_partitioner_cb(global_config.kafka_topic_conf, rb_client_mac_partitioner);
-	rkt = rd_kafka_topic_new(rk, global_config.topic, global_config.kafka_topic_conf);
+	rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
+	rkt = rd_kafka_topic_new(global_config.rk, global_config.topic, myconf);
 	if(rkt == NULL){
 		fatal("%% Cannot create kafka topic\n");
 	}
@@ -111,7 +111,7 @@ void init_rdkafka(){
 }
 
 static void flush_kafka0(int timeout_ms){
-	rd_kafka_poll(rk,timeout_ms);
+	rd_kafka_poll(global_config.rk,timeout_ms);
 }
 
 void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
@@ -126,7 +126,7 @@ void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 			break;
 
 		if(ENOBUFS==errno && !(retried++)){
-			rd_kafka_poll(rk,5); // backpressure
+			rd_kafka_poll(global_config.rk,5); // backpressure
 		}else{
 			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
 			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
@@ -195,10 +195,10 @@ void flush_kafka(){
 }
 
 void kafka_poll(int timeout_ms){
-	rd_kafka_poll(rk,timeout_ms);
+	rd_kafka_poll(global_config.rk,timeout_ms);
 }
 
 void stop_rdkafka(){
-	rd_kafka_destroy(rk);
+	rd_kafka_destroy(global_config.rk);
 	rd_kafka_topic_destroy(rkt);
 }
