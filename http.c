@@ -228,7 +228,7 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 
 	const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
 	if(!valid_topic) {
-		rdlog(LOG_WARNING,"Received topic %s. Closing connection.",uuid);
+		rdlog(LOG_WARNING,"Received topic %s. Closing connection.",topic);
 		*allok = 0;
 		return send_http_forbidden(con_info);
 	}

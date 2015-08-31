@@ -22,6 +22,11 @@
 				"i":null
 			}
 
-		}
+		},
+
+		"topics" : [
+			"blabla",
+			"bleble"
+		]
 	}
 }

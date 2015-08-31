@@ -20,17 +20,45 @@
 
 #pragma once
 
+#include <librdkafka/rdkafka.h>
+#include <librd/rdavl.h>
+#include <librd/rdsysqueue.h>
+
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
 
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 
+#ifndef NDEBUG
+#define TOPIC_S_MAGIC 0x01CA1C01CA1C01CAL
+#endif
+
+struct topic_s{
+#ifdef TOPIC_S_MAGIC
+	uint64_t magic;
+#endif
+	rd_kafka_topic_t *rkt;
+	char *topic_name;
+
+	rd_avl_node_t avl_node;
+	TAILQ_ENTRY(topic_s) list_node;
+};
+
+typedef rd_avl_t topics_db;
+typedef TAILQ_HEAD(,topic_s) topics_list;
+
 struct json_t;
 struct rb_database {
 	/* Private */
 	pthread_rwlock_t rwlock;
 	struct json_t *uuid_enrichment;
+	struct {
+		topics_db *topics;
+		topics_list list;
+	} topics;
+
+	void *topics_memory;
 };
 void init_rb_database(struct rb_database *db);
 int parse_rb_config(void *_db,const struct json_t *rb_config,char *err,size_t err_size);
