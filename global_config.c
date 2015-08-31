@@ -296,11 +296,12 @@ static void parse_listeners_array(const char *key,const json_t *array){
 	}
 }
 
+/// @TODO use json_unpack_ex
 static void parse_config_keyval(const char *key,const json_t *value){
 	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
-		global_config.topic = strdup(assert_json_string(key,value));
+		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_BROKERS_KEY)){
-		global_config.brokers = strdup(assert_json_string(key,value));
+		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_LISTENERS_ARRAY)){
 		parse_listeners_array(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
@@ -308,8 +309,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_RESPONSE_KEY)){
 		parse_response(key,value);
 	}else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))){
-		// if starts with
-		parse_rdkafka_config_json(key,value);
+		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_BLACKLIST_KEY)){
 		parse_blacklist(key,value);
 	/// @TODO replace next entries by a for in decoders
@@ -324,10 +324,32 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}
 }
 
+static void parse_rdkafka_config_keyval(const char *key,const json_t *value) {
+	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
+		global_config.topic = strdup(assert_json_string(key,value));
+	} else if(!strcasecmp(key,CONFIG_BROKERS_KEY)) {
+		global_config.brokers = strdup(assert_json_string(key,value));
+	} else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))) {
+		// if starts with
+		parse_rdkafka_config_json(key,value);
+	}
+}
+
 static void parse_config0(json_t *root){
 	json_error_t jerr;
 	json_t *mse=NULL,*meraki=NULL,*rb_http2k=NULL;
+	const char *key;
+	json_t *value;
 	char err[BUFSIZ];
+
+	/// Need to parse kafka stuff before
+	json_object_foreach(root, key, value) {
+		parse_rdkafka_config_keyval(key,value);
+	}
+
+	if(!only_stdout_output()) {
+		init_rdkafka();
+	}
 
 	/// @TODO replace next unpack by a for loop in decoders struct
 	const int unpack_rc = json_unpack_ex(root,&jerr,0,"{s?o,s?o,s?o}",
@@ -365,8 +387,6 @@ static void parse_config0(json_t *root){
 		}
 	}
 
-	const char *key;
-	json_t *value;
 	json_object_foreach(root, key, value)
 		parse_config_keyval(key,value);
 }

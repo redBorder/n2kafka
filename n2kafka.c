@@ -89,9 +89,6 @@ int main(int argc,char *argv[]){
 	signal(SIGINT,shutdown_process);
 	signal(SIGHUP,sighup_proc);
 
-	if(!only_stdout_output())
-		init_rdkafka();
-
 	while(!do_shutdown){
 		kafka_poll(1000 /* ms */);
 		if(do_reload){
