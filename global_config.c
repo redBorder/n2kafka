@@ -611,6 +611,8 @@ void free_global_config(){
 		stop_rdkafka();
 	}
 
+	free(global_config.config_path);
+
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);
