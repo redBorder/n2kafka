@@ -353,9 +353,22 @@ int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid) {
 	return ret;
 }
 
-int rb_http2k_validate_topic(struct rb_database *db __attribute__((unused)),
-				const char *topic __attribute__((unused))) {
-	return 1;
+int rb_http2k_validate_topic(struct rb_database *db,const char *topic) {
+	char buf[strlen(topic)+1];
+	strcpy(buf,topic);
+
+	struct topic_s dumb_topic = {
+#ifdef TOPIC_S_MAGIC
+		.magic = TOPIC_S_MAGIC,
+#endif
+		.topic_name = buf
+	};
+
+	pthread_rwlock_rdlock(&db->rwlock);
+	const int ret = NULL != RD_AVL_FIND_NODE_NL(db->topics.topics,&dumb_topic);
+	pthread_rwlock_unlock(&db->rwlock);
+
+	return ret;
 }
 
 
