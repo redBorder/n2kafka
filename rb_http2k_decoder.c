@@ -358,7 +358,7 @@ int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid) {
 	return ret;
 }
 
-int rb_http2k_validate_topic(struct rb_database *db,const char *topic) {
+static struct topic_s *get_topic_nl(struct rb_database *db,const char *topic) {
 	char buf[strlen(topic)+1];
 	strcpy(buf,topic);
 
@@ -369,8 +369,13 @@ int rb_http2k_validate_topic(struct rb_database *db,const char *topic) {
 		.topic_name = buf
 	};
 
+	return RD_AVL_FIND_NODE_NL(db->topics.topics,&dumb_topic);
+}
+
+int rb_http2k_validate_topic(struct rb_database *db,const char *topic) {
+
 	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = NULL != RD_AVL_FIND_NODE_NL(db->topics.topics,&dumb_topic);
+	const int ret = NULL != get_topic_nl(db,topic);
 	pthread_rwlock_unlock(&db->rwlock);
 
 	return ret;
@@ -388,8 +393,22 @@ static void enrich_rb_json(json_t *json, /* TODO const */ json_t *enrichment_dat
 	json_object_update_missing_copy(json,enrichment_data);
 }
 
-static char *process_rb_buffer(const char *buffer,size_t bsize,
-                                 struct rb_opaque *opaque){
+static void produce_or_free(rd_kafka_topic_t *rkt,char *buf,size_t bufsize,
+                                                            void *opaque) {
+
+	const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,
+		RD_KAFKA_MSG_F_FREE,buf,bufsize,NULL,0,opaque);
+
+	if(produce_ret != 0) {
+		rdlog(LOG_ERR,"Can't produce to topic %s: %s",
+			rd_kafka_topic_name(rkt),
+			rd_kafka_err2str(rd_kafka_errno2err(errno)));
+	}
+
+}
+
+static void process_rb_buffer(const char *buffer,size_t bsize,
+                struct rb_opaque *opaque,const char *topic) {
 	json_error_t err;
 	struct rb_database *db = &opaque->rb_config->database;
 	/* @TODO const */ json_t *uuid_enrichment_entry = NULL;
@@ -418,22 +437,32 @@ static char *process_rb_buffer(const char *buffer,size_t bsize,
 	}
 
 	pthread_rwlock_rdlock(&opaque->rb_config->database.rwlock);
-	uuid_enrichment_entry = json_object_get(db->uuid_enrichment,sensor_uuid);
-	if( NULL != uuid_enrichment_entry) {
-		enrich_rb_json(json,uuid_enrichment_entry);
-	}
-	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
-	ret = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
+	struct topic_s *topic_handler = get_topic_nl(&opaque->rb_config->database,topic);
+	if(NULL == topic_handler) {
+		rdlog(LOG_ERR,"Can't produce to topic %s: topic not found",topic);
+	} else {
+		uuid_enrichment_entry = json_object_get(db->uuid_enrichment,sensor_uuid);
+		if( NULL != uuid_enrichment_entry) {
+			enrich_rb_json(json,uuid_enrichment_entry);
+			ret = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
+			if(ret == NULL) {
+				rdlog(LOG_ERR,"Can't create json dump (out of memory?)");
+			} else {
+				produce_or_free(topic_handler->rkt,ret,strlen(ret),NULL);
+			}
+		}
+	}
+
+	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
 err:
 	if(json)
 		json_decref(json);
-	return ret;
 }
 
 void rb_decode(char *buffer,size_t buf_size,
-	                        const char *topic __attribute__((unused)),
+	                        const char *topic,
 	                        void *_listener_callback_opaque) {
 
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
@@ -441,11 +470,6 @@ void rb_decode(char *buffer,size_t buf_size,
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	char *to_send = process_rb_buffer(buffer,buf_size,rb_opaque);
+	process_rb_buffer(buffer,buf_size,rb_opaque,topic);
 	free(buffer);
-
-	if(to_send) {
-		send_to_kafka(to_send,strlen(to_send),
-			RD_KAFKA_MSG_F_FREE,NULL);
-	}
 }

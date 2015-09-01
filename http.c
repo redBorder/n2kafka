@@ -90,10 +90,12 @@ static size_t string_grow(struct string *str,size_t delta) {
 }
 
 struct conn_info {
+	char *topic;
 	struct string str;
 };
 
 static void free_con_info(struct conn_info *con_info) {
+	free(con_info->topic);
 	free(con_info->str.buf);
 	con_info->str.buf = NULL;
 	free(con_info);
@@ -114,22 +116,32 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 
-	h->callback(con_info->str.buf,con_info->str.used,NULL,h->callback_opaque);
+	h->callback(con_info->str.buf,con_info->str.used,con_info->topic,h->callback_opaque);
 	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);
 	*con_cls = NULL;
 }
 
-static struct conn_info *create_connection_info(size_t string_size) {
+static struct conn_info *create_connection_info(size_t string_size,const char *topic) {
 	/* First call, creating all needed structs */
 	struct conn_info *con_info = calloc(1,sizeof(*con_info));
-	if( NULL == con_info )
+	if( NULL == con_info ){
+		rdlog(LOG_ERR,"Can't allocate conection context (out of memory?)");
 		return NULL; /* Doesn't have resources */
+	}
 
 	if ( !init_string(&con_info->str,string_size) ) {
+		rdlog(LOG_ERR,"Can't allocate connection string buffer (out of memory?)");
 		free_con_info(con_info);
 		return NULL; /* Doesn't have resources */
+	}
+
+	con_info->topic = strdup(topic);
+	if(NULL == con_info->topic) {
+		rdlog(LOG_ERR,"Can't allocate topic string (out of memory?)");
+		free_con_info(con_info);
+		return NULL;
 	}
 
 	return con_info;
@@ -180,6 +192,11 @@ static int send_http_unauthorized(struct MHD_Connection *connection) {
 		MHD_HTTP_UNAUTHORIZED,NULL);
 }
 
+static int send_http_bad_request(struct MHD_Connection *connection) {
+	return send_buffered_response(connection,0,NULL,MHD_RESPMEM_PERSISTENT,
+		MHD_HTTP_BAD_REQUEST,NULL);
+}
+
 static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 												  const char *upload_data,
 												  size_t upload_data_size) {
@@ -210,7 +227,8 @@ static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
 }
 
 static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
-							struct rb_database *rb_database, int *allok) {
+							struct rb_database *rb_database, int *allok,
+							char **ret_topic) {
 	const char *uuid=NULL,*topic=NULL;
 	const size_t url_len = strlen(url);
 	char my_url[url_len+1];
@@ -226,14 +244,25 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 		return send_http_unauthorized(con_info);
 	}
 
-	const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
-	if(!valid_topic) {
-		rdlog(LOG_WARNING,"Received topic %s. Closing connection.",topic);
+	if(NULL != topic) {
+		const int valid_topic = rb_http2k_validate_topic(&global_config.rb.database,topic);
+
+		if(!valid_topic) {
+			rdlog(LOG_WARNING,"Received topic %s. Closing connection.",topic?topic:NULL);
+			*allok = 0;
+			return send_http_forbidden(con_info);
+		}
+	} else {
+		rdlog(LOG_ERR,"Received no topic in url [%s]. Closing connection.",url);
 		*allok = 0;
-		return send_http_forbidden(con_info);
+		return send_http_bad_request(con_info);
 	}
 
 	*allok = 1;
+
+	if(ret_topic) {
+		*ret_topic = strdup(topic);
+	}
 
 	return MHD_YES;
 }
@@ -262,15 +291,18 @@ static int post_handle(void *_cls,
 	}
 
 	if ( NULL == *ptr ) {
+		char *topic = NULL;
 		if (cls->redborder_uri) {
 			int aok = 1;
 			const int rc = rb_http2k_validation(connection,url,
-				&global_config.rb.database,&aok);
+				&global_config.rb.database,&aok,&topic);
 			if(0 == aok) {
+				free(topic);
 				return rc;
 			}
 		}
-		*ptr = create_connection_info(STRING_INITIAL_SIZE);
+		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic);
+		free(topic);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if ( *upload_data_size > 0 ) {
 		/* middle calls, process string sent */
