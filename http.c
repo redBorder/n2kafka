@@ -237,6 +237,15 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s'",uuid,topic);
 
 	/// @TODO check uuid url/message equality
+	if(NULL == uuid || NULL == topic) {
+		if(NULL == uuid) {
+			rdlog(LOG_ERR,"Received no uuid/topic in url [%s]. Closing connection.",url);
+		} else if(NULL == topic) {
+			rdlog(LOG_ERR,"Received no topic in url [%s]. Closing connection.",url);
+		}
+		*allok = 0;
+		return send_http_bad_request(con_info);
+	}
 	const int valid_uuid = rb_http2k_validate_uuid(rb_database,uuid);
 	if(!valid_uuid) {
 		rdlog(LOG_WARNING,"Received invalid uuid %s. Closing connection.",uuid);
