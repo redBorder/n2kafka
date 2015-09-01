@@ -298,9 +298,7 @@ void rb_opaque_done(void *_opaque){
 #ifdef RB_OPAQUE_MAGIC
 	assert(RB_OPAQUE_MAGIC == opaque->magic);
 #endif
-	pthread_rwlock_destroy(&opaque->rb_config->database.rwlock);
-	if(opaque->rb_config->database.uuid_enrichment)
-		json_decref(opaque->rb_config->database.uuid_enrichment);
+
 	free(opaque);
 }
 
@@ -339,6 +337,13 @@ int parse_rb_config(void *void_db,const struct json_t *config,
 void free_valid_rb_database(struct rb_database *db){
 	if(db && db->uuid_enrichment)
 		json_decref(db->uuid_enrichment);
+
+	free_topics(&db->topics.list);
+	free(db->topics_memory);
+
+	rd_avl_destroy(db->topics.topics);
+
+	pthread_rwlock_destroy(&db->rwlock);
 }
 
 /*
