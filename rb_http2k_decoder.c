@@ -335,13 +335,16 @@ int parse_rb_config(void *void_db,const struct json_t *config,
 }
 
 void free_valid_rb_database(struct rb_database *db){
-	if(db && db->uuid_enrichment)
+	if(db && db->uuid_enrichment) {
 		json_decref(db->uuid_enrichment);
+	}
 
 	free_topics(&db->topics.list);
 	free(db->topics_memory);
 
-	rd_avl_destroy(db->topics.topics);
+	if(db->topics.topics) {
+		rd_avl_destroy(db->topics.topics);
+	}
 
 	pthread_rwlock_destroy(&db->rwlock);
 }
