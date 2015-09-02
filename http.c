@@ -36,6 +36,7 @@
 #include <assert.h>
 #include <jansson.h>
 #include <librd/rdlog.h>
+#include <librd/rdmem.h>
 #include <microhttpd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -91,12 +92,12 @@ static size_t string_grow(struct string *str,size_t delta) {
 }
 
 struct conn_info {
-	char *topic;
+	const char *topic;
+	const char *client;
 	struct string str;
 };
 
 static void free_con_info(struct conn_info *con_info) {
-	free(con_info->topic);
 	free(con_info->str.buf);
 	con_info->str.buf = NULL;
 	free(con_info);
@@ -124,9 +125,16 @@ static void request_completed (void *cls,
 	*con_cls = NULL;
 }
 
-static struct conn_info *create_connection_info(size_t string_size,const char *topic) {
+static struct conn_info *create_connection_info(size_t string_size,const char *topic, 
+                                                               const char *client) {
 	/* First call, creating all needed structs */
-	struct conn_info *con_info = calloc(1,sizeof(*con_info));
+
+	struct conn_info *con_info = NULL;
+
+	rd_calloc_struct(&con_info,sizeof(*con_info),
+		-1,topic,&con_info->topic,
+		-1,client,&con_info->client);
+	
 	if( NULL == con_info ){
 		rdlog(LOG_ERR,"Can't allocate conection context (out of memory?)");
 		return NULL; /* Doesn't have resources */
@@ -136,13 +144,6 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 		rdlog(LOG_ERR,"Can't allocate connection string buffer (out of memory?)");
 		free_con_info(con_info);
 		return NULL; /* Doesn't have resources */
-	}
-
-	con_info->topic = strdup(topic);
-	if(NULL == con_info->topic) {
-		rdlog(LOG_ERR,"Can't allocate topic string (out of memory?)");
-		free_con_info(con_info);
-		return NULL;
 	}
 
 	return con_info;
@@ -267,25 +268,23 @@ static const char *client_addr(char *buf, size_t buf_size,
 
 static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 							struct rb_database *rb_database, int *allok,
-							char **ret_topic) {
+							char **ret_topic,const char *source) {
 	const char *uuid=NULL,*topic=NULL;
 	const size_t url_len = strlen(url);
 	char my_url[url_len+1];
-	char client_buf[BUFSIZ];
 	extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
 
 	rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s' from "
-		"client %s",uuid,topic,client_addr(client_buf,sizeof(client_buf),
-                            con_info));
+		"client %s",uuid,topic,source);
 
 	/// @TODO check uuid url/message equality
 	if(NULL == uuid || NULL == topic) {
 		if(NULL == uuid) {
 			rdlog(LOG_WARNING,"Received no uuid/topic in url [%s] from %s. Closing connection.",url,
-				client_addr(client_buf,sizeof(client_buf),con_info));
+				source);
 		} else if(NULL == topic) {
 			rdlog(LOG_WARNING,"Received no topic in url [%s] from %s. Closing connection.",url,
-				client_addr(client_buf,sizeof(client_buf),con_info));
+				source);
 		}
 		*allok = 0;
 		return send_http_bad_request(con_info);
@@ -293,7 +292,7 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	const int valid_uuid = rb_http2k_validate_uuid(rb_database,uuid);
 	if(!valid_uuid) {
 		rdlog(LOG_WARNING,"Received invalid uuid %s from %s. Closing connection.",uuid,
-			client_addr(client_buf,sizeof(client_buf),con_info));
+			source);
 		*allok = 0;
 		return send_http_unauthorized(con_info);
 	}
@@ -303,13 +302,13 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 
 		if(!valid_topic) {
 			rdlog(LOG_WARNING,"Received topic %s from %s. Closing connection.",topic?topic:NULL,
-				client_addr(client_buf,sizeof(client_buf),con_info));
+				source);
 			*allok = 0;
 			return send_http_forbidden(con_info);
 		}
 	} else {
 		rdlog(LOG_WARNING,"Received no topic in url [%s] from %s. Closing connection.",url,
-			client_addr(client_buf,sizeof(client_buf),con_info));
+			source);
 		*allok = 0;
 		return send_http_bad_request(con_info);
 	}
@@ -347,17 +346,23 @@ static int post_handle(void *_cls,
 	}
 
 	if ( NULL == *ptr ) {
+		char client_buf[BUFSIZ];
+		const char *client = client_addr(client_buf,sizeof(client_buf),connection);
+		if(NULL == client) {
+			return MHD_NO;
+		}
+		/* First message of connection */
 		char *topic = NULL;
 		if (cls->redborder_uri) {
 			int aok = 1;
 			const int rc = rb_http2k_validation(connection,url,
-				&global_config.rb.database,&aok,&topic);
+				&global_config.rb.database,&aok,&topic,client);
 			if(0 == aok) {
 				free(topic);
 				return rc;
 			}
 		}
-		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic);
+		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic,client);
 		free(topic);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if ( *upload_data_size > 0 ) {
