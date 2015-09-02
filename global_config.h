@@ -33,7 +33,7 @@
 
 struct json_t;
 struct listener;
-typedef void (*listener_callback)(char *buffer,size_t buf_size,const char *topic,void *listener_callback_opaque);
+typedef void (*listener_callback)(char *buffer,size_t buf_size,const char *topic,const char *source,void *listener_callback_opaque);
 typedef struct listener* (*listener_creator)(struct json_t *config,
                         listener_callback cb,void *cb_opaque,
                         char *err,size_t errsize);

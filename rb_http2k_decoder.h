@@ -71,7 +71,8 @@ struct rb_config {
 int rb_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
 int rb_opaque_reload(struct json_t *config,void *opaque);
 void rb_opaque_done(void *opaque);
-void rb_decode(char *buffer,size_t buf_size,const char *topic,void *listener_callback_opaque);
+void rb_decode(char *buffer,size_t buf_size,const char *topic,
+	const char *client_ip,void *listener_callback_opaque);
 
 /// @TODO make more generic
 int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid);

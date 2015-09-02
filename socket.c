@@ -194,15 +194,15 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 }
 
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
-                                              listener_callback callback,
-                                              void *callback_opaque){
+        const char *client,listener_callback callback,void *callback_opaque){
 	if(unlikely(global_config.debug))
-		rdlog(LOG_DEBUG,"received %zu data: %.*s\n",recv_result,(int)recv_result,buffer);
+		rdlog(LOG_DEBUG,"received %zu data from %s: %.*s\n",recv_result,client,
+			(int)recv_result,buffer);
 
 	if(unlikely(only_stdout_output())){
 		free(buffer);
 	} else {
-		callback(buffer,recv_result,NULL,callback_opaque);
+		callback(buffer,recv_result,NULL,client,callback_opaque);
 	}
 }
 
@@ -255,7 +255,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
 	const int recv_result = receive_from_socket(watcher->fd,&saddr,buffer,READ_BUFFER_SIZE);
 	if(recv_result > 0){
-		process_data_received_from_socket(buffer,(size_t)recv_result,
+		process_data_received_from_socket(buffer,(size_t)recv_result,connection->client,
 		            connection->callback,connection->callback_opaque);
 	}else if(recv_result < 0){
 		if(errno == EAGAIN){
@@ -520,6 +520,8 @@ static void main_tcp_loop(int listenfd,struct socket_listener_private *priv) {
 static void *main_consumer_loop_udp(void *_thread_info){
 	struct udp_thread_info *thread_info = _thread_info;
 	while(!do_shutdown){
+		struct sockaddr_in6 addr;
+		char addr_buf[BUFSIZ];
 		int recv_result = 0;
 		struct timeval tv = {.tv_sec = 1,.tv_usec = 0};
 		char *buffer = calloc(READ_BUFFER_SIZE,sizeof(char));
@@ -529,7 +531,6 @@ static void *main_consumer_loop_udp(void *_thread_info){
 			if(select_result==-1 && errno!=EINTR){ /* NOT INTERRUPTED */
 				rdlog(LOG_ERR,"listen select error: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			}else if(select_result>0){
-				struct sockaddr_in6 addr;
 				recv_result = receive_from_socket(thread_info->listenfd,&addr,buffer,READ_BUFFER_SIZE);
 			}
 		}
@@ -545,7 +546,9 @@ static void *main_consumer_loop_udp(void *_thread_info){
 				break;
 			}
 		} else {
-			process_data_received_from_socket(buffer,(size_t)recv_result,
+			const char *client_addr = sockaddr2str(addr_buf, sizeof(addr_buf), 
+				(struct sockaddr *)&addr);
+			process_data_received_from_socket(buffer,(size_t)recv_result,client_addr,
 				thread_info->callback,thread_info->callback_opaque);
 		}
 	}

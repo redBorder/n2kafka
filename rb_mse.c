@@ -410,7 +410,7 @@ static void enrich_mse_json(json_t *json, /* TODO const */ json_t *enrichment_da
 }
 
 static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
-                                 struct mse_opaque *opaque){
+		const char *client,struct mse_opaque *opaque){
 	struct mse_database *db = &opaque->mse_config->database;
 	struct mse_array *notifications = NULL;
 	size_t i;
@@ -419,8 +419,8 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 	json_error_t err;
 	json_t *json = json_loadb(buffer,bsize,0,&err);
 	if(NULL == json){
-		rdlog(LOG_ERR,"Error decoding MSE JSON (%s), line %d column %d: %s",
-			buffer,err.line,err.column,err.text);
+		rdlog(LOG_ERR,"Error decoding MSE JSON (%s) of client (%s), line %d column %d: %s",
+			buffer,client,err.line,err.column,err.text);
 		goto err;
 	}
 
@@ -492,6 +492,7 @@ err:
 
 void mse_decode(char *buffer,size_t buf_size,
 	                        const char *topic __attribute__((unused)),
+	                        const char *client __attribute__((unused)),
 	                        void *_listener_callback_opaque) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
@@ -499,7 +500,7 @@ void mse_decode(char *buffer,size_t buf_size,
 	assert(MSE_OPAQUE_MAGIC == mse_opaque->magic);
 #endif
 
-	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,mse_opaque);
+	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,client,mse_opaque);
 	free(buffer);
 
 	if(NULL == notifications)

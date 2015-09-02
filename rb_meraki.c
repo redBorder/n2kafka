@@ -457,15 +457,15 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 }
 
 static struct kafka_message_array *process_meraki_buffer(const char *buffer,size_t bsize,
-                                 struct meraki_opaque *opaque){
+        const char *client,struct meraki_opaque *opaque) {
 	struct kafka_message_array *notifications = NULL;
 	assert(bsize);
 
 	json_error_t err;
 	json_t *json = json_loadb(buffer,bsize,0,&err);
 	if(NULL == json){
-		rdlog(LOG_ERR,"Error decoding meraki JSON (%s), line %d column %d: %s",
-			buffer,err.line,err.column,err.text);
+		rdlog(LOG_ERR,"Error decoding meraki JSON (%s) of %s, line %d column %d: %s",
+			buffer,client,err.line,err.column,err.text);
 		goto err;
 	}
 
@@ -485,13 +485,14 @@ err:
 
 void meraki_decode(char *buffer,size_t buf_size,
 	            const char *topic __attribute__((unused)),
+	            const char *client,
 	            void *_listener_callback_opaque) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 
 	struct meraki_opaque *meraki_opaque = meraki_opaque_cast(_listener_callback_opaque);
 
-	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,meraki_opaque);
+	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,client,meraki_opaque);
 
 	if(notifications){
 		send_array_to_kafka(notifications);

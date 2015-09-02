@@ -411,7 +411,7 @@ static void produce_or_free(rd_kafka_topic_t *rkt,char *buf,size_t bufsize,
 }
 
 static void process_rb_buffer(const char *buffer,size_t bsize,
-                struct rb_opaque *opaque,const char *topic) {
+        struct rb_opaque *opaque,const char *topic,const char *client_ip) {
 	json_error_t err;
 	struct rb_database *db = &opaque->rb_config->database;
 	/* @TODO const */ json_t *uuid_enrichment_entry = NULL;
@@ -422,8 +422,8 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 
 	json_t *json = json_loadb(buffer,bsize,0,&err);
 	if(NULL == json){
-		rdlog(LOG_ERR,"Error decoding RB JSON (%s), line %d column %d: %s",
-			buffer,err.line,err.column,err.text);
+		rdlog(LOG_ERR,"Error decoding RB JSON (%s) of source %s, line %d column %d: %s",
+			buffer,client_ip,err.line,err.column,err.text);
 		goto err;
 	}
 
@@ -465,7 +465,7 @@ err:
 }
 
 void rb_decode(char *buffer,size_t buf_size,
-	                        const char *topic,
+	                        const char *topic,const char *client_ip,
 	                        void *_listener_callback_opaque) {
 
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
@@ -473,6 +473,6 @@ void rb_decode(char *buffer,size_t buf_size,
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	process_rb_buffer(buffer,buf_size,rb_opaque,topic);
+	process_rb_buffer(buffer,buf_size,rb_opaque,topic,client_ip);
 	free(buffer);
 }
