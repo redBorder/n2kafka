@@ -29,7 +29,7 @@ static void testMSE10Decoder(const char *mse_array_str,const char *_listener_con
 
 	char *aux = strdup(mse_input);
 	struct mse_array *notifications_array = process_mse_buffer(aux,
-		strlen(mse_input),opaque);
+		strlen(mse_input),"127.0.0.1",opaque);
 
 	check_result(notifications_array);
 
@@ -38,7 +38,7 @@ static void testMSE10Decoder(const char *mse_array_str,const char *_listener_con
 		free(notifications_array->data[i].string);
 
 	free(notifications_array);
-	mse_opaque_done((void **)&opaque);
+	mse_opaque_done(opaque);
 	free_valid_mse_database(&mse_config.database);
 	json_decref(mse_array);
 }
