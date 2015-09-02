@@ -217,7 +217,8 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
-static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
+/* Return code: Valid prefix (i.e., /rbdata/)*/
+static int extract_rb_url_info(const char *url,size_t url_len,char *dst,
 								const char **uuid, const char **topic) {
 	assert(url);
 	assert(dst);
@@ -227,8 +228,13 @@ static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
 	char *aux=NULL;
 	memcpy(dst,url,url_len+1);
 
-	*uuid = strtok_r(dst,"/",&aux);
-	*topic = strtok_r(NULL,"/",&aux);
+	const char *rbdata = strtok_r(dst,"/",&aux);
+	const int invalid_rbdata = (NULL == rbdata) || strcmp(rbdata,"rbdata");
+	if(!invalid_rbdata) {
+		*uuid = strtok_r(NULL,"/",&aux);
+		*topic = strtok_r(NULL,"/",&aux);
+	}
+	return !invalid_rbdata;
 }
 
 static const char *client_addr(char *buf, size_t buf_size,
@@ -249,23 +255,28 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	const char *uuid=NULL,*topic=NULL;
 	const size_t url_len = strlen(url);
 	char my_url[url_len+1];
-	extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
-
-	rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s' from "
-		"client %s",uuid,topic,source);
+	const int valid_prefix = extract_rb_url_info(url,url_len,my_url,&uuid,&topic);
 
 	/// @TODO check uuid url/message equality
-	if(NULL == uuid || NULL == topic) {
+	if(!valid_prefix || NULL == uuid || NULL == topic) {
+		if(!valid_prefix) {
+			rdlog(LOG_WARNING,"Received no expected prefix url [%s] from %s. "
+				"Closing connection.",url,source);
+		}
 		if(NULL == uuid) {
-			rdlog(LOG_WARNING,"Received no uuid/topic in url [%s] from %s. Closing connection.",url,
-				source);
+			rdlog(LOG_WARNING,"Received no uuid/topic in url [%s] from %s. "
+				"Closing connection.",url,source);
 		} else if(NULL == topic) {
-			rdlog(LOG_WARNING,"Received no topic in url [%s] from %s. Closing connection.",url,
-				source);
+			rdlog(LOG_WARNING,"Received no topic in url [%s] from %s. "
+				"Closing connection.",url,source);
 		}
 		*allok = 0;
 		return send_http_bad_request(con_info);
 	}
+
+	rdlog(LOG_DEBUG,"Receiving message with uuid '%s' and topic '%s' from "
+		"client %s",uuid,topic,source);
+
 	const int valid_uuid = rb_http2k_validate_uuid(rb_database,uuid);
 	if(!valid_uuid) {
 		rdlog(LOG_WARNING,"Received invalid uuid %s from %s. Closing connection.",uuid,
