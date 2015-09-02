@@ -72,7 +72,7 @@ static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
     VALIDATING MERAKI SECRET
 */
 
-int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets,char *err,size_t err_size){
+int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets){
 	assert(_db);
 
 	struct meraki_database *db = _db;
@@ -84,7 +84,7 @@ int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets,char *err
 
 	new_db = json_deep_copy(meraki_secrets);
 	if(!new_db){
-		snprintf(err,err_size,"Can't create json object (out of memory?)");
+		rdlog(LOG_ERR,"Can't create json object (out of memory?)");
 		return -1;
 	}
 
@@ -135,29 +135,28 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 	return opaque;
 }
 
-static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t *config,char *err,size_t errsize) {
+static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t *config) {
 	assert(opaque);
 	assert(config);
-	assert(err);
 	json_error_t jerr;
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
 		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment);
 
 	if(0!=json_unpack_rc)
-		snprintf(err,errsize,"%s",jerr.text);
+		rdlog(LOG_ERR,"%s",jerr.text);
 
 	return json_unpack_rc;
 }
 
-int meraki_opaque_creator(struct json_t *config,void **_opaque,char *err,size_t errsize) {
+int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	assert(config);
 	assert(_opaque);
 	char errbuf[BUFSIZ];
 
 	struct meraki_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
-		snprintf(err,errsize,"%s","Can't allocate meraki opaque (out of memory?)");
+		rdlog(LOG_ERR,"%s","Can't allocate meraki opaque (out of memory?)");
 		return -1;
 	}
 
@@ -172,8 +171,7 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque,char *err,size_t 
 		goto _err;
 	}
 
-	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(
-		opaque,config,err,errsize);
+	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,config);
 	if(per_listener_enrichment_rc != 0){
 		goto err_rwlock;
 	}

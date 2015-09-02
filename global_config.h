@@ -35,10 +35,9 @@ struct json_t;
 struct listener;
 typedef void (*listener_callback)(char *buffer,size_t buf_size,const char *topic,const char *source,void *listener_callback_opaque);
 typedef struct listener* (*listener_creator)(struct json_t *config,
-                        listener_callback cb,void *cb_opaque,
-                        char *err,size_t errsize);
+                        listener_callback cb,void *cb_opaque);
 typedef void (*listener_join)(void *listener_private);
-typedef int (*listener_opaque_creator)(struct json_t *config,void **opaque,char *err,size_t errsize);
+typedef int (*listener_opaque_creator)(struct json_t *config,void **opaque);
 typedef int (*listener_opaque_reload)(struct json_t *config,void *opaque);
 typedef void (*listener_opaque_destructor)(void *opaque);
 // @TODO we need this callback to split data acquiring || data processing

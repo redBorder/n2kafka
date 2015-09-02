@@ -363,8 +363,6 @@ struct http_loop_args {
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
-                                            char *err,
-                                            size_t errsize,
                                             listener_callback callback,void *cb_opaque) {
 	struct http_private *h = NULL;
 
@@ -379,7 +377,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	} else if(0==strcmp(MODE_EPOLL,args->mode)) {
 		flags |= MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY;
 	} else {
-		snprintf(err,errsize,"Not a valid HTTP mode. Select one between("
+		rdlog(LOG_ERR,"Not a valid HTTP mode. Select one between("
 		    MODE_THREAD_PER_CONNECTION "," MODE_SELECT "," MODE_POLL "," 
 		    MODE_EPOLL ")");
 		return NULL;
@@ -389,7 +387,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 
 	h = calloc(1,sizeof(*h));
 	if(!h) {
-		snprintf(err,errsize,"Can't allocate LIBMICROHTTPD private"
+		rdlog(LOG_ERR,"Can't allocate LIBMICROHTTPD private"
 		         " (out of memory?)");
 		return NULL;
 	}
@@ -426,7 +424,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	}
 
 	if(NULL == h->d) {
-		snprintf(err,errsize,"Can't allocate LIBMICROHTTPD handler"
+		rdlog(LOG_ERR,"Can't allocate LIBMICROHTTPD handler"
 		         " (out of memory?)");
 		free(h);
 		return NULL;
@@ -451,8 +449,7 @@ static void break_http_loop(void *_h){
 	free(h);
 }
 
-struct listener *create_http_listener(struct json_t *config,listener_callback cb,void *cb_opaque,char *err,
-	size_t errsize) {
+struct listener *create_http_listener(struct json_t *config,listener_callback cb,void *cb_opaque) {
 
 	json_error_t error;
 
@@ -465,21 +462,21 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 		"num_threads",&handler_args.num_threads,
 		"redborder_uri",&handler_args.redborder_uri);
 	if( unpack_rc != 0 /* Failure */ ) {
-		snprintf(err,errsize,"Can't parse HTTP options: %s",error.text);
+		rdlog(LOG_ERR,"Can't parse HTTP options: %s",error.text);
 		return NULL;
 	}
 
 	if(NULL==handler_args.mode)
 		handler_args.mode = MODE_SELECT;
 
-	struct http_private *priv = start_http_loop(&handler_args,err,errsize,cb,cb_opaque);
+	struct http_private *priv = start_http_loop(&handler_args,cb,cb_opaque);
 	if( NULL == priv ) {
 		return NULL;
 	}
 
 	struct listener *listener = calloc(1,sizeof(*listener));
 	if(!listener){
-		snprintf(err,errsize,"Can't create http listener (out of memory?)");
+		rdlog(LOG_ERR,"Can't create http listener (out of memory?)");
 		free(priv);
 		return NULL;
 	}

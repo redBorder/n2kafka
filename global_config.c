@@ -263,16 +263,14 @@ static void parse_listener(json_t *config){
 
 	void *decoder_opaque = NULL;
 	if(decoder->opaque_creator) {
-		const int opaque_creator_rc = decoder->opaque_creator(config,&decoder_opaque,err,
-			sizeof(err));
+		const int opaque_creator_rc = decoder->opaque_creator(config,&decoder_opaque);
 		if(opaque_creator_rc != 0) {
 			rdlog(LOG_ERR,"Can't create opaque for listener %s: %s",proto,err);
 			exit(-1);
 		}
 	}
 
-	struct listener *listener = (*_listener_creator)(config,
-		decoder->cb,decoder_opaque,err,sizeof(err));
+	struct listener *listener = (*_listener_creator)(config,decoder->cb,decoder_opaque);
 
 	if( NULL == listener ) {
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
@@ -363,24 +361,21 @@ static void parse_config0(json_t *root){
 	}
 
 	if(mse) {
-		const int parse_rc = parse_mse_array(&global_config.mse.database, mse,err,
-			                                                                    sizeof(err));
+		const int parse_rc = parse_mse_array(&global_config.mse.database, mse);
 		if(0 != parse_rc) {
 			rdlog(LOG_ERR,"Can't parse MSE array: %s",err);
 			exit(-1);
 		}
 	}
 	if(meraki) {
-		const int parse_rc = parse_meraki_secrets(&global_config.meraki.database, meraki,err,
-			                                                                    sizeof(err));
+		const int parse_rc = parse_meraki_secrets(&global_config.meraki.database, meraki);
 		if(0 != parse_rc) {
 			rdlog(LOG_ERR,"Can't parse meraki secrets: %s",err);
 			exit(-1);
 		}
 	}
 	if(rb_http2k) {
-		const int parse_rc = parse_rb_config(&global_config.rb.database, rb_http2k,err,
-			                                                                    sizeof(err));
+		const int parse_rc = parse_rb_config(&global_config.rb.database, rb_http2k);
 		if(0 != parse_rc) {
 			rdlog(LOG_ERR,"Can't parse rb_http2k config: %s",err);
 			exit(-1);
@@ -522,11 +517,10 @@ static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
 	reload_listeners_create_new_ones(listeners_array,config);
 }
 
-typedef int (*reload_cb)(void *database,const struct json_t *config,char *err,size_t err_size);
+typedef int (*reload_cb)(void *database,const struct json_t *config);
 
 static json_t *reload_decoder(struct n2kafka_config *config,const char *decoder_config_key,
 	void *database,reload_cb reload_callback) {
-	char err[BUFSIZ];
 	json_error_t json_err;
 	json_t *decoder_config = NULL;
 	if(config->config_path==NULL){
@@ -554,7 +548,7 @@ static json_t *reload_decoder(struct n2kafka_config *config,const char *decoder_
 	}
 
 	if(NULL != decoder_config) {
-		reload_callback(database, decoder_config,err,sizeof(err));
+		reload_callback(database, decoder_config);
 	}
 
 error_free_root:

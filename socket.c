@@ -630,13 +630,13 @@ static void reload_listener_socket(json_t *new_config __attribute__((unused)),
 	}
 }
 
-struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque,char *err,size_t errsize){
+struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque){
 	json_error_t error;
 	char *proto;
 
 	struct socket_listener_private *priv = calloc(1,sizeof(*priv));
 	if( NULL == priv ) {
-		snprintf(err,errsize,"Can't allocate private data (out of memory?)");
+		rdlog(LOG_ERR,"Can't allocate private data (out of memory?)");
 		return NULL;
 	}
 
@@ -653,7 +653,7 @@ struct listener *create_socket_listener(struct json_t *config,listener_callback 
 		"mode",&mode);
 
 	if( unpack_rc != 0 /* Failure */ ) {
-		snprintf(err,errsize,"Can't decode listener: %s",error.text);
+		rdlog(LOG_ERR,"Can't decode listener: %s",error.text);
 		free(priv);
 		return NULL;
 	}
@@ -675,14 +675,14 @@ struct listener *create_socket_listener(struct json_t *config,listener_callback 
 
 	priv->config.proto = strdup(proto);
 	if( NULL == priv->config.proto) {
-		snprintf(err,errsize,"Error: Can't strdup protocol (out of memory?)");
+		rdlog(LOG_ERR,"Error: Can't strdup protocol (out of memory?)");
 		free(priv);
 		return NULL;
 	}
 
 	struct listener *l = calloc(1,sizeof(*l));
 	if( NULL == l ) {
-		snprintf(err,errsize,"Can't allocate listener (out of memory?)");
+		rdlog(LOG_ERR,"Can't allocate listener (out of memory?)");
 		free(priv);
 		return NULL;
 	}
@@ -699,7 +699,8 @@ struct listener *create_socket_listener(struct json_t *config,listener_callback 
 	const int pcreate_rc = pthread_create(&priv->main_loop,NULL,
 		main_socket_loop,priv);
 	if (pcreate_rc != 0) {
-		strerror_r(pcreate_rc,err,errsize);
+		char err[BUFSIZ];
+		strerror_r(pcreate_rc,err,sizeof(err));
 		free(priv);
 		free(l);
 		return NULL;

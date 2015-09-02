@@ -61,14 +61,14 @@ struct rb_database {
 	void *topics_memory;
 };
 void init_rb_database(struct rb_database *db);
-int parse_rb_config(void *_db,const struct json_t *rb_config,char *err,size_t err_size);
+int parse_rb_config(void *_db,const struct json_t *rb_config);
 void free_valid_rb_database(struct rb_database *db);
 
 struct rb_config {
 	struct rb_database database;
 };
 
-int rb_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
+int rb_opaque_creator(struct json_t *config,void **opaque);
 int rb_opaque_reload(struct json_t *config,void *opaque);
 void rb_opaque_done(void *opaque);
 void rb_decode(char *buffer,size_t buf_size,const char *topic,

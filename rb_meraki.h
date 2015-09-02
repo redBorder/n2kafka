@@ -39,11 +39,11 @@ static void init_meraki_database(struct meraki_database *db) {
 	db->root = NULL;
 }
 
-int meraki_opaque_creator(struct json_t *config,void **opaque,char *err,size_t errsize);
+int meraki_opaque_creator(struct json_t *config,void **opaque);
 int meraki_opaque_reload(struct json_t *config,void *opaque);
 void meraki_opaque_destructor(void *opaque);
 
-int parse_meraki_secrets(void *db, const struct json_t *meraki_object,char *err,size_t errsize);
+int parse_meraki_secrets(void *db, const struct json_t *meraki_object);
 
 void meraki_database_done(struct meraki_database *db);
 

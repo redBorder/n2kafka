@@ -172,13 +172,12 @@ static int topics_cmp(const void *_t1,const void *_t2) {
 	return strcmp(t1->topic_name,t2->topic_name);
 }
 
-int rb_opaque_creator(json_t *config __attribute__((unused)),void **_opaque,
-			char *err,size_t errsize){
+int rb_opaque_creator(json_t *config __attribute__((unused)),void **_opaque){
 	assert(_opaque);
 
 	struct rb_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
-		snprintf(err,errsize,"Can't alloc RB_HTTP2K opaque (out of memory?)");
+		rdlog(LOG_ERR,"Can't alloc RB_HTTP2K opaque (out of memory?)");
 		return -1;
 	}
 
@@ -302,8 +301,7 @@ void rb_opaque_done(void *_opaque){
 	free(opaque);
 }
 
-int parse_rb_config(void *void_db,const struct json_t *config,
-			char *err __attribute__((unused)),size_t err_size __attribute__((unused))){
+int parse_rb_config(void *void_db,const struct json_t *config){
 	assert(void_db);
 	char errbuf[BUFSIZ];
 	struct rb_config *rb_config = void_db;

@@ -81,28 +81,27 @@ struct mse_opaque {
 	struct mse_config *mse_config;
 };
 
-static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *config,char *err,size_t errsize) {
+static int parse_per_listener_opaque_config(struct mse_opaque *opaque,json_t *config) {
 	assert(opaque);
 	assert(config);
-	assert(err);
 	json_error_t jerr;
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
 		MSE_ENRICHMENT_KEY,&opaque->per_listener_enrichment);
 
 	if(0!=json_unpack_rc)
-		snprintf(err,errsize,"%s",jerr.text);
+		rdlog(LOG_ERR,"%s",jerr.text);
 	
 	return json_unpack_rc;
 }
 
-int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
+int mse_opaque_creator(json_t *config,void **_opaque){
 	assert(_opaque);
 	char errbuf[BUFSIZ];
 
 	struct mse_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
-		snprintf(err,errsize,"Can't alloc MSE opaque (out of memory?)");
+		rdlog(LOG_ERR,"Can't alloc MSE opaque (out of memory?)");
 		return -1;
 	}
 
@@ -117,8 +116,7 @@ int mse_opaque_creator(json_t *config,void **_opaque,char *err,size_t errsize){
 		goto _err;
 	}
 
-	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(
-		opaque,config,err,errsize);
+	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,config);
 	if(per_listener_enrichment_rc != 0){
 		goto err_rwlock;
 	}
@@ -208,7 +206,7 @@ static int parse_sensor(json_t *sensor,json_t *streams_db){
 	return 0;
 }
 
-int parse_mse_array(void *_db,const struct json_t *mse_array,char *err,size_t err_size){
+int parse_mse_array(void *_db,const struct json_t *mse_array){
 	assert(_db);
 
 	struct mse_database *db = _db;
@@ -217,13 +215,13 @@ int parse_mse_array(void *_db,const struct json_t *mse_array,char *err,size_t er
 	size_t _index;
 
 	if(!json_is_array(mse_array)){
-		snprintf(err,err_size,"Expected array");
+		rdlog(LOG_ERR,"Expected array");
 		return -1;
 	}
 
 	new_db = json_object();
 	if(!new_db){
-		snprintf(err,err_size,"Can't create json object (out of memory?)");
+		rdlog(LOG_ERR,"Can't create json object (out of memory?)");
 		return -1;
 	}
 
