@@ -29,6 +29,7 @@
 #define MODE_EPOLL "epoll"
 
 #include "http.h"
+#include "rb_addr.h"
 
 #include "global_config.h"
 
@@ -230,7 +231,6 @@ static void extract_rb_url_info(const char *url,size_t url_len,char *dst,
 
 static const char *client_addr(char *buf, size_t buf_size,
                             struct MHD_Connection *con_info) {
-	char errbuf[BUFSIZ];
 	const union MHD_ConnectionInfo *cinfo = MHD_get_connection_info(con_info,
 	                                    MHD_CONNECTION_INFO_CLIENT_ADDRESS);
 	if(NULL == cinfo || NULL == cinfo->client_addr) {
@@ -238,32 +238,7 @@ static const char *client_addr(char *buf, size_t buf_size,
 		return NULL;
 	}
 
-	const void *addr_buf = NULL;
-	const char *ret = NULL;
-
-	switch(cinfo->client_addr->sa_family) {
-	case AF_INET:
-		addr_buf = &((struct sockaddr_in *)cinfo->client_addr)->sin_addr;
-		break;
-	case AF_INET6:
-		addr_buf = &((struct sockaddr_in6 *)cinfo->client_addr)->sin6_addr;
-		break;
-	default:
-		break;
-	}
-
-	if(NULL == addr_buf) {
-		errno = EAFNOSUPPORT;
-	} else {
-		ret = inet_ntop(cinfo->client_addr->sa_family, addr_buf,buf,buf_size);
-	}
-
-	if(NULL == ret) {
-		strerror_r(errno,errbuf,sizeof(errbuf));
-		rdlog(LOG_ERR,"Can't print client address: %s",errbuf);
-	}
-
-	return ret;
+	return sockaddr2str(buf, buf_size, cinfo->client_addr);
 }
 
 static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
