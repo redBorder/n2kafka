@@ -74,15 +74,8 @@ static int parse_per_uuid_opaque_config(json_t *config,json_t **uuid_enrichment)
 	return json_unpack_rc;
 }
 
-#if JANSSON_VERSION_HEX < 0x020700
-static size_t json_string_length(const json_t *value) {
-	const char *str = json_string_value(value);
-	return str?strlen(str):0;
-}
-#endif
-
 static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,rd_avl_t *new_topics_db,void **new_topics_memory) {
-	size_t idx;
+	const char *key;
 	json_t *value;
 	json_error_t jerr;
 	json_t *topic_list = NULL;
@@ -100,21 +93,19 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 		return json_unpack_rc;
 	}
 
-	if(!json_is_array(topic_list)) {
-		rdlog(LOG_ERR,"%s is not an array",RB_TOPICS_KEY);
+	if(!json_is_object(topic_list)) {
+		rdlog(LOG_ERR,"%s is not an object",RB_TOPICS_KEY);
 		return -1;
 	}
 
-	const size_t array_size = json_array_size(topic_list);
+	const size_t array_size = json_object_size(topic_list);
 	if(0 ==array_size) {
-		rdlog(LOG_ERR,"%s array size is 0",RB_TOPICS_KEY);
+		rdlog(LOG_ERR,"%s has no childs",RB_TOPICS_KEY);
 		return -1;
 	}
 
-	json_array_foreach(topic_list, idx, value) {
-		if(value && json_is_string(value)) {
-			char_array_len += json_string_length(value) + 1;
-		}
+	json_object_foreach(topic_list, key, value) {
+		char_array_len += strlen(key) + 1;
 	}
 
 	const size_t array_memsize = array_size*sizeof(struct topic_s);
@@ -127,9 +118,10 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 		return -1;
 	}
 
-	json_array_foreach(topic_list, idx, value) {
-		const size_t topic_len = json_string_length(value);
-		const char *topic_name = json_string_value(value);
+	size_t idx = 0;
+	json_object_foreach(topic_list, key, value) {
+		const size_t topic_len = strlen(key);
+		const char *topic_name = key;
 
 		if(NULL != topic_name) {
 			char *topics_curr_pos = topics + char_array_pos;
@@ -155,6 +147,7 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 		} else {
 			rdlog(LOG_ERR,"Can't parse rb_http2k topic number %zu.",idx);
 		}
+		idx+=1;
 	}
 
 	return 0;
