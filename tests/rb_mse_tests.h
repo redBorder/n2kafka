@@ -7,7 +7,6 @@ static void testMSE10Decoder(const char *mse_array_str,const char *_listener_con
 static void testMSE10Decoder(const char *mse_array_str,const char *_listener_config,
 								const char *mse_input,
 	                            void (*check_result)(struct mse_array *)){
-	char err[BUFSIZ];
 	json_error_t jerr;
 	size_t i;
 
@@ -18,13 +17,13 @@ static void testMSE10Decoder(const char *mse_array_str,const char *_listener_con
 	
 	struct mse_opaque *opaque = NULL;
 	json_t *listener_config = json_loads(_listener_config,0,&jerr);
-	const int opaque_creator_rc = mse_opaque_creator(listener_config,(void **)&opaque,err,sizeof(err));
+	const int opaque_creator_rc = mse_opaque_creator(listener_config,(void **)&opaque);
 	assert(0==opaque_creator_rc);
 	json_decref(listener_config);
 
 	json_t *mse_array = json_loads(mse_array_str,0,&jerr);
 	assert(mse_array);
-	const int parse_rc = parse_mse_array(&opaque->mse_config->database, mse_array,err,sizeof(err));
+	const int parse_rc = parse_mse_array(&opaque->mse_config->database, mse_array);
 	assert(parse_rc == 0);
 
 	char *aux = strdup(mse_input);
