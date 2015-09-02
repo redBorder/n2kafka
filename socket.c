@@ -363,7 +363,7 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 		close(client_sd);
 		return;
 	}else if(global_config.debug){
-		print_accepted_connection_log((struct sockaddr_in *)&client_addr);
+		print_accepted_connection_log((struct sockaddr_in *)&client_saddr);
 	}
 
 	if(accept_private->config.tcp_keepalive)
