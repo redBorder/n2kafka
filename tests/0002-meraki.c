@@ -161,7 +161,6 @@ static const struct checkdata check3 = {
 static void MerakiDecoder_valid_enrich() {
 	size_t i;
 	json_error_t jerr;
-	char err[BUFSIZ];
 	
 	struct meraki_config meraki_config;
 	memset(&meraki_config,0,sizeof(meraki_config));
@@ -174,13 +173,13 @@ static void MerakiDecoder_valid_enrich() {
 	
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,strlen(MERAKI_SECRETS_IN),0,&jerr);
 	assert(meraki_secrets_array);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database, meraki_secrets_array,err,sizeof(err));
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database, meraki_secrets_array);
 	assert(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-		strlen(MERAKI_MSG),&meraki_opaque);
+		strlen(MERAKI_MSG),"127.0.0.1",&meraki_opaque);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -386,7 +385,6 @@ static const struct checkdata check3_listener_enrich = {
 static void MerakiDecoder_valid_enrich_per_listener() {
 	size_t i;
 	json_error_t jerr;
-	char err[BUFSIZ];
 	
 	struct meraki_config meraki_config;
 	memset(&meraki_config,0,sizeof(meraki_config));
@@ -395,20 +393,20 @@ static void MerakiDecoder_valid_enrich_per_listener() {
 	struct meraki_opaque *meraki_opaque;
 	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",0,NULL);
 	assert(config_str);
-	meraki_opaque_creator(config_str,(void **)&meraki_opaque,NULL,0);
+	meraki_opaque_creator(config_str,(void **)&meraki_opaque);
 	assert(meraki_opaque->per_listener_enrichment);
 	// Workaround
 	meraki_opaque->meraki_config = &meraki_config;
 	
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,strlen(MERAKI_SECRETS_IN),0,&jerr);
 	assert(meraki_secrets_array);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database, meraki_secrets_array,err,sizeof(err));
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database, meraki_secrets_array);
 	assert(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-		strlen(MERAKI_MSG),meraki_opaque);
+		strlen(MERAKI_MSG),"127.0.0.1",meraki_opaque);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
