@@ -135,7 +135,8 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 
 	rd_calloc_struct(&con_info,sizeof(*con_info),
 		-1,topic,&con_info->topic,
-		-1,client,&con_info->client);
+		-1,client,&con_info->client,
+		RD_MEM_END_TOKEN);
 	
 	if( NULL == con_info ){
 		rdlog(LOG_ERR,"Can't allocate conection context (out of memory?)");
