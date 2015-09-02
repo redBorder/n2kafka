@@ -20,6 +20,7 @@
 #include "global_config.h"
 #include "util.h"
 #include "rb_mac.h"
+#include "rb_addr.h"
 
 #include <librd/rdthread.h>
 #include <librd/rdqueue.h>
@@ -227,6 +228,7 @@ struct connection_private {
 	int first_response_sent;
 	void *callback_opaque;
     listener_callback callback;
+    const char *client;
 };
 
 static void close_socket_and_stop_watcher(struct ev_loop *loop,struct ev_io *watcher){
@@ -277,14 +279,15 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		rdlog(LOG_DEBUG,"Sending first response...");
 
 		if(global_config.response_len == 0){
-			rdlog(LOG_ERR,"Can't send first response: size of response == 0");
+			rdlog(LOG_ERR,"Can't send first response to %s: size of response == 0",connection->client);
 			connection->first_response_sent = 1;
 		} else {
 			send_ret = send_to_socket(watcher->fd,global_config.response,(size_t)global_config.response_len-1);
 		}
 
 		if(send_ret <= 0){
-			rdlog(LOG_ERR,"Cannot send to socket: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+			rdlog(LOG_ERR,"Cannot send first response to %s socket: %s",
+				connection->client, mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			close_socket_and_stop_watcher(loop,watcher);
 		}
 		
@@ -323,11 +326,12 @@ struct socket_listener_private {
 
 static void accept_cb(struct ev_loop *loop __attribute__((unused)), 
                       struct ev_io *watcher,int revents){
-	struct sockaddr_in client_addr;
-	socklen_t client_len = sizeof(client_addr);
+	struct sockaddr_in client_saddr;
+	socklen_t client_len = sizeof(client_saddr);
 	struct socket_listener_private *accept_private = 
 		(struct socket_listener_private *)watcher->data;
 	int client_sd;
+	char client_buf[BUFSIZ];
 	char buf[512];
 
 	if(EV_ERROR & revents) {
@@ -336,7 +340,7 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 		return;
 	}
 
-	client_sd = accept(watcher->fd, (struct sockaddr *)&client_addr,
+	client_sd = accept(watcher->fd, (struct sockaddr *)&client_saddr,
 		&client_len);
 
 	if(client_sd < 0) {
@@ -345,10 +349,17 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 		return;
 	}
 
-	if(in_addr_list_contains(global_config.blacklist,&client_addr.sin_addr)) {
+	const char *client_addr = sockaddr2str(client_buf, sizeof(client_buf), 
+		(struct sockaddr *)&client_saddr);
+	if(NULL == client_addr) {
+		rdlog(LOG_ERR,"couldn't get client address");
+		return;
+	}
+	const size_t client_addr_len = strlen(client_addr);
+
+	if(in_addr_list_contains(global_config.blacklist,&client_saddr.sin_addr)) {
 		if(global_config.debug)
-			rdbg("Connection rejected: %s in blacklist",
-				inet_ntop(AF_INET,&client_addr,buf,sizeof(buf)));
+			rdbg("Connection rejected: %s in blacklist",client_addr);
 		close(client_sd);
 		return;
 	}else if(global_config.debug){
@@ -365,9 +376,9 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 	} else {
 		/* Set watcher. Private data just after watcher */
 		struct ev_io *w_client = calloc(1,
-			sizeof(struct ev_io)+sizeof(struct connection_private));
+			sizeof(struct ev_io)+sizeof(struct connection_private)+client_addr_len+1);
 		if(unlikely(NULL == w_client)) {
-			rdlog(LOG_ERR,"Can't allocate client private data");
+			rdlog(LOG_ERR,"Can't allocate client %s private data",client_addr);
 		} else {
 			struct connection_private *conn_priv = NULL;
 			w_client->data = conn_priv = (struct connection_private *)&w_client[1];
@@ -381,7 +392,9 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			if(accept_private->accept_current_worker_idx >= accept_private->config.threads)
 				accept_private->accept_current_worker_idx = 0;
 
-			rdbg("Sent connection to worker thread %zu",cur_idx);
+			conn_priv->client = strncat((char *)&conn_priv[1],client_addr,client_addr_len+1);
+
+			rdbg("Sent connection of %s to worker thread %zu",client_addr,cur_idx);
 
 			ev_io_init(w_client, read_cb, client_sd, EV_READ);
 			rd_fifoq_add(&accept_private->watchers_queue[cur_idx],w_client);
