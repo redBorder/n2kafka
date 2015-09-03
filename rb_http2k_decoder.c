@@ -46,6 +46,21 @@ static const char RB_SENSOR_UUID_ENRICHMENT_KEY[] = "uuids";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
 
+static const char RB_TOPIC_PARTITIONER_KEY[] = "partition_key";
+static const char RB_TOPIC_PARTITIONER_ALGORITHM_KEY[] = "partition_algo";
+
+enum partitioner_algorithm {
+	none,mac,
+};
+
+struct {
+	enum partitioner_algorithm algoritm;
+	const char *name;
+} partitioner_algorithm_list[] = {
+	{none,NULL},
+	{mac,"mac"},
+};
+
 struct topic_s{
 #ifdef TOPIC_S_MAGIC
 	uint64_t magic;
@@ -55,6 +70,9 @@ struct topic_s{
 
 	rd_avl_node_t avl_node;
 	TAILQ_ENTRY(topic_s) list_node;
+
+	const char *partition_key;
+	enum partitioner_algorithm partitioner_algorithm;
 };
 
 void init_rb_database(struct rb_database *db){
@@ -126,25 +144,44 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 
 
 		json_object_foreach(topic_list, key, value) {
+			const char *partition_key=NULL,*partition_algo=NULL;
 			const char *topic_name = key;
 			const size_t topic_len = strlen(topic_name);
 
 			if(!json_is_object(value)) {
-				if(pass == 1) {
+				if(pass == 0) {
 					rdlog(LOG_ERR,"Topic %s is not an object. Discarding.",topic_name);
 				}
 				continue;
 			}
 
-			if(0==pass) {
-				char_array_pos += topic_len + 1;
-			} else {
+			const int topic_unpack_rc = json_unpack_ex(value,&jerr,0,"{s?s,s?s}",
+				RB_TOPIC_PARTITIONER_KEY,&partition_key,
+				RB_TOPIC_PARTITIONER_ALGORITHM_KEY,&partition_algo);
+
+			if(0!=topic_unpack_rc) {
+				if(pass==0) {
+					rdlog(LOG_ERR,"Can't extract information of topic %s (%s). Discarding.",
+						topic_name,jerr.text);
+				}
+				continue;
+			}
+
+			const size_t partition_key_len = partition_key?strlen(partition_key):0;
+
+			if(1==pass) {
 				char *topics_curr_pos = strings_buffer + char_array_pos;
 
 	#ifdef TOPIC_S_MAGIC
 				topics[idx].magic = TOPIC_S_MAGIC;
 	#endif
-				topics[idx].topic_name = strncpy(topics_curr_pos,topic_name,topic_len+1);
+				topics[idx].topic_name = strncpy(topics_curr_pos,topic_name,
+					topic_len+1);
+				topics_curr_pos += topic_len+1;
+				if(partition_key_len) {
+					topics[idx].partition_key = strncpy(topics_curr_pos,
+						partition_key,partition_key_len+1);
+				}
 
 				RD_AVL_INSERT(new_topics_db,&topics[idx],avl_node);
 				topic_list_push(new_topics_list,&topics[idx]);
@@ -156,11 +193,10 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 					char buf[BUFSIZ];
 					strerror_r(errno,buf,sizeof(buf));
 					rdlog(LOG_ERR,"Can't create topic %s: %s",topic_name,buf);
-				} else {
-					char_array_pos += topic_len+1;
 				}
 			}
 
+			char_array_pos += topic_len+1 + (partition_key_len?partition_key_len+1:0);
 			idx++;
 		}
 
