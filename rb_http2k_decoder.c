@@ -32,6 +32,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
+#include <librd/rd.h>
 #include <librdkafka/rdkafka.h>
 
 #ifndef NDEBUG
@@ -49,6 +50,14 @@ static const char RB_SENSOR_UUID_KEY[] = "uuid";
 static const char RB_TOPIC_PARTITIONER_KEY[] = "partition_key";
 static const char RB_TOPIC_PARTITIONER_ALGORITHM_KEY[] = "partition_algo";
 
+typedef int32_t (*partitioner_cb) (const rd_kafka_topic_t *rkt,
+	const void *keydata,size_t keylen,int32_t partition_cnt,
+	void *rkt_opaque,void *msg_opaque);
+
+static int32_t (mac_partitioner) (const rd_kafka_topic_t *rkt,
+	const void *keydata,size_t keylen,int32_t partition_cnt,
+	void *rkt_opaque,void *msg_opaque);
+
 enum partitioner_algorithm {
 	none,mac,
 };
@@ -56,9 +65,9 @@ enum partitioner_algorithm {
 struct {
 	enum partitioner_algorithm algoritm;
 	const char *name;
+	partitioner_cb partitioner;
 } partitioner_algorithm_list[] = {
-	{none,NULL},
-	{mac,"mac"},
+	{mac,"mac",mac_partitioner},
 };
 
 struct topic_s{
@@ -92,6 +101,55 @@ struct rb_opaque {
 	struct rb_config *rb_config;
 };
 
+static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
+		const void *keydata,size_t keylen,int32_t partition_cnt,
+		void *rkt_opaque,void *msg_opaque) {
+	size_t toks=0;
+	uint64_t intmac = 0;
+	char mac_key[sizeof("00:00:00:00:00:00")];
+	
+	if(keylen != strlen("00:00:00:00:00:00")) {
+		rdlog(LOG_WARNING,"Invalid mac %.*s len",(int)keylen,(const char *)keydata);
+		goto fallback_behavior;
+	}
+
+	mac_key[0]='\0';
+	strncat(mac_key,(const char *)keydata,sizeof(mac_key)-1);
+
+	for(toks=1;toks<6;++toks) {
+		const size_t semicolon_pos = 3*toks-1;
+		if(':' != mac_key[semicolon_pos]) {
+			rdlog(LOG_WARNING,"Invalid mac %.*s (it does not have ':' in char %zu.",
+				(int)keylen,mac_key,semicolon_pos);
+			goto fallback_behavior;
+		}
+	}
+
+	for(toks=0;toks<6;++toks) {
+		char *endptr = NULL;
+		intmac = (intmac<<8) + strtoul(&mac_key[3*toks],&endptr,16);
+		/// The key should end with '"' in json format
+		if((toks < 5 && *endptr != ':') || (toks==5 && *endptr!='\0')) {
+			rdlog(LOG_WARNING,"Invalid mac %.*s, unexpected %c end of %zu token",
+				(int)keylen,mac_key,*endptr,toks);
+			goto fallback_behavior;
+
+		}
+
+		if(endptr != mac_key + 3*(toks+1)-1) {
+			rdlog(LOG_WARNING,"Invalid mac %.*s, unexpected token length at %zu token",
+				(int)keylen,mac_key,toks);
+			goto fallback_behavior;
+		}
+	}
+
+	return intmac % (uint32_t)partition_cnt;
+
+fallback_behavior:
+	return rd_kafka_msg_partitioner_random(rkt,keydata,keylen,partition_cnt,
+		rkt_opaque,msg_opaque);
+}
+
 static int parse_per_uuid_opaque_config(json_t *config,json_t **uuid_enrichment) {
 	assert(uuid_enrichment);
 	assert(config);
@@ -105,6 +163,20 @@ static int parse_per_uuid_opaque_config(json_t *config,json_t **uuid_enrichment)
 	}
 	
 	return json_unpack_rc;
+}
+
+static partitioner_cb partitioner_of_name(const char *name) {
+	size_t i=0;
+
+	assert(name);
+
+	for(i=0;i<RD_ARRAYSIZE(partitioner_algorithm_list);++i) {
+		if(0==strcmp(partitioner_algorithm_list[i].name,name)) {
+			return partitioner_algorithm_list[i].partitioner;
+		}
+	}
+
+	return NULL;
 }
 
 static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,rd_avl_t *new_topics_db,void **new_topics_memory) {
@@ -187,6 +259,17 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 				topic_list_push(new_topics_list,&topics[idx]);
 
 				rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
+				
+				if(NULL != partition_algo) {
+					partitioner_cb partitioner = partition_algo != NULL ? 
+						partitioner_of_name(partition_algo) : NULL;
+					if(NULL != partitioner) {
+						rd_kafka_topic_conf_set_partitioner_cb(myconf,partitioner);
+					} else {
+						rdlog(LOG_ERR,"Can't found partitioner algorithm %s",partition_algo);
+					}
+				}
+				
 				topics[idx].rkt = rd_kafka_topic_new(global_config.rk, topics[idx].topic_name, myconf);
 
 				if(NULL == topics[idx].rkt) {
@@ -194,6 +277,7 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 					strerror_r(errno,buf,sizeof(buf));
 					rdlog(LOG_ERR,"Can't create topic %s: %s",topic_name,buf);
 				}
+
 			}
 
 			char_array_pos += topic_len+1 + (partition_key_len?partition_key_len+1:0);
@@ -450,15 +534,17 @@ static void enrich_rb_json(json_t *json, /* TODO const */ json_t *enrichment_dat
 	json_object_update_missing_copy(json,enrichment_data);
 }
 
-static void produce_or_free(rd_kafka_topic_t *rkt,char *buf,size_t bufsize,
-                                                            void *opaque) {
+static void produce_or_free(struct topic_s *topic,char *buf,size_t bufsize,
+        const char *key,size_t keylen,void *opaque) {
 
-	const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,
-		RD_KAFKA_MSG_F_FREE,buf,bufsize,NULL,0,opaque);
+	assert(topic);
+
+	const int produce_ret = rd_kafka_produce(topic->rkt,RD_KAFKA_PARTITION_UA,
+		RD_KAFKA_MSG_F_FREE,buf,bufsize,key,keylen,opaque);
 
 	if(produce_ret != 0) {
 		rdlog(LOG_ERR,"Can't produce to topic %s: %s",
-			rd_kafka_topic_name(rkt),
+			topic->topic_name,
 			rd_kafka_err2str(rd_kafka_errno2err(errno)));
 	}
 
@@ -499,6 +585,16 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 	if(NULL == topic_handler) {
 		rdlog(LOG_ERR,"Can't produce to topic %s: topic not found",topic);
 	} else {
+		const char *key = NULL;
+		if(NULL != topic_handler->partition_key) {
+			const int unpack_partitioner_key_rc = json_unpack_ex(json,&err,0,"{s:s}",
+				topic_handler->partition_key,&key);
+			if(0 != unpack_partitioner_key_rc) {
+				rdlog(LOG_ERR,"Can't unpack %s key from message of %s",
+					topic_handler->partition_key,client_ip);
+				rdlog(LOG_ERR,"Message was:\n%.*s",(int)bsize,buffer);
+			}
+		}
 		uuid_enrichment_entry = json_object_get(db->uuid_enrichment,sensor_uuid);
 		if( NULL != uuid_enrichment_entry) {
 			enrich_rb_json(json,uuid_enrichment_entry);
@@ -506,7 +602,7 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 			if(ret == NULL) {
 				rdlog(LOG_ERR,"Can't create json dump (out of memory?)");
 			} else {
-				produce_or_free(topic_handler->rkt,ret,strlen(ret),NULL);
+				produce_or_free(topic_handler,ret,strlen(ret),strstr(ret,key),strlen(key),NULL);
 			}
 		}
 	}
