@@ -3,7 +3,6 @@
 		{"proto":"http","port":2057, "mode":"epoll","num_threads":20, "redborder_uri":true, "decode_as":"rb_http2k" }
 	],
 	"brokers":"eugeniodev",
-	"topic":"rb_flow",
 	"rdkafka.socket.max.fails":"3",
 	"rdkafka.socket.keepalive.enable":"true",
 	"blacklist":["192.168.101.3"],

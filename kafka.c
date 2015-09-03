@@ -95,15 +95,13 @@ void init_rdkafka(){
 		fatal( "%% No valid brokers specified\n");
 	}
 
-	if(global_config.topic == NULL){
-		fatal("%% No valid topic specified\n");
-	}
-
 	rd_kafka_topic_conf_set_partitioner_cb(global_config.kafka_topic_conf, rb_client_mac_partitioner);
 	rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
-	rkt = rd_kafka_topic_new(global_config.rk, global_config.topic, myconf);
-	if(rkt == NULL){
-		fatal("%% Cannot create kafka topic\n");
+	if(global_config.topic) {
+		rkt = rd_kafka_topic_new(global_config.rk, global_config.topic, myconf);
+		if(rkt == NULL){
+			fatal("%% Cannot create kafka topic\n");
+		}
 	}
 
 	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
@@ -119,6 +117,13 @@ void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 	char errbuf[ERROR_BUFFER_SIZE];
 
 	do{
+		if(NULL == rkt) {
+			rdlog(LOG_ERR,"Can't produce message, no topic specified");
+			if(flags & RD_KAFKA_MSG_F_FREE) {
+				free(buf);
+			}
+		}
+
 		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,flags,
 			buf,bufsize,NULL,0,opaque);
 
@@ -130,7 +135,7 @@ void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
 		}else{
 			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
 			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
-			if(flags | RD_KAFKA_MSG_F_FREE)
+			if(flags & RD_KAFKA_MSG_F_FREE)
 				free(buf);
 			break;
 		}
@@ -171,7 +176,10 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 
 void send_array_to_kafka(struct kafka_message_array *msgs) {
 	size_t i;
-	rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,msgs->msgs,msgs->count);
+	if(rkt) {
+		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
+			msgs->msgs,msgs->count);
+	}
 
 	for(i=0; i<msgs->count; ++i) {
 		if(msgs->msgs[i].err) {
@@ -179,6 +187,9 @@ void send_array_to_kafka(struct kafka_message_array *msgs) {
 			int payload_len = msgs->msgs[i].len;
 			const char *msg_error = rd_kafka_err2str(msgs->msgs[i].err);
 			rdlog(LOG_ERR,"Couldn't produce message [%.*s]: %s",payload_len,payload,msg_error);
+		}
+
+		if(!rkt || msgs->msgs[i].err) {
 			free(msgs->msgs[i].payload);
 		}
 	}
@@ -200,7 +211,9 @@ void kafka_poll(int timeout_ms){
 
 void stop_rdkafka(){
 	rdlog(LOG_INFO,"Waiting kafka handler to stop properly");
-	rd_kafka_topic_destroy(rkt);
+	if(rkt) {
+		rd_kafka_topic_destroy(rkt);
+	}
 	rd_kafka_destroy(global_config.rk);
 	rd_kafka_wait_destroyed(5000);
 }

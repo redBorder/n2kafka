@@ -387,9 +387,6 @@ static void parse_config0(json_t *root){
 }
 
 static void check_config(){
-	if(!only_stdout_output() && global_config.topic == NULL){
-		fatal("You have to set a topic to write to\n");
-	}
 	if(!only_stdout_output() && global_config.brokers == NULL){
 		fatal("You have to set a brokers to write to\n");
 	}
