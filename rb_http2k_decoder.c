@@ -34,6 +34,10 @@
 #include <errno.h>
 #include <librdkafka/rdkafka.h>
 
+#ifndef NDEBUG
+#define TOPIC_S_MAGIC 0x01CA1C01CA1C01CAL
+#endif
+
 #define topic_list_init(l) TAILQ_INIT(l)
 #define topic_list_push(l,e) TAILQ_INSERT_TAIL(l,e,list_node);
 
@@ -41,6 +45,17 @@ static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
 static const char RB_SENSOR_UUID_ENRICHMENT_KEY[] = "uuids";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
+
+struct topic_s{
+#ifdef TOPIC_S_MAGIC
+	uint64_t magic;
+#endif
+	rd_kafka_topic_t *rkt;
+	const char *topic_name;
+
+	rd_avl_node_t avl_node;
+	TAILQ_ENTRY(topic_s) list_node;
+};
 
 void init_rb_database(struct rb_database *db){
 	memset(db,0,sizeof(db));
