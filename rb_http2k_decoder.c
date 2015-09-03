@@ -94,8 +94,9 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 	json_t *value;
 	json_error_t jerr;
 	json_t *topic_list = NULL;
-	size_t char_array_len = 0;
-	size_t char_array_pos = 0;
+	int pass=0;
+	char *strings_buffer=NULL;
+	struct topic_s *topics=NULL;
 
 	assert(config);
 	assert(new_topics_list);
@@ -119,50 +120,61 @@ static int parse_topic_list_config(json_t *config,topics_list *new_topics_list,r
 		return -1;
 	}
 
-	json_object_foreach(topic_list, key, value) {
-		char_array_len += strlen(key) + 1;
-	}
+	for(pass=0;pass<2;pass++) {
+		size_t char_array_pos = 0;
+		size_t idx = 0;
 
-	const size_t array_memsize = array_size*sizeof(struct topic_s);
-	const size_t needed_memory = array_memsize + char_array_len;
-	*new_topics_memory = calloc(1,needed_memory);
-	struct topic_s *my_topics_memory = *new_topics_memory;
-	char *topics = (char *)my_topics_memory + array_memsize;
-	if(NULL == *new_topics_memory) {
-		rdlog(LOG_ERR,"Can't allocate topics (out of memory?)");
-		return -1;
-	}
 
-	size_t idx = 0;
-	json_object_foreach(topic_list, key, value) {
-		const size_t topic_len = strlen(key);
-		const char *topic_name = key;
+		json_object_foreach(topic_list, key, value) {
+			const char *topic_name = key;
+			const size_t topic_len = strlen(topic_name);
 
-		if(NULL != topic_name) {
-			char *topics_curr_pos = topics + char_array_pos;
-
-#ifdef TOPIC_S_MAGIC
-			my_topics_memory[idx].magic = TOPIC_S_MAGIC;
-#endif
-			my_topics_memory[idx].topic_name = strncpy(topics_curr_pos,topic_name,topic_len+1);
-
-			RD_AVL_INSERT(new_topics_db,&my_topics_memory[idx],avl_node);
-			topic_list_push(new_topics_list,&my_topics_memory[idx]);
-
-			rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
-			my_topics_memory[idx].rkt = rd_kafka_topic_new(global_config.rk, my_topics_memory[idx].topic_name, myconf);
-
-			if(NULL == my_topics_memory[idx].rkt) {
-				char buf[BUFSIZ];
-				strerror_r(errno,buf,sizeof(buf));
-				rdlog(LOG_ERR,"Can't create topic %s: %s",topic_name,buf);
-			} else {
-				char_array_pos += topic_len+1;
+			if(!json_is_object(value)) {
+				if(pass == 1) {
+					rdlog(LOG_ERR,"Topic %s is not an object. Discarding.",topic_name);
+				}
+				continue;
 			}
-		} else {
-			rdlog(LOG_ERR,"Can't parse rb_http2k topic number %zu.",idx);
+
+			if(0==pass) {
+				char_array_pos += topic_len + 1;
+			} else {
+				char *topics_curr_pos = strings_buffer + char_array_pos;
+
+	#ifdef TOPIC_S_MAGIC
+				topics[idx].magic = TOPIC_S_MAGIC;
+	#endif
+				topics[idx].topic_name = strncpy(topics_curr_pos,topic_name,topic_len+1);
+
+				RD_AVL_INSERT(new_topics_db,&topics[idx],avl_node);
+				topic_list_push(new_topics_list,&topics[idx]);
+
+				rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
+				topics[idx].rkt = rd_kafka_topic_new(global_config.rk, topics[idx].topic_name, myconf);
+
+				if(NULL == topics[idx].rkt) {
+					char buf[BUFSIZ];
+					strerror_r(errno,buf,sizeof(buf));
+					rdlog(LOG_ERR,"Can't create topic %s: %s",topic_name,buf);
+				} else {
+					char_array_pos += topic_len+1;
+				}
+			}
+
+			idx++;
 		}
-		idx+=1;
+
+		if(0 == pass) {
+			const size_t array_memsize = idx*sizeof(struct topic_s);
+			const size_t needed_memory = array_memsize + char_array_pos;
+			*new_topics_memory = calloc(1,needed_memory);
+			topics = *new_topics_memory;
+			strings_buffer = (char *)topics + array_memsize;
+			if(NULL == *new_topics_memory) {
+				rdlog(LOG_ERR,"Can't allocate topics (out of memory?)");
+				return -1;
+			}
+		}
 	}
 
 	return 0;
