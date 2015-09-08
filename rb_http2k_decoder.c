@@ -602,8 +602,9 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 			if(ret == NULL) {
 				rdlog(LOG_ERR,"Can't create json dump (out of memory?)");
 			} else {
-				produce_or_free(topic_handler,ret,strlen(ret),strstr(ret,key),
-					key?strlen(key):0,NULL);
+				const char *msgkey = key?strstr(ret,key):NULL;
+				size_t msgkeylen = key?strlen(key):0;
+				produce_or_free(topic_handler,ret,strlen(ret),msgkey,msgkeylen,NULL);
 			}
 		}
 	}
