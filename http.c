@@ -336,7 +336,7 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	if(ret_topic) {
 		*ret_topic = strdup(topic);
 	}
-	if(*ret_uuid) {
+	if(ret_uuid) {
 		*ret_uuid = strdup(uuid);
 	}
 

@@ -154,12 +154,23 @@ static int parse_per_uuid_opaque_config(json_t *config,json_t **uuid_enrichment)
 	assert(uuid_enrichment);
 	assert(config);
 	json_error_t jerr;
+	const char *key = NULL;
+	json_t *value   = NULL;
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s:O}",
 		RB_SENSOR_UUID_ENRICHMENT_KEY,uuid_enrichment);
 
 	if(0!=json_unpack_rc) {
 		rdlog(LOG_ERR,"Can't parse valid uuid: %s",jerr.text);
+	}
+
+	json_object_foreach(*uuid_enrichment,key,value) {
+		json_t *sensor_uuid_json = json_string(key);
+		if(NULL == sensor_uuid_json) {
+			rdlog(LOG_ERR,"Can't create json object (out of memory?)");
+		} else {
+			json_object_set_new(value, "sensor_uuid", sensor_uuid_json);
+		}
 	}
 	
 	return json_unpack_rc;
@@ -551,31 +562,22 @@ static void produce_or_free(struct topic_s *topic,char *buf,size_t bufsize,
 }
 
 static void process_rb_buffer(const char *buffer,size_t bsize,
-        struct rb_opaque *opaque,const char *topic,const char *client_ip) {
+        const keyval_list_t *msg_vars,struct rb_opaque *opaque) {
 	json_error_t err;
 	struct rb_database *db = &opaque->rb_config->database;
 	/* @TODO const */ json_t *uuid_enrichment_entry = NULL;
-	const char *sensor_uuid = NULL;
 	char *ret = NULL;
 	assert(buffer);
 	assert(bsize);
+
+	const char *client_ip = valueof(msg_vars,"client_ip");
+	const char *sensor_uuid = valueof(msg_vars,"sensor_uuid");
+	const char *topic = valueof(msg_vars,"topic");
 
 	json_t *json = json_loadb(buffer,bsize,0,&err);
 	if(NULL == json){
 		rdlog(LOG_ERR,"Error decoding RB JSON (%s) of source %s, line %d column %d: %s",
 			buffer,client_ip,err.line,err.column,err.text);
-		goto err;
-	}
-
-	const int unpack_rc = json_unpack_ex(json,&err,0,"{s:s}",
-		RB_SENSOR_UUID_KEY,&sensor_uuid);
-	if(unpack_rc != 0) {
-		rdlog(LOG_ERR,"Can't unpack %s: %s",RB_SENSOR_UUID_KEY,err.text);
-		goto err;
-	}
-
-	if(NULL == sensor_uuid) {
-		rdlog(LOG_ERR,"redBorder flow with no sensor uuid, discarding");
 		goto err;
 	}
 
@@ -625,10 +627,6 @@ void rb_decode(char *buffer,size_t buf_size,
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	const char *topic = valueof(list,"topic");
-	const char *client_ip = valueof(list,"client");
-	const char *sensor_uuid __attribute__((unused)) = valueof(list,"sensor_uuid");
-
-	process_rb_buffer(buffer,buf_size,rb_opaque,topic,client_ip);
+	process_rb_buffer(buffer,buf_size,list,rb_opaque);
 	free(buffer);
 }
