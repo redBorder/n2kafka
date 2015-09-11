@@ -1,1 +1,1 @@
-../engine.o ../global_config.o ../kafka.o ../in_addr_list.o ../http.o ../socket.o ../version.o ../rb_mac.o ../rb_meraki.o ../rb_http2k_decoder.o ../rb_json.o ../rb_addr.o
+../engine.o ../global_config.o ../kafka.o ../in_addr_list.o ../http.o ../socket.o ../version.o ../rb_mac.o ../rb_meraki.o ../rb_http2k_decoder.o ../rb_json.o ../rb_addr.o ../pair.o
