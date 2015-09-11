@@ -199,10 +199,17 @@ static void process_data_received_from_socket(char *buffer,const size_t recv_res
 		rdlog(LOG_DEBUG,"received %zu data from %s: %.*s\n",recv_result,client,
 			(int)recv_result,buffer);
 
+	struct pair attrs_mem[1];
+	attrs_mem->key = "client";
+	attrs_mem->value = client;
+
+	keyval_list_t attrs = keyval_list_initializer(attrs);
+	add_key_value_pair(&attrs,attrs_mem);
+
 	if(unlikely(only_stdout_output())){
 		free(buffer);
 	} else {
-		callback(buffer,recv_result,NULL,client,callback_opaque);
+		callback(buffer,recv_result,&attrs,callback_opaque);
 	}
 }
 

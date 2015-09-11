@@ -482,13 +482,17 @@ err:
 }
 
 void meraki_decode(char *buffer,size_t buf_size,
-	            const char *topic __attribute__((unused)),
-	            const char *client,
+	            const keyval_list_t *attrs,
 	            void *_listener_callback_opaque) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 
 	struct meraki_opaque *meraki_opaque = meraki_opaque_cast(_listener_callback_opaque);
+
+	const char *client = valueof(attrs,"client");
+	if(NULL == client) {
+		client = "(unknown)";
+	}
 
 	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,client,meraki_opaque);
 

@@ -24,7 +24,7 @@ void add_key_value_pair(keyval_list_t *list,struct pair *pair) {
 	TAILQ_INSERT_TAIL(list,pair,entry);
 }
 
-const char *valueof(keyval_list_t *list,const char *key) {
+const char *valueof(const keyval_list_t *list,const char *key) {
 	struct pair *pair = NULL;
 	TAILQ_FOREACH(pair, list, entry) {
 		if(0 == strcmp(key,pair->key)) {

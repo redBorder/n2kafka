@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "pair.h"
+
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
@@ -51,4 +53,5 @@ struct meraki_config {
 	struct meraki_database database;
 };
 
-void meraki_decode(char *buffer,size_t buf_size,const char *topic,const char *client,void *listener_callback_opaque);
+void meraki_decode(char *buffer,size_t buf_size,
+	const keyval_list_t *attrs,void *listener_callback_opaque);

@@ -25,6 +25,7 @@
 #include "rb_http2k_decoder.h"
 #include "kafka.h"
 #include "in_addr_list.h"
+#include "pair.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -33,7 +34,7 @@
 
 struct json_t;
 struct listener;
-typedef void (*listener_callback)(char *buffer,size_t buf_size,const char *topic,const char *source,void *listener_callback_opaque);
+typedef void (*listener_callback)(char *buffer,size_t buf_size,const keyval_list_t *props,void *listener_callback_opaque);
 typedef struct listener* (*listener_creator)(struct json_t *config,
                         listener_callback cb,void *cb_opaque);
 typedef void (*listener_join)(void *listener_private);

@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
+#include "pair.h"
 
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 
@@ -43,5 +44,4 @@ struct mse_config {
 int mse_opaque_creator(struct json_t *config,void **opaque);
 int mse_opaque_reload(struct json_t *config,void *opaque);
 void mse_opaque_done(void *opaque);
-void mse_decode(char *buffer,size_t buf_size,const char *topic,
-	const char *client,void *listener_callback_opaque);
+void mse_decode(char *buffer,size_t buf_size,const keyval_list_t *keyval,void *listener_callback_opaque);

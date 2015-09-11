@@ -95,6 +95,7 @@ static size_t string_grow(struct string *str,size_t delta) {
 struct conn_info {
 	const char *topic;
 	const char *client;
+	const char *sensor_uuid;
 	struct string str;
 };
 
@@ -102,6 +103,23 @@ static void free_con_info(struct conn_info *con_info) {
 	free(con_info->str.buf);
 	con_info->str.buf = NULL;
 	free(con_info);
+}
+
+static void prepare_decoder_params(struct conn_info *con_info,struct pair *mem,
+        size_t memsiz,keyval_list_t *list) {
+	assert(3==memsiz);
+	memset(mem,0,sizeof(*mem)*3);
+
+	mem[0].key   = "topic";
+	mem[0].value = con_info->topic;
+	mem[1].key   = "sensor_uuid";
+	mem[1].value = con_info->sensor_uuid;
+	mem[2].key   = "client_ip";
+	mem[2].value = con_info->client;
+
+	add_key_value_pair(list,&mem[0]);
+	add_key_value_pair(list,&mem[1]);
+	add_key_value_pair(list,&mem[2]);
 }
 
 static void request_completed (void *cls,
@@ -119,8 +137,14 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 
-	h->callback(con_info->str.buf,con_info->str.used,con_info->topic,
-		con_info->client,h->callback_opaque);
+	keyval_list_t decoder_params = keyval_list_initializer(decoder_params);
+	struct pair decoder_opts[3];
+
+	prepare_decoder_params(con_info,decoder_opts,RD_ARRAY_SIZE(decoder_opts),
+		&decoder_params);
+
+	h->callback(con_info->str.buf,con_info->str.used,
+		&decoder_params,h->callback_opaque);
 	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);
@@ -128,7 +152,7 @@ static void request_completed (void *cls,
 }
 
 static struct conn_info *create_connection_info(size_t string_size,const char *topic, 
-                                                               const char *client) {
+                                            const char *client,const char *s_uuid) {
 	/* First call, creating all needed structs */
 
 	struct conn_info *con_info = NULL;
@@ -136,6 +160,7 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 	rd_calloc_struct(&con_info,sizeof(*con_info),
 		-1,topic,&con_info->topic,
 		-1,client,&con_info->client,
+		-1,s_uuid,&con_info->sensor_uuid,
 		RD_MEM_END_TOKEN);
 	
 	if( NULL == con_info ){
@@ -251,7 +276,12 @@ static const char *client_addr(char *buf, size_t buf_size,
 
 static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 							struct rb_database *rb_database, int *allok,
-							char **ret_topic,const char *source) {
+							char **ret_topic,char **ret_uuid,const char *source) {
+
+	/*
+	 * Need to validate that URL is valid:
+	 * POST https://<host>/<sensor_uuid>/<topic>
+	 */
 	const char *uuid=NULL,*topic=NULL;
 	const size_t url_len = strlen(url);
 	char my_url[url_len+1];
@@ -306,6 +336,9 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	if(ret_topic) {
 		*ret_topic = strdup(topic);
 	}
+	if(*ret_uuid) {
+		*ret_uuid = strdup(uuid);
+	}
 
 	return MHD_YES;
 }
@@ -340,18 +373,19 @@ static int post_handle(void *_cls,
 			return MHD_NO;
 		}
 		/* First message of connection */
-		char *topic = NULL;
+		char *topic = NULL,*uuid=NULL;
 		if (cls->redborder_uri) {
 			int aok = 1;
 			const int rc = rb_http2k_validation(connection,url,
-				&global_config.rb.database,&aok,&topic,client);
+				&global_config.rb.database,&aok,&topic,&uuid,client);
 			if(0 == aok) {
 				free(topic);
 				return rc;
 			}
 		}
-		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic,client);
+		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic,client,uuid);
 		free(topic);
+		free(uuid);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if ( *upload_data_size > 0 ) {
 		/* middle calls, process string sent */

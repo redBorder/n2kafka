@@ -617,13 +617,17 @@ err:
 }
 
 void rb_decode(char *buffer,size_t buf_size,
-	                        const char *topic,const char *client_ip,
+	                        const keyval_list_t *list,
 	                        void *_listener_callback_opaque) {
 
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
 #ifdef RB_OPAQUE_MAGIC
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
+
+	const char *topic = valueof(list,"topic");
+	const char *client_ip = valueof(list,"client");
+	const char *sensor_uuid __attribute__((unused)) = valueof(list,"sensor_uuid");
 
 	process_rb_buffer(buffer,buf_size,rb_opaque,topic,client_ip);
 	free(buffer);

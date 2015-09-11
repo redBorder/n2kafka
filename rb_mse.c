@@ -489,14 +489,18 @@ err:
 }
 
 void mse_decode(char *buffer,size_t buf_size,
-	                        const char *topic __attribute__((unused)),
-	                        const char *client __attribute__((unused)),
+	                        const keyval_list_t *keyval __attribute__((unused)),
 	                        void *_listener_callback_opaque) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == mse_opaque->magic);
 #endif
+
+	const char *client = valueof(keyval,"client");
+	if(NULL == client) {
+		client = "(unknown)";
+	}
 
 	struct mse_array *notifications = process_mse_buffer(buffer,buf_size,client,mse_opaque);
 	free(buffer);
