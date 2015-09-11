@@ -531,7 +531,7 @@ static void enrich_rb_json(json_t *json, /* TODO const */ json_t *enrichment_dat
 	assert(json);
 	assert(enrichment_data);
 
-	json_object_update_missing_copy(json,enrichment_data);
+	json_object_update(json,enrichment_data);
 }
 
 static void produce_or_free(struct topic_s *topic,char *buf,size_t bufsize,
