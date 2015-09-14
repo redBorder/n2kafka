@@ -158,9 +158,9 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 	struct conn_info *con_info = NULL;
 
 	rd_calloc_struct(&con_info,sizeof(*con_info),
-		-1,topic,&con_info->topic,
-		-1,client,&con_info->client,
-		-1,s_uuid,&con_info->sensor_uuid,
+		topic?-1:0,topic,&con_info->topic,
+		client?-1:0,client,&con_info->client,
+		s_uuid?-1:0,s_uuid,&con_info->sensor_uuid,
 		RD_MEM_END_TOKEN);
 	
 	if( NULL == con_info ){
