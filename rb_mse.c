@@ -497,7 +497,7 @@ void mse_decode(char *buffer,size_t buf_size,
 	assert(MSE_OPAQUE_MAGIC == mse_opaque->magic);
 #endif
 
-	const char *client = valueof(keyval,"client");
+	const char *client = valueof(keyval,"client_ip");
 	if(NULL == client) {
 		client = "(unknown)";
 	}

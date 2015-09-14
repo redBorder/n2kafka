@@ -200,7 +200,7 @@ static void process_data_received_from_socket(char *buffer,const size_t recv_res
 			(int)recv_result,buffer);
 
 	struct pair attrs_mem[1];
-	attrs_mem->key = "client";
+	attrs_mem->key = "client_ip";
 	attrs_mem->value = client;
 
 	keyval_list_t attrs = keyval_list_initializer(attrs);

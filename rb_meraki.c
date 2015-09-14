@@ -489,7 +489,7 @@ void meraki_decode(char *buffer,size_t buf_size,
 
 	struct meraki_opaque *meraki_opaque = meraki_opaque_cast(_listener_callback_opaque);
 
-	const char *client = valueof(attrs,"client");
+	const char *client = valueof(attrs,"client_ip");
 	if(NULL == client) {
 		client = "(unknown)";
 	}
