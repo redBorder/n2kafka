@@ -627,6 +627,11 @@ void rb_decode(char *buffer,size_t buf_size,
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	process_rb_buffer(buffer,buf_size,list,rb_opaque);
+	if(0 == buf_size) {
+		rdlog(LOG_WARNING,"Received empty POST request");
+	} else {
+		process_rb_buffer(buffer,buf_size,list,rb_opaque);
+	}
+
 	free(buffer);
 }
