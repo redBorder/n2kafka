@@ -599,7 +599,10 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 		}
 		uuid_enrichment_entry = json_object_get(db->uuid_enrichment,sensor_uuid);
 		if( NULL != uuid_enrichment_entry) {
+			pthread_mutex_lock(&db->uuid_enrichment_mutex);
 			enrich_rb_json(json,uuid_enrichment_entry);
+			pthread_mutex_unlock(&db->uuid_enrichment_mutex);
+
 			ret = json_dumps(json,JSON_COMPACT|JSON_ENSURE_ASCII);
 			if(ret == NULL) {
 				rdlog(LOG_ERR,"Can't create json dump (out of memory?)");
@@ -614,8 +617,11 @@ static void process_rb_buffer(const char *buffer,size_t bsize,
 	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
 err:
-	if(json)
+	if(json) {
+		pthread_mutex_lock(&db->uuid_enrichment_mutex);
 		json_decref(json);
+		pthread_mutex_unlock(&db->uuid_enrichment_mutex);
+	}
 }
 
 void rb_decode(char *buffer,size_t buf_size,

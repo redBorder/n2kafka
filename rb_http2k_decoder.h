@@ -39,8 +39,10 @@ typedef TAILQ_HEAD(,topic_s) topics_list;
 
 struct json_t;
 struct rb_database {
-	/* Private */
+	/* UUID enrichment read-only database */
 	pthread_rwlock_t rwlock;
+	/* UUID enrichment refcnt */
+	pthread_mutex_t uuid_enrichment_mutex;
 	struct json_t *uuid_enrichment;
 	struct {
 		topics_db *topics;
