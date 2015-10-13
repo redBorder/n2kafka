@@ -422,6 +422,11 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 
 	pthread_rwlock_rdlock(&db->rwlock);
 	json_t *enrichment_tmp = json_object_get(db->root,meraki_secret);
+	if(NULL == enrichment_tmp) {
+		/* If secret not found, try default secret */
+		enrichment_tmp = json_object_get(db->root,CONFIG_MERAKI_DEFAULT_SECRET_KEY);
+	}
+
 	if(enrichment_tmp){
 		pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
 		if(opaque->per_listener_enrichment)
