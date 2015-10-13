@@ -34,6 +34,7 @@
 #include <librdkafka/rdkafka.h>
 
 static const char CONFIG_MERAKI_SECRETS_KEY[] = "meraki-secrets";
+static const char CONFIG_MERAKI_DEFAULT_SECRET_KEY[] = "*";
 
 static const char MERAKI_TYPE_KEY[] = "type";
 static const char MERAKI_TYPE_VALUE[] = "meraki";
@@ -77,8 +78,8 @@ int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets){
 
 	struct meraki_database *db = _db;
 
-	const char *key;
-	json_t *value;
+	const char *secret;
+	json_t *secret_enrichment;
 
 	json_t *new_db = NULL;
 
@@ -88,17 +89,15 @@ int parse_meraki_secrets(void *_db,const struct json_t *meraki_secrets){
 		return -1;
 	}
 
+	json_object_foreach(new_db,secret,secret_enrichment) {
+		// This field is needed in all output messages
+		json_t *meraki_type = json_string(MERAKI_TYPE_VALUE);
+		json_object_set_new(secret_enrichment,MERAKI_TYPE_KEY,meraki_type);
+	}
+
 	pthread_rwlock_wrlock(&db->rwlock);
 	json_t *old_db = db->root;
 	db->root = new_db;
-	if(new_db) {
-		json_object_foreach(new_db,key,value) {
-			// This field is needed in all output messages
-			json_t *meraki_type = json_string(MERAKI_TYPE_VALUE);
-			json_object_set_new(value,MERAKI_TYPE_KEY,meraki_type);
-		}
-	}
-
 	pthread_rwlock_unlock(&db->rwlock);
 
 	if(old_db)
