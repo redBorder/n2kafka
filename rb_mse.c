@@ -40,6 +40,7 @@ static const char MSE8_MAC_ADDRESS_KEY[] = "macAddress";
 
 static const char MSE_SUBSCRIPTION_NAME_KEY[] = "subscriptionName";
 static const char MSE_DEVICE_ID_KEY[] = "deviceId";
+static const char MSE_DEFAULT_STREAM[] = "*";
 
 static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
 
@@ -183,6 +184,10 @@ static int parse_sensor(json_t *sensor,json_t *streams_db){
 	const char *stream=NULL;
 	const json_t *enrichment=NULL;
 
+	assert(sensor);
+	assert(default_sensor);
+	assert(streams_db);
+
 	const int unpack_rc = json_unpack_ex((json_t *)sensor,&err,0,
 		"{s:s,s?o}","stream",&stream,MSE_ENRICHMENT_KEY,&enrichment);
 
@@ -234,8 +239,9 @@ int parse_mse_array(void *_db,const struct json_t *mse_array){
 	db->root = new_db;
 	pthread_rwlock_unlock(&db->rwlock);
 
-	if(old_db)
+	if(old_db) {
 		json_decref(old_db);
+	}
 
 	return 0;
 }
@@ -442,8 +448,15 @@ static struct mse_array *process_mse_buffer(const char *buffer,size_t bsize,
 		if(db && to->subscriptionName) {
 			enrichment = mse_database_entry_copy(to->subscriptionName,db);
 			if(NULL == enrichment) {
-				rdlog(LOG_ERR,"MSE message (%s) has unknown subscription name %s. Discarding.",
-					buffer,to->subscriptionName);
+				/* Try the default one */
+				enrichment = mse_database_entry_copy(MSE_DEFAULT_STREAM,db);
+			}
+			
+			if(NULL == enrichment) {
+				rdlog(LOG_ERR,"MSE message (%s) has unknown subscription "
+					"name %s, and no default stream \"%s\" specified. "
+					"Discarding.",
+					buffer,to->subscriptionName,MSE_DEFAULT_STREAM);
 				memset(to,0,sizeof(to[0]));
 				continue;
 			}
