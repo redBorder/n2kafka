@@ -404,7 +404,13 @@ static int post_handle(void *_cls,
 struct http_loop_args {
 	const char *mode;
 	int port;
-	unsigned int num_threads;
+	int num_threads;
+	struct{
+		int connection_memory_limit;
+		int connection_limit;
+		int connection_timeout;
+		int per_ip_connection_limit;
+	}server_parameters;
 	int redborder_uri;
 };
 
@@ -444,38 +450,42 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->callback_opaque = cb_opaque;
 	h->redborder_uri = args->redborder_uri;
 
-	if(0 == strcmp(args->mode,MODE_THREAD_PER_CONNECTION)) {
-		h->d = MHD_start_daemon(flags,
-			args->port,
-			NULL, /* Auth callback */
-			NULL, /* Auth callback parameter */
-			post_handle, /* Request handler */
-			h, /* Request handler parameter */
-			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
+	struct MHD_OptionItem opts[] = {
+		{MHD_OPTION_NOTIFY_COMPLETED, (intptr_t)&request_completed, h},
+		
+		/* Digest-Authentication related. Setting to 0 saves some memory */
+		{MHD_OPTION_NONCE_NC_SIZE, 0, NULL},
 
-			/* Digest-Authentication related. Setting to 0 saves some memory */
-			MHD_OPTION_NONCE_NC_SIZE, (unsigned int)0,
+		/* Max number of concurrent onnections */
+		{MHD_OPTION_CONNECTION_LIMIT, 
+			args->server_parameters.connection_limit, NULL},
 
-			/* Memory limit per connection */
-			MHD_OPTION_CONNECTION_MEMORY_LIMIT, (size_t)(128*1024),
-			/* Memory increment at read buffer growing */
-			MHD_OPTION_CONNECTION_MEMORY_INCREMENT, (size_t)(4*1024),
-			MHD_OPTION_END);
-	} else {
-		h->d = MHD_start_daemon(flags,
-			args->port,
-			NULL, /* Auth callback */
-			NULL, /* Auth callback parameter */
-			post_handle, /* Request handler */
-			h, /* Request handler parameter */
-			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
+		/* Max number of connections per IP */
+		{MHD_OPTION_PER_IP_CONNECTION_LIMIT, 
+			args->server_parameters.per_ip_connection_limit, NULL},
 
-			/* Digest-Authentication related. Setting to 0 saves some memory */
-			MHD_OPTION_NONCE_NC_SIZE, (unsigned int)0,
+		/* Connection timeout */
+		{MHD_OPTION_CONNECTION_TIMEOUT, 
+			args->server_parameters.connection_timeout, NULL},
 
-			MHD_OPTION_THREAD_POOL_SIZE, args->num_threads,
-			MHD_OPTION_END);
-	}
+		/* Memory limit per connection */
+		{MHD_OPTION_CONNECTION_MEMORY_LIMIT, 
+			args->server_parameters.connection_memory_limit, NULL},
+
+		/* Thread pool size */
+		{MHD_OPTION_THREAD_POOL_SIZE, args->num_threads, NULL},
+
+		{ MHD_OPTION_END, 0, NULL }
+	};
+
+	h->d = MHD_start_daemon(flags,
+		args->port,
+		NULL, /* Auth callback */
+		NULL, /* Auth callback parameter */
+		post_handle, /* Request handler */
+		h, /* Request handler parameter */
+		MHD_OPTION_ARRAY, opts,
+		MHD_OPTION_END);
 
 	if(NULL == h->d) {
 		rdlog(LOG_ERR,"Can't allocate LIBMICROHTTPD handler"
@@ -509,19 +519,45 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 
 	struct http_loop_args handler_args;
 	memset(&handler_args,0,sizeof(handler_args));
-	handler_args.num_threads = 1;
 
-	const int unpack_rc = json_unpack_ex(config,&error,0,"{s:i,s?s,s?i,s?b}",
+	/* Default arguments */
+
+	handler_args.num_threads = 1;
+	handler_args.mode = MODE_SELECT;
+	handler_args.server_parameters.connection_memory_limit = 128*1024;
+	handler_args.server_parameters.connection_limit = 1024;
+	handler_args.server_parameters.connection_timeout = 30;
+	handler_args.server_parameters.per_ip_connection_limit = 60;
+
+	/* Unpacking */
+
+	const int unpack_rc = json_unpack_ex(config,&error,0,
+		"{"
+			"s:i," /* port */
+			"s?s," /* mode */
+			"s?i," /* num_threads */
+			"s?b," /* redborder_uri */
+			"s?i," /* connection_memory_limit */
+			"s?i," /* connection_limit */
+			"s?i," /* connection_timeout */
+			"s?i"  /* per_ip_connection_limit */
+		"}",
 		"port",&handler_args.port,"mode",&handler_args.mode,
 		"num_threads",&handler_args.num_threads,
-		"redborder_uri",&handler_args.redborder_uri);
+		"redborder_uri",&handler_args.redborder_uri,
+		"connection_memory_limit",
+			&handler_args.server_parameters.connection_memory_limit,
+		"connection_limit",
+			&handler_args.server_parameters.connection_limit,
+		"connection_timeout",
+			&handler_args.server_parameters.connection_timeout,
+		"per_ip_connection_limit",
+			&handler_args.server_parameters.per_ip_connection_limit);
+
 	if( unpack_rc != 0 /* Failure */ ) {
 		rdlog(LOG_ERR,"Can't parse HTTP options: %s",error.text);
 		return NULL;
 	}
-
-	if(NULL==handler_args.mode)
-		handler_args.mode = MODE_SELECT;
 
 	struct http_private *priv = start_http_loop(&handler_args,cb,cb_opaque);
 	if( NULL == priv ) {
