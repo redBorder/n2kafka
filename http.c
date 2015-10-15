@@ -452,6 +452,10 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 			post_handle, /* Request handler */
 			h, /* Request handler parameter */
 			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
+
+			/* Digest-Authentication related. Setting to 0 saves some memory */
+			MHD_OPTION_NONCE_NC_SIZE, (unsigned int)0,
+
 			/* Memory limit per connection */
 			MHD_OPTION_CONNECTION_MEMORY_LIMIT, (size_t)(128*1024),
 			/* Memory increment at read buffer growing */
@@ -465,6 +469,10 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 			post_handle, /* Request handler */
 			h, /* Request handler parameter */
 			MHD_OPTION_NOTIFY_COMPLETED, &request_completed, h,
+
+			/* Digest-Authentication related. Setting to 0 saves some memory */
+			MHD_OPTION_NONCE_NC_SIZE, (unsigned int)0,
+
 			MHD_OPTION_THREAD_POOL_SIZE, args->num_threads,
 			MHD_OPTION_END);
 	}
