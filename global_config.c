@@ -73,15 +73,22 @@ static const struct registered_decoder{
 	listener_opaque_creator opaque_creator;
 	listener_opaque_reload opaque_reload;
 	listener_opaque_destructor opaque_destructor;
+
+/**
+    Tells if the listener support straming API, instead of wait to all data
+    to be available
+*/
+#define DECODER_F_SUPPORT_STREAMING 0x01
+    int flags;
 } registered_decoders[] = {
-	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL},
+	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL,0},
 	// @TODO destructors
 	{CONFIG_DECODE_AS_MSE,CONFIG_MSE_SENSORS_KEY,mse_decode,mse_opaque_creator,mse_opaque_reload,
-	                                                                            mse_opaque_done},
+	    mse_opaque_done,0},
 	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,
-	                                         meraki_opaque_reload,meraki_opaque_destructor},
+	    meraki_opaque_reload,meraki_opaque_destructor,0},
 	{CONFIG_DECODE_AS_RBHTTP2K,CONFIG_RBHTTP2K_CONFIG,rb_decode,rb_opaque_creator,
-	                                         rb_opaque_reload,rb_opaque_done}
+	    rb_opaque_reload,rb_opaque_done,0}
 };
 
 static const struct registered_listener{
