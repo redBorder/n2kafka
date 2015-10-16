@@ -573,9 +573,16 @@ static void reload_meraki_config(struct n2kafka_config *config) {
 	reload_decoder(config,CONFIG_MERAKI_SECRETS_KEY,&config->meraki.database,parse_meraki_secrets);
 }
 
+static void reload_rbhttp2k_config(struct n2kafka_config *config) {
+	rblog(LOG_INFO,"Reloading rbhttp2k uuids");
+	reload_decoder(config,CONFIG_RBHTTP2K_CONFIG,&config->rb.database,parse_rb_config);
+}
+
+/// @TODO reload every decoder using new config 
 static void reload_decoders(struct n2kafka_config *config) {
 	reload_mse_config(config);
 	reload_meraki_config(config);
+	reload_rbhttp2k_config(config);
 }
 
 void reload_config(struct n2kafka_config *config) {
