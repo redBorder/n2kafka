@@ -81,6 +81,7 @@ struct n2kafka_config{
 
     in_addr_list_t *blacklist;
 
+    /// @TODO this should belong to decoders, not here.
     struct mse_config mse;
     struct meraki_config meraki;
     struct rb_config rb;
