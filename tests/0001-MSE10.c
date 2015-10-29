@@ -168,36 +168,40 @@ static const char LISTENER_NULL_CONFIG[] = "{}";
 }
 #endif
 
-static void checkMSE10Decoder_valid_enrich(struct mse_array *notifications_array) {
+static void checkMSE10Decoder_valid_enrich(struct mse_array
+        *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
-	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
+	assert(notifications_array->data[0].string_size == strlen(
+	           notifications_array->data[0].string));
 
-	const char *subscriptionName=NULL,*sensor_name=NULL;
-	json_int_t sensor_id=0;
+	const char *subscriptionName = NULL, *sensor_name = NULL;
+	json_int_t sensor_id = 0;
 	json_error_t jerr;
 
-	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
+	json_t *ret = json_loads(notifications_array->data[0].string, 0, &jerr);
 	assert(ret);
-	const int unpack_rc = json_unpack_ex(ret,&jerr,0,
-		"{s:[{s:s,s:s,s:i}]}",
-		"notifications",
-		"subscriptionName",&subscriptionName,
-		"sensor_name",&sensor_name,
-		"sensor_id",&sensor_id);
+	const int unpack_rc = json_unpack_ex(ret, &jerr, 0,
+	                                     "{s:[{s:s,s:s,s:i}]}",
+	                                     "notifications",
+	                                     "subscriptionName", &subscriptionName,
+	                                     "sensor_name", &sensor_name,
+	                                     "sensor_id", &sensor_id);
 
 	assert(unpack_rc == 0);
-	assert(0==strcmp(subscriptionName,"rb-assoc"));
-	assert(0==strcmp(sensor_name,"testing"));
+	assert(0 == strcmp(subscriptionName, "rb-assoc"));
+	assert(0 == strcmp(sensor_name, "testing"));
 	assert(255 == sensor_id);
 	json_decref(ret);
 }
 
 static void testMSE10Decoder_valid_enrich() {
-	testMSE10Decoder(MSE_ARRAY_IN,LISTENER_NULL_CONFIG,MSE10_ASSOC,checkMSE10Decoder_valid_enrich);
+	testMSE10Decoder(MSE_ARRAY_IN, LISTENER_NULL_CONFIG, MSE10_ASSOC,
+	                 checkMSE10Decoder_valid_enrich);
 }
 
-static void checkMSE10Decoder_novalid_enrich(struct mse_array *notifications_array) {
+static void checkMSE10Decoder_novalid_enrich(struct mse_array
+        *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
 	/* But invalid MSE => No string */
@@ -205,48 +209,51 @@ static void checkMSE10Decoder_novalid_enrich(struct mse_array *notifications_arr
 }
 
 static void testMSE10Decoder_novalid_enrich() {
-	testMSE10Decoder(MSE_ARRAY_OUT,LISTENER_NULL_CONFIG,MSE10_ASSOC,checkMSE10Decoder_novalid_enrich);
+	testMSE10Decoder(MSE_ARRAY_OUT, LISTENER_NULL_CONFIG, MSE10_ASSOC,
+	                 checkMSE10Decoder_novalid_enrich);
 }
 
 static void checkMSE10Decoder_multi(struct mse_array *notifications_array) {
-	const char *subscriptionName1=NULL,*sensor_name1=NULL;
-	json_int_t sensor_id1=0;
-	const char *subscriptionName2=NULL,*sensor_name2=NULL;
-	json_int_t sensor_id2=0;
+	const char *subscriptionName1 = NULL, *sensor_name1 = NULL;
+	json_int_t sensor_id1 = 0;
+	const char *subscriptionName2 = NULL, *sensor_name2 = NULL;
+	json_int_t sensor_id2 = 0;
 	json_error_t jerr;
 
 	/* No database -> output == input */
 	assert(notifications_array->size == 2);
 
 	assert(notifications_array->data[0].string);
-	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
-	json_t *ret1 = json_loads(notifications_array->data[0].string,0,&jerr);
+	assert(notifications_array->data[0].string_size == strlen(
+	           notifications_array->data[0].string));
+	json_t *ret1 = json_loads(notifications_array->data[0].string, 0, &jerr);
 	assert(ret1);
-	const int unpack_rc1 = json_unpack_ex(ret1,&jerr,0,
-		"{s:[{s:s,s:s,s:i}]}",
-		"notifications",
-		"subscriptionName",&subscriptionName1,
-		"sensor_name",&sensor_name1,
-		"sensor_id",&sensor_id1);
+	const int unpack_rc1 = json_unpack_ex(ret1, &jerr, 0,
+	                                      "{s:[{s:s,s:s,s:i}]}",
+	                                      "notifications",
+	                                      "subscriptionName", &subscriptionName1,
+	                                      "sensor_name", &sensor_name1,
+	                                      "sensor_id", &sensor_id1);
 
 	assert(notifications_array->data[1].string);
-	assert(notifications_array->data[1].string_size == strlen(notifications_array->data[1].string));
-	json_t *ret2 = json_loads(notifications_array->data[1].string,0,&jerr);
+	assert(notifications_array->data[1].string_size == strlen(
+	           notifications_array->data[1].string));
+	json_t *ret2 = json_loads(notifications_array->data[1].string, 0, &jerr);
 	assert(ret2);
-	const int unpack_rc2 = json_unpack_ex(ret2,&jerr,0,
-		"{s:[{s:s,s:s,s:i}]}",
-		"notifications",
-		"subscriptionName",&subscriptionName2,
-		"sensor_name",&sensor_name2,
-		"sensor_id",&sensor_id2);
+	const int unpack_rc2 = json_unpack_ex(ret2, &jerr, 0,
+	                                      "{s:[{s:s,s:s,s:i}]}",
+	                                      "notifications",
+	                                      "subscriptionName", &subscriptionName2,
+	                                      "sensor_name", &sensor_name2,
+	                                      "sensor_id", &sensor_id2);
 
 	assert(unpack_rc1 == 0);
 	assert(unpack_rc2 == 0);
-	assert(0==strcmp(subscriptionName1,"rb-assoc"));
-	assert(0==strcmp(sensor_name1,"testing"));
+	assert(0 == strcmp(subscriptionName1, "rb-assoc"));
+	assert(0 == strcmp(sensor_name1, "testing"));
 	assert(255 == sensor_id1);
-	assert(0==strcmp(subscriptionName2,"rb-loc"));
-	assert(0==strcmp(sensor_name2,"testing"));
+	assert(0 == strcmp(subscriptionName2, "rb-loc"));
+	assert(0 == strcmp(sensor_name2, "testing"));
 	assert(255 == sensor_id2);
 	json_decref(ret1);
 	json_decref(ret2);
@@ -254,16 +261,19 @@ static void checkMSE10Decoder_multi(struct mse_array *notifications_array) {
 
 /// @TODO use a for loop
 static void testMSE10Decoder_valid_enrich_multi() {
-	testMSE10Decoder(MSE_ARRAY_MANY_IN,LISTENER_NULL_CONFIG,MSE10_MANY,checkMSE10Decoder_multi);
+	testMSE10Decoder(MSE_ARRAY_MANY_IN, LISTENER_NULL_CONFIG, MSE10_MANY,
+	                 checkMSE10Decoder_multi);
 }
 
-static void checkMSE10Decoder_empty_array(struct mse_array *notifications_array) {
+static void checkMSE10Decoder_empty_array(struct mse_array
+        *notifications_array) {
 	/* No database -> output == input */
 	assert(!notifications_array ||  notifications_array->size == 0);
 }
 
 static void testMSE10Decoder_empty_array() {
-	testMSE10Decoder(MSE_ARRAY_IN,LISTENER_NULL_CONFIG,MSE10_ZERO_NOTIFICATIONS,checkMSE10Decoder_empty_array);
+	testMSE10Decoder(MSE_ARRAY_IN, LISTENER_NULL_CONFIG, MSE10_ZERO_NOTIFICATIONS,
+	                 checkMSE10Decoder_empty_array);
 }
 
 int main() {
@@ -271,6 +281,6 @@ int main() {
 	testMSE10Decoder_novalid_enrich();
 	testMSE10Decoder_valid_enrich_multi();
 	testMSE10Decoder_empty_array();
-	
+
 	return 0;
 }
