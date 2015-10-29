@@ -189,7 +189,6 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	const json_t *enrichment = NULL;
 
 	assert(sensor);
-	assert(default_sensor);
 	assert(streams_db);
 
 	const int unpack_rc = json_unpack_ex((json_t *)sensor, &err, 0,
