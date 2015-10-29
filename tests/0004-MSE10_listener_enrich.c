@@ -194,6 +194,7 @@ static const char MSE_ARRAY_DEFAULT_OUT[] = \
 			"}\n"
 		"}\n"
 	"]";
+	// *INDENT-ON*
 
 static const char LISTENER_CONFIG_NO_OVERLAP[] = \
         "{\"enrichment\":{\"a\":\"b\"}}";
