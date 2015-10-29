@@ -3,9 +3,10 @@ include ../Makefile.config
 CC ?= cc
 TEST_PROGS := ${TEST_SRCS:%.c=%.test}
 CFLAGS += -g
-CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat 
+CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat
        -Werror=format-security -DFORTIFY_SOURCE=2
-CFLAGS += -Wall -Werror -Wfloat-equal -Wpointer-arith -O0 -I../ -I/opt/rb/include
+CFLAGS += -Wall -Werror -Wfloat-equal -Wpointer-arith -O0 -I ../src/decoder/ \
+-I ../src/engine -I ../ -I ../src/listener/ -I ../src/util/ \-I/opt/rb/include
 LDFLAGS += -lpthread -lrt -lz -lrd
 
 # Profiling
