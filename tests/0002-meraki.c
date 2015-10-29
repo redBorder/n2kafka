@@ -5,6 +5,7 @@
 #include "rb_json_tests.c"
 
 static const char MERAKI_MSG[] =
+  // *INDENT-OFF*
 	"{"
 	    "\"version\":\"2.0\","
 	    "\"secret\":\"r3dB0rder\","
@@ -77,10 +78,12 @@ static const char MERAKI_MSG[] =
 	        "]"
 	    "}"
 	"}";
+  // *INDENT-ON*
 
 
 static const char MERAKI_SECRETS_IN[] = \
-	"{"	
+  // *INDENT-OFF*
+	"{"
 		/* "\"meraki-secrets\": {" */
 	        "\"r3dB0rder\": { "
 	          "\"sensor_name\": \"meraki1\" "
@@ -92,8 +95,10 @@ static const char MERAKI_SECRETS_IN[] = \
 	        "}"
 	    /* "}" */
 	"}";
+  // *INDENT-ON*
 
 static const char MERAKI_SECRETS_DEFAULT_IN[] = \
+  // *INDENT-OFF*
 	"{"
 		/* "\"meraki-secrets\": {" */
 	        "\"r3dB0rder\": { "
@@ -106,8 +111,10 @@ static const char MERAKI_SECRETS_DEFAULT_IN[] = \
 	        "}"
 	    /* "}" */
 	"}";
+  // *INDENT-ON*
 
 static const char MERAKI_SECRETS_OUT[] = \
+  // *INDENT-OFF*
 	"{"
 		/* "\"meraki-secrets\": {" */
 	        "\"r3dB0rder3\": { "
@@ -120,8 +127,10 @@ static const char MERAKI_SECRETS_OUT[] = \
 	        "}"
 	    /* "}" */
 	"}";
+  // *INDENT-ON*
 
 static const char MERAKI_SECRETS_DEFAULT_OUT[] = \
+  // *INDENT-OFF*
 	"{"
 		/* "\"meraki-secrets\": {" */
 	        "\"r3dB0rder3\": { "

@@ -6,6 +6,7 @@
 /// @TODO test behaviour with overlap + default
 
 static const char MSE8_PROBING[] =
+	// *INDENT-OFF*
 	"{\"StreamingNotification\":{"
 		"\"subscriptionName\":\"MSE_SanCarlos\","
 		"\"entity\":\"WIRELESS_CLIENTS\","
@@ -45,8 +46,10 @@ static const char MSE8_PROBING[] =
 			"\"timestamp\":\"2015-03-16T01:57:50.000-0700\""
 		"}"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE8_GEO_PROBING[] =
+	// *INDENT-OFF*
     "{"
         "\"StreamingNotification\":{"
             "\"subscriptionName\":\"MSE_Auditorio\","
@@ -96,8 +99,10 @@ static const char MSE8_GEO_PROBING[] =
             "\"timestamp\":\"2015-04-11T22:03:31.488-0500\""
         "}"
     "}";
+    	// *INDENT-ON*
 
 static const char MSE8_ASSOC[] =
+	// *INDENT-OFF*
 	"{"
 	    "\"StreamingNotification\":{"
 	        "\"subscriptionName\":\"MSE_SanCarlos\","
@@ -148,8 +153,10 @@ static const char MSE8_ASSOC[] =
 	        "\"timestamp\":\"2015-03-16T01:57:50.000-0700\""
 	    "}"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE_ARRAY_IN[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"MSE_SanCarlos\" \n" \
@@ -159,8 +166,10 @@ static const char MSE_ARRAY_IN[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
 static const char MSE_ARRAY_OUT[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"MSE_SanCarlos0\" \n" \
@@ -170,8 +179,10 @@ static const char MSE_ARRAY_OUT[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
-static const char MSE_ARRAY_IN_WITH_DEFAULT[] = 
+static const char MSE_ARRAY_IN_WITH_DEFAULT[] =
+	// *INDENT-OFF*
 	"[\n"
 		"{\n"
 			"\"stream\": \"MSE_SanCarlos\" \n"
@@ -187,8 +198,10 @@ static const char MSE_ARRAY_IN_WITH_DEFAULT[] =
 			"}\n"
 		"}\n"
 	"]";
+	// *INDENT-ON*
 
-static const char MSE_ARRAY_OUT_WITH_DEFAULT[] = 
+static const char MSE_ARRAY_OUT_WITH_DEFAULT[] =
+	// *INDENT-OFF*
 	"[\n"
 		"{\n"
 			"\"stream\": \"MSE_SanCarlos0\" \n"
@@ -204,6 +217,7 @@ static const char MSE_ARRAY_OUT_WITH_DEFAULT[] =
 			"}\n"
 		"}\n"
 	"]";
+	// *INDENT-ON*
 
 static const char LISTENER_CONFIG_NO_OVERLAP[] = \
 	"{\"enrichment\":{\"a\":\"b\"}}";

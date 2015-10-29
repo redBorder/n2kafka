@@ -4,6 +4,7 @@
 #include "rb_mse_tests.h"
 
 static const char MSE10_ASSOC[] =
+	// *INDENT-OFF*
 	"{"
 	    "\"notifications\":["
 	        "{"
@@ -25,8 +26,10 @@ static const char MSE10_ASSOC[] =
 	        "}"
 	    "]"
 	"}";
+		// *INDENT-ON*
 
-static const char MSE10_LOCUP[] = 
+static const char MSE10_LOCUP[] =
+	// *INDENT-OFF*
 	    "\"notifications\":["
 	        "{"
 	            "\"notificationType\":\"locationupdate\","
@@ -49,8 +52,10 @@ static const char MSE10_LOCUP[] =
 	        "}"
 	    "]"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE10_MANY[] =
+	// *INDENT-OFF*
 	"{"
 	    "\"notifications\":["
 	        "{"
@@ -90,10 +95,12 @@ static const char MSE10_MANY[] =
 	        "}"
 	    "]"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE10_ZERO_NOTIFICATIONS[] = "{\"notifications\":[]}";
 
 static const char MSE_ARRAY_IN[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"rb-assoc\" \n" \
@@ -103,8 +110,10 @@ static const char MSE_ARRAY_IN[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
 static const char MSE_ARRAY_OUT[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"rb-assoc0\" \n" \
@@ -114,8 +123,10 @@ static const char MSE_ARRAY_OUT[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
 static const char MSE_ARRAY_MANY_IN[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"rb-assoc\" \n" \
@@ -130,8 +141,8 @@ static const char MSE_ARRAY_MANY_IN[] = \
 				", \"sensor_id\": 255\n" \
 			"}\n" \
 		"}\n" \
-
 	"]";
+	// *INDENT-ON*
 
 static const char LISTENER_NULL_CONFIG[] = "{}";
 
