@@ -1,6 +1,6 @@
 #include <microhttpd.h>
 
-#include "rb_meraki.c"
+#include "../src/decoder/rb_meraki.c"
 
 #include "rb_json_tests.c"
 
