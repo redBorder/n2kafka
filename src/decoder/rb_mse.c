@@ -67,7 +67,7 @@ struct mse_array {
 };
 
 void init_mse_database(struct mse_database *db) {
-	memset(db, 0, sizeof(db));
+	memset(db, 0, sizeof(*db));
 	pthread_rwlock_init(&db->rwlock, 0);
 }
 
