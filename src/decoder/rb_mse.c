@@ -521,7 +521,7 @@ err:
 }
 
 void mse_decode(char *buffer, size_t buf_size,
-                const keyval_list_t *keyval __attribute__((unused)),
+                const keyval_list_t *keyval,
                 void *_listener_callback_opaque) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
