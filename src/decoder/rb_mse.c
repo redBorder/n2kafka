@@ -48,11 +48,15 @@ static const char MSE10_NOTIFICATIONS_KEY[] = "notifications";
 
 static const char CONFIG_MSE_SENSORS_KEY[] = "mse-sensors";
 static const char MSE_ENRICHMENT_KEY[] = "enrichment";
-static const char MSE_MAX_TIME_OFFSET[] = "max_time_offset";
 
+static const char MSE_MAX_TIME_OFFSET[] = "max_time_offset";
+static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
+    "max_time_offset_warning_wait";
 /*
     VALIDATING MSE
 */
+
+static long previous_max_time_offset_warning;
 
 struct mse_data {
 	uint64_t client_mac;
@@ -84,6 +88,7 @@ struct mse_opaque {
 	pthread_rwlock_t per_listener_enrichment_rwlock;
 	json_t *per_listener_enrichment;
 	long max_time_offset;
+	long max_time_offset_warning_wait;
 	struct mse_config *mse_config;
 };
 
@@ -93,14 +98,21 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	assert(config);
 	json_error_t jerr;
 	json_int_t max_time_offset = 0;
+	json_int_t max_time_offset_warning_wait = 0;
 
 	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
 	                                    "{s?O"
+	                                    "s?I"
 	                                    "s?I}",
-	                                    MSE_ENRICHMENT_KEY, &opaque->per_listener_enrichment,
-	                                    MSE_MAX_TIME_OFFSET, &max_time_offset);
+	                                    MSE_ENRICHMENT_KEY,
+	                                    &opaque->per_listener_enrichment,
+	                                    MSE_MAX_TIME_OFFSET_WARNING_WAIT,
+	                                    &max_time_offset_warning_wait,
+	                                    MSE_MAX_TIME_OFFSET,
+	                                    &max_time_offset);
 
 	opaque->max_time_offset = max_time_offset;
+	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
 
 	if (0 != json_unpack_rc)
 		rdlog(LOG_ERR, "%s", jerr.text);
@@ -505,8 +517,14 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 			enrich_mse_json(to->json, enrichment);
 		}
 
-		if (abs(to->timestamp - now) > opaque->max_time_offset) {
-			rdlog(LOG_WARNING, "Timestamp out of date.");
+
+		if (
+		    (now - previous_max_time_offset_warning) > opaque->max_time_offset_warning_wait
+		    &&
+		    abs(to->timestamp - now) > opaque->max_time_offset
+		) {
+			rdlog(LOG_WARNING, "Timestamp out of date");
+			previous_max_time_offset_warning = now;
 		}
 
 		if (notifications->size > 1) {
@@ -547,7 +565,6 @@ void mse_decode(char *buffer, size_t buf_size,
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == mse_opaque->magic);
 #endif
-
 	const char *client = valueof(keyval, "client_ip");
 	if (NULL == client) {
 		client = "(unknown)";
