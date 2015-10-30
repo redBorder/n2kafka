@@ -284,11 +284,12 @@ static int is_mse10_message(const json_t *json) {
 static int extract_mse8_rich_data0(json_t *from, struct mse_data *to) {
 	json_error_t err;
 	const char *macAddress = NULL;
+	json_int_t current_timestamp_ms = 0;
 	const int unpack_rc = json_unpack_ex(from, &err, 0,
 	                                     "{s:{"         /* Streaming notification */
 	                                     "s:s,"     /* subscriptionName */
 	                                     "s:s,"     /* deviceId */
-	                                     "s:I",			/* timestamp */
+	                                     "s:I"      /* timestamp */
 	                                     "s:{"      /* location */
 	                                     "s:s"  /* macAddress */
 	                                     "}"
@@ -296,9 +297,11 @@ static int extract_mse8_rich_data0(json_t *from, struct mse_data *to) {
 	                                     MSE8_STREAMING_NOTIFICATION_KEY,
 	                                     MSE_SUBSCRIPTION_NAME_KEY, &to->subscriptionName,
 	                                     MSE_DEVICE_ID_KEY, &to->_client_mac,
-	                                     MSE_TIMESTAMP, &to->timestamp,
+	                                     MSE_TIMESTAMP, &current_timestamp_ms,
 	                                     MSE8_LOCATION_KEY,
 	                                     MSE8_MAC_ADDRESS_KEY, &macAddress);
+
+	to->timestamp = current_timestamp_ms / 1000;
 
 	if (unpack_rc < 0) {
 		rdlog(LOG_ERR, "Can't extract MSE8 rich data from (%s), line %d column %d: %s",
@@ -338,18 +341,20 @@ static struct mse_array *extract_mse8_rich_data(json_t *from, int *extract_rc) {
 
 static int extract_mse10_rich_data0(json_t *from, struct mse_data *to) {
 	json_error_t err;
-
+	json_int_t current_timestamp_ms = 0;
 	const int unpack_rc = json_unpack_ex(from, &err, 0,
 	                                     "{s:s,"  /* deviceId */
-	                                     "s:I",			/* timestamp */
+	                                     "s:I"			/* timestamp */
 	                                     "s:s}",  /* subscriptionName */
 	                                     MSE_DEVICE_ID_KEY, &to->_client_mac,
-	                                     MSE_TIMESTAMP, &to->timestamp,
+	                                     MSE_TIMESTAMP, &current_timestamp_ms,
 	                                     MSE_SUBSCRIPTION_NAME_KEY, &to->subscriptionName);
 
 	if (unpack_rc != 0) {
 		rdlog(LOG_ERR, "Can't extract mse 10 rich data: %s", err.text);
 	}
+
+	to->timestamp = current_timestamp_ms / 1000;
 
 	return unpack_rc;
 }
