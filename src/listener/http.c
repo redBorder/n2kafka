@@ -527,7 +527,7 @@ struct listener *create_http_listener(struct json_t *config,listener_callback cb
 	handler_args.server_parameters.connection_memory_limit = 128*1024;
 	handler_args.server_parameters.connection_limit = 1024;
 	handler_args.server_parameters.connection_timeout = 30;
-	handler_args.server_parameters.per_ip_connection_limit = 60;
+	handler_args.server_parameters.per_ip_connection_limit = 0;
 
 	/* Unpacking */
 
