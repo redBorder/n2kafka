@@ -125,10 +125,14 @@ static void prepare_decoder_params(struct conn_info *con_info,struct pair *mem,
 static void request_completed (void *cls,
                                struct MHD_Connection *connection HTTP_UNUSED,
                                void **con_cls,
-                               enum MHD_RequestTerminationCode toe HTTP_UNUSED)
+                               enum MHD_RequestTerminationCode toe)
 {
 	if( NULL == con_cls || NULL == *con_cls) {
 		return; /* This point should never reached? */
+	}
+
+	if(toe != MHD_REQUEST_TERMINATED_COMPLETED_OK) {
+		rdlog(LOG_ERR,"Connection terminated because %d",toe);
 	}
 
 	struct conn_info *con_info = *con_cls;
