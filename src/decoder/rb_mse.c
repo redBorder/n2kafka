@@ -99,7 +99,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	assert(opaque);
 	assert(config);
 	json_error_t jerr;
-	json_int_t max_time_offset = 0;
+	json_int_t max_time_offset = 3600;
 	json_int_t max_time_offset_warning_wait = 0;
 
 	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
@@ -519,7 +519,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 
 
 		if (
-		    (now - previous_max_time_offset_warning) > opaque->max_time_offset_warning_wait
+		    (now - previous_max_time_offset_warning) >= opaque->max_time_offset_warning_wait
 		    &&
 		    abs(to->timestamp - now) > opaque->max_time_offset
 		) {
