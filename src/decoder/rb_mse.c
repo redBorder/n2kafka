@@ -457,7 +457,7 @@ static void enrich_mse_json(json_t *json, /* TODO const */ json_t
 }
 
 static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
-        const char *client, struct mse_opaque *opaque) {
+        const char *client, struct mse_opaque *opaque, time_t now) {
 	struct mse_database *db = &opaque->mse_config->database;
 	struct mse_array *notifications = NULL;
 	size_t i;
@@ -471,8 +471,6 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		      buffer, client, err.line, err.column, err.text);
 		goto err;
 	}
-
-	time_t now = time (NULL);
 
 	notifications = extract_mse_data(buffer, json);
 	if (!notifications || notifications->size == 0) {
@@ -571,8 +569,9 @@ void mse_decode(char *buffer, size_t buf_size,
 		client = "(unknown)";
 	}
 
+	time_t now = time(NULL);
 	struct mse_array *notifications = process_mse_buffer(buffer, buf_size, client,
-	                                  mse_opaque);
+	                                  mse_opaque, now);
 	free(buffer);
 
 	if (NULL == notifications)
