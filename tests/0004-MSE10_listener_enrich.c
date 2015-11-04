@@ -5,6 +5,8 @@
 
 /// @TODO test behaviour with overlap + default
 
+static const time_t NOW = 1446650950;
+
 static const char MSE10_ASSOC[] =
 	// *INDENT-OFF*
 	"{"
@@ -254,7 +256,10 @@ static void checkMSE10Decoder_no_overlap(struct mse_array
 }
 
 static void testMSE10Decoder_no_overlap() {
-	testMSE10Decoder(MSE_ARRAY_IN, LISTENER_CONFIG_NO_OVERLAP, MSE10_ASSOC,
+	testMSE10Decoder(MSE_ARRAY_IN,
+	                 LISTENER_CONFIG_NO_OVERLAP,
+	                 MSE10_ASSOC,
+	                 NOW,
 	                 checkMSE10Decoder_no_overlap);
 }
 
@@ -287,7 +292,10 @@ static void checkMSE10Decoder_overlap(struct mse_array *notifications_array) {
 }
 
 static void testMSE10Decoder_overlap() {
-	testMSE10Decoder(MSE_ARRAY_IN, LISTENER_CONFIG_OVERLAP, MSE10_ASSOC,
+	testMSE10Decoder(MSE_ARRAY_IN,
+	                 LISTENER_CONFIG_OVERLAP,
+	                 MSE10_ASSOC,
+	                 NOW,
 	                 checkMSE10Decoder_overlap);
 }
 
@@ -298,7 +306,10 @@ static void testMSE10Decoder_overlap() {
  */
 static void testMSE10Decoder_default_hit() {
 	// Same check as if they were no default
-	testMSE10Decoder(MSE_ARRAY_DEFAULT_IN, LISTENER_CONFIG_NO_OVERLAP, MSE10_ASSOC,
+	testMSE10Decoder(MSE_ARRAY_DEFAULT_IN,
+	                 LISTENER_CONFIG_NO_OVERLAP,
+	                 MSE10_ASSOC,
+	                 NOW,
 	                 checkMSE10Decoder_no_overlap);
 }
 
@@ -336,7 +347,10 @@ static void checkMSE10Decoder_default_miss(struct mse_array
  * registered MSE stream so it should enrich with default.
  */
 static void testMSE10Decoder_default_miss() {
-	testMSE10Decoder(MSE_ARRAY_DEFAULT_OUT, LISTENER_CONFIG_NO_OVERLAP, MSE10_ASSOC,
+	testMSE10Decoder(MSE_ARRAY_DEFAULT_OUT,
+	                 LISTENER_CONFIG_NO_OVERLAP,
+	                 MSE10_ASSOC,
+	                 NOW,
 	                 checkMSE10Decoder_default_miss);
 }
 

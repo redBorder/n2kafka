@@ -3,6 +3,8 @@
 #include "rb_json_tests.c"
 #include "rb_mse_tests.h"
 
+static const time_t NOW = 1446650950;
+
 /// @TODO test behaviour with overlap + default
 
 static const char MSE8_PROBING[] =
@@ -277,7 +279,10 @@ static void checkMSE8Enrichment_no_overlap(struct mse_array
 }
 
 static void testMSE8Enrichment_no_overlap() {
-	testMSE8Decoder(MSE_ARRAY_IN, LISTENER_CONFIG_NO_OVERLAP, MSE8_PROBING,
+	testMSE8Decoder(MSE_ARRAY_IN,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
 	                checkMSE8Enrichment_no_overlap);
 }
 
@@ -310,7 +315,10 @@ static void checkMSE8Enrichment_overlap(struct mse_array *notifications_array) {
 }
 
 static void testMSE8Enrichment_overlap() {
-	testMSE8Decoder(MSE_ARRAY_IN, LISTENER_CONFIG_OVERLAP, MSE8_PROBING,
+	testMSE8Decoder(MSE_ARRAY_IN,
+	                LISTENER_CONFIG_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
 	                checkMSE8Enrichment_overlap);
 }
 
@@ -349,8 +357,11 @@ static void checkMSE8DefaultEnrichment_miss(struct mse_array
  * enrich.
  */
 static void testMSE8DefaultEnrichment_hit() {
-	testMSE8Decoder(MSE_ARRAY_IN_WITH_DEFAULT, LISTENER_CONFIG_NO_OVERLAP,
-	                MSE8_PROBING, checkMSE8Enrichment_no_overlap);
+	testMSE8Decoder(MSE_ARRAY_IN_WITH_DEFAULT,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8Enrichment_no_overlap);
 }
 
 /**
@@ -358,8 +369,11 @@ static void testMSE8DefaultEnrichment_hit() {
  * registered MSE stream so it should enrich with default.
  */
 static void testMSE8DefaultEnrichment_miss() {
-	testMSE8Decoder(MSE_ARRAY_OUT_WITH_DEFAULT, LISTENER_CONFIG_NO_OVERLAP,
-	                MSE8_PROBING, checkMSE8DefaultEnrichment_miss);
+	testMSE8Decoder(MSE_ARRAY_OUT_WITH_DEFAULT,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8DefaultEnrichment_miss);
 }
 
 int main() {
