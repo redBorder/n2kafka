@@ -7,7 +7,7 @@ CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wforma
        -Werror=format-security -DFORTIFY_SOURCE=2
 CFLAGS += -Wall -Werror -Wfloat-equal -Wpointer-arith -O0 -I ../src/decoder/ \
 -I ../src/engine -I ../ -I ../src/listener/ -I ../src/util/ \-I/opt/rb/include
-LDFLAGS += -lpthread -lrt -lz -lrd
+LDFLAGS += -lpthread -lrt -lz -lrd -lcmocka
 
 # Profiling
 #CFLAGS += -O0 -pg
@@ -16,24 +16,7 @@ LDFLAGS += -lpthread -lrt -lz -lrd
 all: test
 
 %.test: %.c %.objdeps
-	@(if ! $(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS) ; then \
-		echo "########################################";\
-		echo "########################################";\
-		echo "Test $< did not compile" ; \
-		echo "########################################";\
-		echo "########################################";\
-		false ; \
-	else \
-		echo -n "Test $< "; \
-		(LD_LIBRARY_PATH=../ ./$@ &> /dev/null && echo "passed") || \
-			 (echo "failed";\
-			  echo "########################################";\
-			  echo "########################################";\
-			  echo "Test $< failed";\
-			  echo "########################################";\
-			  echo "########################################";\
-				false); \
-	fi)
+	$(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 
 
 test: $(TEST_PROGS)
