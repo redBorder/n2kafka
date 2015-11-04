@@ -5,11 +5,14 @@
 /// @TODO keep in sync with testMSE10Decoder
 static void testMSE10Decoder(const char *mse_array_str,
                              const char *_listener_config,
-                             const char *mse_input, void (*check_result)(struct mse_array *))
+                             const char *mse_input,
+                             const time_t now,
+                             void (*check_result)(struct mse_array *))
 __attribute__((unused));
 static void testMSE10Decoder(const char *mse_array_str,
                              const char *_listener_config,
                              const char *mse_input,
+                             const time_t now,
                              void (*check_result)(struct mse_array *)) {
 	json_error_t jerr;
 	size_t i;
@@ -32,8 +35,12 @@ static void testMSE10Decoder(const char *mse_array_str,
 	assert(parse_rc == 0);
 
 	char *aux = strdup(mse_input);
-	struct mse_array *notifications_array = process_mse_buffer(aux,
-	                                        strlen(mse_input), "127.0.0.1", opaque);
+	struct mse_array *notifications_array = process_mse_buffer(
+	        aux,
+	        strlen(mse_input),
+	        "127.0.0.1",
+	        opaque,
+	        now);
 
 	check_result(notifications_array);
 
