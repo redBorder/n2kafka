@@ -38,7 +38,8 @@ static const char MSE8_STREAMING_NOTIFICATION_KEY[] = "StreamingNotification";
 static const char MSE8_LOCATION_KEY[] = "location";
 static const char MSE8_MAC_ADDRESS_KEY[] = "macAddress";
 
-static const char MSE_TIMESTAMP[] = "timestampMillis";
+static const char MSE8_TIMESTAMP[] = "timestampMillis";
+static const char MSE10_TIMESTAMP[] = "timestamp";
 
 static const char MSE_SUBSCRIPTION_NAME_KEY[] = "subscriptionName";
 static const char MSE_DEVICE_ID_KEY[] = "deviceId";
@@ -317,7 +318,7 @@ static int extract_mse8_rich_data0(json_t *from, struct mse_data *to) {
 	                                     MSE8_STREAMING_NOTIFICATION_KEY,
 	                                     MSE_SUBSCRIPTION_NAME_KEY, &to->subscriptionName,
 	                                     MSE_DEVICE_ID_KEY, &to->_client_mac,
-	                                     MSE_TIMESTAMP, &current_timestamp_ms,
+	                                     MSE8_TIMESTAMP, &current_timestamp_ms,
 	                                     MSE8_LOCATION_KEY,
 	                                     MSE8_MAC_ADDRESS_KEY, &macAddress);
 
@@ -367,7 +368,7 @@ static int extract_mse10_rich_data0(json_t *from, struct mse_data *to) {
 	                                     "s:I"			/* timestamp */
 	                                     "s:s}",  /* subscriptionName */
 	                                     MSE_DEVICE_ID_KEY, &to->_client_mac,
-	                                     MSE_TIMESTAMP, &current_timestamp_ms,
+	                                     MSE10_TIMESTAMP, &current_timestamp_ms,
 	                                     MSE_SUBSCRIPTION_NAME_KEY, &to->subscriptionName);
 
 	if (unpack_rc != 0) {
