@@ -68,6 +68,7 @@ struct mse_data {
 	char *string;
 	size_t string_size;
 	time_t timestamp;
+	int timestamp_warnings;
 };
 
 struct mse_array {
@@ -523,6 +524,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		    abs(to->timestamp - now) > opaque->max_time_offset
 		) {
 			rdlog(LOG_WARNING, "Timestamp out of date");
+			to->timestamp_warnings++;
 			previous_max_time_offset_warning = now;
 		}
 
