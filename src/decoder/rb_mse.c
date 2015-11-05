@@ -198,7 +198,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 
 	if (found == 0) {
 		rdlog(LOG_WARNING, "Timestamp out of date");
-		struct mse_device *mse_device = calloc(1, sizeof(mse_device));
+		struct mse_device *mse_device = calloc(1, sizeof(struct mse_device));
 		mse_device->subscriptionName = strdup(data->subscriptionName);
 		mse_device->warning_timestamp = now;
 		pthread_mutex_lock(&mutex);
