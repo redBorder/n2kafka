@@ -58,8 +58,6 @@ static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
     VALIDATING MSE
 */
 
-static long previous_max_time_offset_warning;
-
 static int queue_init;
 
 static pthread_mutex_t mutex;
@@ -177,9 +175,9 @@ _err:
 }
 
 static void mse_warn_timestamp(struct mse_data *data,
-                               struct mse_opaque *opaque) {
+                               struct mse_opaque *opaque,
+                               time_t now) {
 	int found = 0;
-	time_t now = time(NULL);
 	struct mse_device *p;
 
 	TAILQ_FOREACH(p, &mse_device_q, tailq) {
@@ -565,7 +563,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 			enrich_mse_json(to->json, enrichment);
 		}
 
-		mse_warn_timestamp(to, opaque);
+		mse_warn_timestamp(to, opaque, now);
 
 		if (notifications->size > 1) {
 			/* Creating a new MSE notification mesage dissecting notifications in array.
