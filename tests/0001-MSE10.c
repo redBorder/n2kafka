@@ -396,6 +396,8 @@ static void testMSE8Decoder_invalid_timestamp() {
 }
 
 int main() {
+	TAILQ_INIT(&mse_device_q);
+
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(testMSE10Decoder_valid_enrich),
 		cmocka_unit_test(testMSE10Decoder_novalid_enrich),
