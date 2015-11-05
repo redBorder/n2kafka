@@ -33,6 +33,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <librdkafka/rdkafka.h>
+#include <sys/queue.h>
 
 static const char MSE8_STREAMING_NOTIFICATION_KEY[] = "StreamingNotification";
 static const char MSE8_LOCATION_KEY[] = "location";
@@ -58,6 +59,18 @@ static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
 */
 
 static long previous_max_time_offset_warning;
+
+static int queue_init;
+
+static pthread_mutex_t mutex;
+
+struct mse_device {
+	TAILQ_ENTRY(mse_device) tailq;
+	char *subscriptionName;
+	time_t warning_timestamp;
+};
+
+TAILQ_HEAD(, mse_device) mse_device_q;
 
 struct mse_data {
 	uint64_t client_mac;
@@ -161,6 +174,41 @@ _err:
 	free(opaque);
 	*_opaque = NULL;
 	return -1;
+}
+
+static void mse_warn_timestamp(struct mse_data *data,
+                               struct mse_opaque *opaque) {
+	int found = 0;
+	time_t now = time(NULL);
+	struct mse_device *p;
+
+	TAILQ_FOREACH(p, &mse_device_q, tailq) {
+		if (0 == strcmp(p->subscriptionName, data->subscriptionName)) {
+			found = 1;
+			if (
+			    (now - p->warning_timestamp) >= opaque->max_time_offset_warning_wait
+			    &&
+			    abs(data->timestamp - now) > opaque->max_time_offset
+			) {
+				rdlog(LOG_WARNING, "Timestamp out of date");
+				data->timestamp_warnings++;
+				p->warning_timestamp = now;
+			} else {
+				printf("Not yet\n");
+			}
+			break;
+		}
+	}
+
+	if (found == 0) {
+		rdlog(LOG_WARNING, "Timestamp out of date");
+		struct mse_device *mse_device = calloc(1, sizeof(mse_device));
+		mse_device->subscriptionName = strdup(data->subscriptionName);
+		mse_device->warning_timestamp = now;
+		pthread_mutex_lock(&mutex);
+		TAILQ_INSERT_TAIL(&mse_device_q, mse_device, tailq);
+		pthread_mutex_unlock(&mutex);
+	}
 }
 
 int mse_opaque_reload(json_t *config, void *_opaque) {
@@ -517,16 +565,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 			enrich_mse_json(to->json, enrichment);
 		}
 
-
-		if (
-		    (now - previous_max_time_offset_warning) >= opaque->max_time_offset_warning_wait
-		    &&
-		    abs(to->timestamp - now) > opaque->max_time_offset
-		) {
-			rdlog(LOG_WARNING, "Timestamp out of date");
-			to->timestamp_warnings++;
-			previous_max_time_offset_warning = now;
-		}
+		mse_warn_timestamp(to, opaque);
 
 		if (notifications->size > 1) {
 			/* Creating a new MSE notification mesage dissecting notifications in array.
@@ -569,6 +608,11 @@ void mse_decode(char *buffer, size_t buf_size,
 	const char *client = valueof(keyval, "client_ip");
 	if (NULL == client) {
 		client = "(unknown)";
+	}
+
+	if (queue_init == 0) {
+		TAILQ_INIT(&mse_device_q);
+		queue_init = 1;
 	}
 
 	time_t now = time(NULL);
