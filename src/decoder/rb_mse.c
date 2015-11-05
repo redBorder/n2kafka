@@ -191,8 +191,6 @@ static void mse_warn_timestamp(struct mse_data *data,
 				rdlog(LOG_WARNING, "Timestamp out of date");
 				data->timestamp_warnings++;
 				p->warning_timestamp = now;
-			} else {
-				printf("Not yet\n");
 			}
 			break;
 		}
