@@ -300,6 +300,9 @@ static void checkMSE8_valid_timestamp(struct mse_array *notifications_array) {
 	                                     "{s:{s:I}}",
 	                                     "StreamingNotification",
 	                                     "timestampMillis", &timestamp);
+
+	printf("%lld\n", timestamp);
+	printf("%ld\n", NOW);
 	assert_int_equal(unpack_rc, 0);
 	assert_true(timestamp / 1000 == NOW);
 	assert_true(notifications_array->data[0].timestamp_warnings == 0);
@@ -325,9 +328,10 @@ static void checkMSE8_invalid_timestamp(struct mse_array *notifications_array) {
 	                                     "{s:{s:I}}",
 	                                     "StreamingNotification",
 	                                     "timestampMillis", &timestamp);
+
 	assert_int_equal(unpack_rc, 0);
 	assert_true(timestamp / 1000 != NOW);
-	assert_true(notifications_array->data[0].timestamp_warnings > 0);
+	assert_true(notifications_array->data[0].timestamp_warnings == 1);
 
 	json_decref(ret);
 }
@@ -373,9 +377,6 @@ static void testMSE8Decoder_invalid_timestamp() {
 }
 
 int main() {
-
-	TAILQ_INIT(&mse_device_q);
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(testMSE8Decoder_valid_enrich),
 		cmocka_unit_test(testMSE8Decoder_novalid_enrich),

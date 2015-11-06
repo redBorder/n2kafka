@@ -349,8 +349,6 @@ static void checkMSE8_invalid_timestamp(struct mse_array *notifications_array) {
 	                                     "timestamp", &timestamp);
 	assert_int_equal(unpack_rc, 0);
 	assert_true(timestamp / 1000 != NOW);
-	printf("%ld\n", (long)timestamp / 1000);
-	printf("%ld\n", NOW);
 	assert_true(notifications_array->data[0].timestamp_warnings > 0);
 
 	json_decref(ret);
@@ -396,8 +394,6 @@ static void testMSE8Decoder_invalid_timestamp() {
 }
 
 int main() {
-	TAILQ_INIT(&mse_device_q);
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(testMSE10Decoder_valid_enrich),
 		cmocka_unit_test(testMSE10Decoder_novalid_enrich),
