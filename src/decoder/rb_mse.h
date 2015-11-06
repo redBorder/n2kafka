@@ -30,6 +30,9 @@
 struct json_t;
 struct mse_database {
 	/* Private */
+	struct json_t *warning_ht;
+	pthread_rwlock_t warning_ht_rwlock;
+	pthread_rwlock_t warning_ht_rdlock;
 	pthread_rwlock_t rwlock;
 	struct json_t *root;
 };

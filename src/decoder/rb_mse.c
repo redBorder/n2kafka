@@ -58,17 +58,11 @@ static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
     VALIDATING MSE
 */
 
-static int queue_init;
-
-static pthread_mutex_t mutex;
-
 struct mse_device {
 	TAILQ_ENTRY(mse_device) tailq;
 	char *subscriptionName;
 	time_t warning_timestamp;
 };
-
-TAILQ_HEAD(, mse_device) mse_device_q;
 
 struct mse_data {
 	uint64_t client_mac;
@@ -89,6 +83,7 @@ struct mse_array {
 
 void init_mse_database(struct mse_database *db) {
 	memset(db, 0, sizeof(*db));
+	db->warning_ht = json_object();
 	pthread_rwlock_init(&db->rwlock, 0);
 }
 
@@ -177,33 +172,28 @@ _err:
 static void mse_warn_timestamp(struct mse_data *data,
                                struct mse_opaque *opaque,
                                time_t now) {
-	int found = 0;
-	struct mse_device *p;
+	json_t *value = NULL;
+	json_t *new_value = NULL;
+	json_int_t last_time_warned = 0;
+	struct mse_database *db = &opaque->mse_config->database;
 
-	TAILQ_FOREACH(p, &mse_device_q, tailq) {
-		if (0 == strcmp(p->subscriptionName, data->subscriptionName)) {
-			found = 1;
-			if (
-			    (now - p->warning_timestamp) >= opaque->max_time_offset_warning_wait
-			    &&
-			    abs(data->timestamp - now) > opaque->max_time_offset
-			) {
-				rdlog(LOG_WARNING, "Timestamp out of date");
-				data->timestamp_warnings++;
-				p->warning_timestamp = now;
-			}
-			break;
+	pthread_rwlock_wrlock(&db->warning_ht_rwlock);
+	if ((value = json_object_get(db->warning_ht, data->subscriptionName)) != NULL) {
+		last_time_warned = json_integer_value(value);
+		if (now - last_time_warned >= opaque->max_time_offset_warning_wait) {
+			rdlog(LOG_WARNING, "Timestamp out of date");
+			data->timestamp_warnings++;
+			new_value = json_integer(now);
+			json_object_set(db->warning_ht, data->subscriptionName, new_value);
 		}
-	}
-
-	if (found == 0) {
+		pthread_rwlock_unlock(&db->warning_ht_rwlock);
+	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
-		struct mse_device *mse_device = calloc(1, sizeof(struct mse_device));
-		mse_device->subscriptionName = strdup(data->subscriptionName);
-		mse_device->warning_timestamp = now;
-		pthread_mutex_lock(&mutex);
-		TAILQ_INSERT_TAIL(&mse_device_q, mse_device, tailq);
-		pthread_mutex_unlock(&mutex);
+		data->timestamp_warnings++;
+		new_value = json_integer(now);
+		json_object_set_new(db->warning_ht, data->subscriptionName,
+		                    new_value);
+		pthread_rwlock_unlock(&db->warning_ht_rwlock);
 	}
 }
 
@@ -561,7 +551,9 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 			enrich_mse_json(to->json, enrichment);
 		}
 
-		mse_warn_timestamp(to, opaque, now);
+		if (abs(to->timestamp - now) > opaque->max_time_offset) {
+			mse_warn_timestamp(to, opaque, now);
+		}
 
 		if (notifications->size > 1) {
 			/* Creating a new MSE notification mesage dissecting notifications in array.
@@ -604,11 +596,6 @@ void mse_decode(char *buffer, size_t buf_size,
 	const char *client = valueof(keyval, "client_ip");
 	if (NULL == client) {
 		client = "(unknown)";
-	}
-
-	if (queue_init == 0) {
-		TAILQ_INIT(&mse_device_q);
-		queue_init = 1;
 	}
 
 	time_t now = time(NULL);
