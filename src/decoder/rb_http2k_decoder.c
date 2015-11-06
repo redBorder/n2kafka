@@ -85,7 +85,7 @@ struct topic_s {
 };
 
 void init_rb_database(struct rb_database *db) {
-	memset(db, 0, sizeof(db));
+	memset(db, 0, sizeof(*db));
 	pthread_rwlock_init(&db->rwlock, 0);
 }
 
