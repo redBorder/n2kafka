@@ -320,8 +320,15 @@ static json_t *mse_database_entry_copy(const char *subscriptionName,
 }
 
 void free_valid_mse_database(struct mse_database *db) {
-	if (db && db->root)
-		json_decref(db->root);
+	if (db) {
+		if (db->root) {
+			json_decref(db->root);
+		}
+
+		if (db->warning_ht) {
+			json_decref(db->warning_ht);
+		}
+	}
 }
 
 /*
