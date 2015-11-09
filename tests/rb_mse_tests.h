@@ -29,6 +29,9 @@ static void testMSE10Decoder(const char *mse_array_str,
 	assert(0 == opaque_creator_rc);
 	json_decref(listener_config);
 
+	/* Currently, uses global_config */
+	opaque->mse_config = &mse_config;
+
 	json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
 	assert(mse_array);
 	const int parse_rc = parse_mse_array(&opaque->mse_config->database, mse_array);
