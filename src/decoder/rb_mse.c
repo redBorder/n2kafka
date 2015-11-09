@@ -529,6 +529,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 
 		if (db && !to->subscriptionName) {
 			rdlog(LOG_ERR, "Received MSE message with no subscription name. Discarding.");
+			continue;
 		}
 
 		if (db && to->subscriptionName) {
