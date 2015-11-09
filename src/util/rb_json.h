@@ -22,4 +22,4 @@
 
 #include <jansson.h>
 
-int json_object_update_missing_copy(json_t *dst, /* @TODO */ json_t *src);
+int json_object_update_missing_copy(json_t *dst, const json_t *src);

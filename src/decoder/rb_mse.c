@@ -308,13 +308,11 @@ int parse_mse_array(void *_db, const struct json_t *mse_array) {
 	return 0;
 }
 
-static json_t *mse_database_entry_copy(const char *subscriptionName,
+static const json_t *mse_database_entry(const char *subscriptionName,
                                        struct mse_database *db) {
 	assert(subscriptionName);
 	assert(db);
-	pthread_rwlock_rdlock(&db->rwlock);
 	json_t *ret = json_object_get(db->root, subscriptionName);
-	pthread_rwlock_unlock(&db->rwlock);
 	return ret;
 }
 
@@ -489,7 +487,7 @@ static struct mse_array *extract_mse_data(const char *buffer, json_t *json) {
 	return mse_array;
 }
 
-static void enrich_mse_json(json_t *json, /* TODO const */ json_t
+static void enrich_mse_json(json_t *json, const json_t
                             *enrichment_data) {
 	assert(json);
 	assert(enrichment_data);
@@ -521,9 +519,12 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		goto err;
 	}
 
+	pthread_rwlock_rdlock(&db->rwlock);
+	pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
+
 	for (i = 0; i < notifications->size; ++i) {
 		struct mse_data *to = &notifications->data[i];
-		json_t *enrichment = NULL;
+		const json_t *enrichment = NULL;
 		json_error_t _err;
 
 		if (db && !to->subscriptionName) {
@@ -532,10 +533,11 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		}
 
 		if (db && to->subscriptionName) {
-			enrichment = mse_database_entry_copy(to->subscriptionName, db);
+			enrichment = mse_database_entry(to->subscriptionName, db);
+
 			if (NULL == enrichment) {
 				/* Try the default one */
-				enrichment = mse_database_entry_copy(MSE_DEFAULT_STREAM, db);
+				enrichment = mse_database_entry(MSE_DEFAULT_STREAM, db);
 			}
 
 			if (NULL == enrichment) {
@@ -549,9 +551,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		}
 
 		if (db && opaque->per_listener_enrichment) {
-			pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
 			enrich_mse_json(to->json, opaque->per_listener_enrichment);
-			pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
 		}
 
 		if (db && enrichment) {
@@ -585,6 +585,9 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		}
 		to->string_size = strlen(to->string);
 	}
+
+	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+	pthread_rwlock_unlock(&db->rwlock);
 
 err:
 	if (json)
