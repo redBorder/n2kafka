@@ -1,0 +1,7 @@
+{
+  "debug": 1,
+  "proto": "tcp",
+  "port": 5050,
+  "threads": 20,
+  "response": "response.xml"
+}

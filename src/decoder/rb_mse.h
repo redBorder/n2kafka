@@ -30,18 +30,23 @@
 struct json_t;
 struct mse_database {
 	/* Private */
+	struct json_t *warning_ht;
+	pthread_rwlock_t warning_ht_rwlock;
+	pthread_rwlock_t warning_ht_rdlock;
 	pthread_rwlock_t rwlock;
 	struct json_t *root;
 };
 void init_mse_database(struct mse_database *db);
-int parse_mse_array(void *_db,const struct json_t *mse_array);
+int parse_mse_array(void *_db, const struct json_t *mse_array);
 void free_valid_mse_database(struct mse_database *db);
 
 struct mse_config {
 	struct mse_database database;
 };
 
-int mse_opaque_creator(struct json_t *config,void **opaque);
-int mse_opaque_reload(struct json_t *config,void *opaque);
+int mse_opaque_creator(struct json_t *config, void **opaque);
+int mse_opaque_reload(struct json_t *config, void *opaque);
 void mse_opaque_done(void *opaque);
-void mse_decode(char *buffer,size_t buf_size,const keyval_list_t *keyval,void *listener_callback_opaque);
+void mse_decode(char *buffer, size_t buf_size,
+                const keyval_list_t *keyval,
+                void *listener_callback_opaque);

@@ -1,11 +1,14 @@
-#include "rb_mse.c"
+#include "../src/decoder/rb_mse.c"
 
 #include "rb_json_tests.c"
 #include "rb_mse_tests.h"
 
+static const time_t NOW = 1446650950;
+
 /// @TODO test behaviour with overlap + default
 
 static const char MSE8_PROBING[] =
+	// *INDENT-OFF*
 	"{\"StreamingNotification\":{"
 		"\"subscriptionName\":\"MSE_SanCarlos\","
 		"\"entity\":\"WIRELESS_CLIENTS\","
@@ -45,8 +48,10 @@ static const char MSE8_PROBING[] =
 			"\"timestamp\":\"2015-03-16T01:57:50.000-0700\""
 		"}"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE8_GEO_PROBING[] =
+	// *INDENT-OFF*
     "{"
         "\"StreamingNotification\":{"
             "\"subscriptionName\":\"MSE_Auditorio\","
@@ -96,8 +101,10 @@ static const char MSE8_GEO_PROBING[] =
             "\"timestamp\":\"2015-04-11T22:03:31.488-0500\""
         "}"
     "}";
+    	// *INDENT-ON*
 
 static const char MSE8_ASSOC[] =
+	// *INDENT-OFF*
 	"{"
 	    "\"StreamingNotification\":{"
 	        "\"subscriptionName\":\"MSE_SanCarlos\","
@@ -148,8 +155,10 @@ static const char MSE8_ASSOC[] =
 	        "\"timestamp\":\"2015-03-16T01:57:50.000-0700\""
 	    "}"
 	"}";
+		// *INDENT-ON*
 
 static const char MSE_ARRAY_IN[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"MSE_SanCarlos\" \n" \
@@ -159,8 +168,10 @@ static const char MSE_ARRAY_IN[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
 static const char MSE_ARRAY_OUT[] = \
+	// *INDENT-OFF*
 	"[\n" \
 		"{\n" \
 			"\"stream\": \"MSE_SanCarlos0\" \n" \
@@ -170,8 +181,10 @@ static const char MSE_ARRAY_OUT[] = \
 			"}\n" \
 		"}\n" \
 	"]";
+	// *INDENT-ON*
 
-static const char MSE_ARRAY_IN_WITH_DEFAULT[] = 
+static const char MSE_ARRAY_IN_WITH_DEFAULT[] =
+	// *INDENT-OFF*
 	"[\n"
 		"{\n"
 			"\"stream\": \"MSE_SanCarlos\" \n"
@@ -187,8 +200,10 @@ static const char MSE_ARRAY_IN_WITH_DEFAULT[] =
 			"}\n"
 		"}\n"
 	"]";
+	// *INDENT-ON*
 
-static const char MSE_ARRAY_OUT_WITH_DEFAULT[] = 
+static const char MSE_ARRAY_OUT_WITH_DEFAULT[] =
+	// *INDENT-OFF*
 	"[\n"
 		"{\n"
 			"\"stream\": \"MSE_SanCarlos0\" \n"
@@ -204,12 +219,13 @@ static const char MSE_ARRAY_OUT_WITH_DEFAULT[] =
 			"}\n"
 		"}\n"
 	"]";
+	// *INDENT-ON*
 
 static const char LISTENER_CONFIG_NO_OVERLAP[] = \
-	"{\"enrichment\":{\"a\":\"b\"}}";
+        "{\"enrichment\":{\"a\":\"b\"}}";
 
 static const char LISTENER_CONFIG_OVERLAP[] = \
-	"{\"enrichment\":{\"sensor_name\":\"sensor_listener\",\"a\":\"b\"}}";
+        "{\"enrichment\":{\"sensor_name\":\"sensor_listener\",\"a\":\"b\"}}";
 
 #if 0
 #define CHECKDATA_BASE(bytes,pkts) { \
@@ -233,110 +249,131 @@ static const char LISTENER_CONFIG_OVERLAP[] = \
 }
 #endif
 
-static void checkMSE8Enrichment_no_overlap(struct mse_array *notifications_array) {
+static void checkMSE8Enrichment_no_overlap(struct mse_array
+        *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
-	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
+	assert(notifications_array->data[0].string_size == strlen(
+	           notifications_array->data[0].string));
 
-	const char *subscriptionName=NULL,*sensor_name=NULL,*a_value=NULL;
-	json_int_t sensor_id=0;
+	const char *subscriptionName = NULL, *sensor_name = NULL, *a_value = NULL;
+	json_int_t sensor_id = 0;
 	json_error_t jerr;
 
-	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
+	json_t *ret = json_loads(notifications_array->data[0].string, 0, &jerr);
 	assert(ret);
-	const int unpack_rc = json_unpack_ex(ret,&jerr,0,
-		"{s:{s:s,s:s,s:i,s:s}}",
-		"StreamingNotification",
-		"subscriptionName",&subscriptionName,
-		"sensor_name",&sensor_name,
-		"sensor_id",&sensor_id,
-		"a",&a_value);
+	const int unpack_rc = json_unpack_ex(ret, &jerr, 0,
+	                                     "{s:{s:s,s:s,s:i,s:s}}",
+	                                     "StreamingNotification",
+	                                     "subscriptionName", &subscriptionName,
+	                                     "sensor_name", &sensor_name,
+	                                     "sensor_id", &sensor_id,
+	                                     "a", &a_value);
 
 	assert(unpack_rc == 0);
-	assert(0==strcmp(subscriptionName,"MSE_SanCarlos"));
-	assert(0==strcmp(sensor_name,"MSE_testing"));
-	assert(0==strcmp(a_value,"b"));
+	assert(0 == strcmp(subscriptionName, "MSE_SanCarlos"));
+	assert(0 == strcmp(sensor_name, "MSE_testing"));
+	assert(0 == strcmp(a_value, "b"));
 	assert(255 == sensor_id);
 	json_decref(ret);
 }
 
 static void testMSE8Enrichment_no_overlap() {
-	testMSE8Decoder(MSE_ARRAY_IN,LISTENER_CONFIG_NO_OVERLAP,MSE8_PROBING,checkMSE8Enrichment_no_overlap);
+	testMSE8Decoder(MSE_ARRAY_IN,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8Enrichment_no_overlap);
 }
 
 static void checkMSE8Enrichment_overlap(struct mse_array *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
-	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
+	assert(notifications_array->data[0].string_size == strlen(
+	           notifications_array->data[0].string));
 
-	const char *subscriptionName=NULL,*sensor_name=NULL,*a_value=NULL;
-	json_int_t sensor_id=0;
+	const char *subscriptionName = NULL, *sensor_name = NULL, *a_value = NULL;
+	json_int_t sensor_id = 0;
 	json_error_t jerr;
 
-	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
+	json_t *ret = json_loads(notifications_array->data[0].string, 0, &jerr);
 	assert(ret);
-	const int unpack_rc = json_unpack_ex(ret,&jerr,0,
-		"{s:{s:s,s:s,s:i,s:s}}",
-		"StreamingNotification",
-		"subscriptionName",&subscriptionName,
-		"sensor_name",&sensor_name,
-		"sensor_id",&sensor_id,
-		"a",&a_value);
+	const int unpack_rc = json_unpack_ex(ret, &jerr, 0,
+	                                     "{s:{s:s,s:s,s:i,s:s}}",
+	                                     "StreamingNotification",
+	                                     "subscriptionName", &subscriptionName,
+	                                     "sensor_name", &sensor_name,
+	                                     "sensor_id", &sensor_id,
+	                                     "a", &a_value);
 
 	assert(unpack_rc == 0);
-	assert(0==strcmp(subscriptionName,"MSE_SanCarlos"));
-	assert(0==strcmp(sensor_name,"sensor_listener"));
-	assert(0==strcmp(a_value,"b"));
+	assert(0 == strcmp(subscriptionName, "MSE_SanCarlos"));
+	assert(0 == strcmp(sensor_name, "sensor_listener"));
+	assert(0 == strcmp(a_value, "b"));
 	assert(255 == sensor_id);
 	json_decref(ret);
 }
 
 static void testMSE8Enrichment_overlap() {
-	testMSE8Decoder(MSE_ARRAY_IN,LISTENER_CONFIG_OVERLAP,MSE8_PROBING,checkMSE8Enrichment_overlap);
+	testMSE8Decoder(MSE_ARRAY_IN,
+	                LISTENER_CONFIG_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8Enrichment_overlap);
 }
 
-static void checkMSE8DefaultEnrichment_miss(struct mse_array *notifications_array) {
+static void checkMSE8DefaultEnrichment_miss(struct mse_array
+        *notifications_array) {
 	/* No database -> output == input */
 	assert(notifications_array->size == 1);
-	assert(notifications_array->data[0].string_size == strlen(notifications_array->data[0].string));
+	assert(notifications_array->data[0].string_size == strlen(
+	           notifications_array->data[0].string));
 
-	const char *subscriptionName=NULL,*sensor_name=NULL,*a_value=NULL;
-	json_int_t sensor_id=0;
+	const char *subscriptionName = NULL, *sensor_name = NULL, *a_value = NULL;
+	json_int_t sensor_id = 0;
 	json_error_t jerr;
 
-	json_t *ret = json_loads(notifications_array->data[0].string,0,&jerr);
+	json_t *ret = json_loads(notifications_array->data[0].string, 0, &jerr);
 	assert(ret);
-	const int unpack_rc = json_unpack_ex(ret,&jerr,0,
-		"{s:{s:s,s:s,s:i,s:s}}",
-		"StreamingNotification",
-		"subscriptionName",&subscriptionName,
-		"sensor_name",&sensor_name,
-		"sensor_id",&sensor_id,
-		"a",&a_value);
+	const int unpack_rc = json_unpack_ex(ret, &jerr, 0,
+	                                     "{s:{s:s,s:s,s:i,s:s}}",
+	                                     "StreamingNotification",
+	                                     "subscriptionName", &subscriptionName,
+	                                     "sensor_name", &sensor_name,
+	                                     "sensor_id", &sensor_id,
+	                                     "a", &a_value);
 
 	assert(unpack_rc == 0);
-	assert(0==strcmp(subscriptionName,"MSE_SanCarlos"));
-	assert(0==strcmp(sensor_name,"MSE_default"));
-	assert(0==strcmp(a_value,"b"));
+	assert(0 == strcmp(subscriptionName, "MSE_SanCarlos"));
+	assert(0 == strcmp(sensor_name, "MSE_default"));
+	assert(0 == strcmp(a_value, "b"));
 	assert(254 == sensor_id);
 	json_decref(ret);
 }
 
 /**
- * Testing with default enrichment, the stream inserted does contains a 
+ * Testing with default enrichment, the stream inserted does contains a
  * registered MSE stream so it should not enrich with default but with valid
  * enrich.
  */
 static void testMSE8DefaultEnrichment_hit() {
-	testMSE8Decoder(MSE_ARRAY_IN_WITH_DEFAULT,LISTENER_CONFIG_NO_OVERLAP,MSE8_PROBING,checkMSE8Enrichment_no_overlap);
+	testMSE8Decoder(MSE_ARRAY_IN_WITH_DEFAULT,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8Enrichment_no_overlap);
 }
 
 /**
- * Testing with default enrichment, the stream inserted does not contains a 
+ * Testing with default enrichment, the stream inserted does not contains a
  * registered MSE stream so it should enrich with default.
  */
 static void testMSE8DefaultEnrichment_miss() {
-	testMSE8Decoder(MSE_ARRAY_OUT_WITH_DEFAULT,LISTENER_CONFIG_NO_OVERLAP,MSE8_PROBING,checkMSE8DefaultEnrichment_miss);
+	testMSE8Decoder(MSE_ARRAY_OUT_WITH_DEFAULT,
+	                LISTENER_CONFIG_NO_OVERLAP,
+	                MSE8_PROBING,
+	                NOW,
+	                checkMSE8DefaultEnrichment_miss);
 }
 
 int main() {
@@ -344,6 +381,6 @@ int main() {
 	testMSE8Enrichment_overlap();
 	testMSE8DefaultEnrichment_hit();
 	testMSE8DefaultEnrichment_miss();
-	
+
 	return 0;
 }

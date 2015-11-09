@@ -1,6 +1,0 @@
-{
-	"debug":1,
-	"proto":"tcp",
-	"port":2057,
-	"threads":20
-}
