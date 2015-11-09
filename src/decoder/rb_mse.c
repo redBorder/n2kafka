@@ -177,7 +177,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 	json_int_t last_time_warned = 0;
 	struct mse_database *db = &opaque->mse_config->database;
 
-	pthread_rwlock_wrlock(&db->warning_ht_rwlock);
+	pthread_mutex_lock(&db->warning_ht_lock);
 	if ((value = json_object_get(db->warning_ht, data->subscriptionName)) != NULL) {
 		last_time_warned = json_integer_value(value);
 		if (now - last_time_warned >= opaque->max_time_offset_warning_wait) {
@@ -186,15 +186,14 @@ static void mse_warn_timestamp(struct mse_data *data,
 			new_value = json_integer(now);
 			json_object_set(db->warning_ht, data->subscriptionName, new_value);
 		}
-		pthread_rwlock_unlock(&db->warning_ht_rwlock);
 	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
 		data->timestamp_warnings++;
 		new_value = json_integer(now);
 		json_object_set_new(db->warning_ht, data->subscriptionName,
 		                    new_value);
-		pthread_rwlock_unlock(&db->warning_ht_rwlock);
 	}
+	pthread_mutex_unlock(&db->warning_ht_lock);
 }
 
 int mse_opaque_reload(json_t *config, void *_opaque) {
