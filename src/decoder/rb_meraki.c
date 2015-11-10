@@ -21,6 +21,7 @@
 
 #include "rb_meraki.h"
 #include "rb_mac.h"
+#include "rb_json.h"
 #include "kafka.h"
 #include "global_config.h"
 
@@ -364,23 +365,6 @@ static void extract_meraki_observation(struct kafka_message_array *msgs,size_t i
 	char *buf = json_dumps(observation_i,JSON_COMPACT|JSON_ENSURE_ASCII);
 	/// @TODO Don't use strlen
 	save_kafka_msg_in_array(msgs,buf,strlen(buf),NULL);
-}
-
-static int json_object_update_missing_copy(json_t *dst, json_t *src) {
-	const char *key=NULL;
-	json_t *value = NULL;
-
-	if(!json_is_object(src) || !json_is_object(dst))
-		return -1;
-
-	json_object_foreach(src,key,value) {
-		if(NULL == json_object_get(dst,key)){
-			json_t *new_json = json_deep_copy(value);
-			json_object_set_new_nocheck(dst,key,new_json);
-		}
-	}
-
-	return 0;
 }
 
 static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_opaque *opaque) {
