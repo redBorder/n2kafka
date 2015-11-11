@@ -242,35 +242,35 @@ static void MerakiDecoder_valid_enrich() {
 	meraki_database_done(&meraki_config.database);
 }
 
-#if 0
-static void testMSE10Decoder_novalid_enrich() {
+static void MerakiDecoder_novalid_enrich() {
 	json_error_t jerr;
-	char err[BUFSIZ];
-	struct mse_config mse_config;
-	memset(&mse_config, 0, sizeof(mse_config));
-	// init_mse_database(&mse_config.database);
+	struct meraki_config meraki_config;
+	memset(&meraki_config, 0, sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
 
-	json_t *mse_array = json_loadb(MSE_ARRAY_OUT, strlen(MSE_ARRAY_OUT), 0, &jerr);
-	assert(mse_array);
-	const int parse_rc = parse_mse_array(&mse_config.database, mse_array, err,
-	                                     sizeof(err));
+	struct meraki_opaque meraki_opaque;
+	memset(&meraki_opaque, 0, sizeof(meraki_opaque));
+	meraki_opaque.meraki_config = &meraki_config;
+	meraki_opaque.per_listener_enrichment = NULL;
+
+	json_t *meraki_secrets = json_loadb(MERAKI_SECRETS_OUT, strlen(MERAKI_SECRETS_OUT), 0, &jerr);
+	assert(meraki_secrets);
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
+	                     meraki_secrets);
 	assert(parse_rc == 0);
 
-	char *aux = strdup(MSE10_ASSOC);
-	struct mse_array *notifications_array = process_mse_buffer(aux,
-	                                        strlen(MSE10_ASSOC), &mse_config.database);
-
-	/* No database -> output == input */
-	assert(notifications_array->size == 1);
-	/* But invalid MSE => No string */
-	assert(notifications_array->data[0].string == NULL);
-
+	char *aux = strdup(MERAKI_MSG);
+	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
+	                        strlen(MERAKI_MSG), "127.0.0.1", &meraki_opaque);
 	free(aux);
-	free(notifications_array);
-	free_valid_mse_database(&mse_config.database);
-	json_decref(mse_array);
+
+	assert(0==notifications_array);
+
+	json_decref(meraki_secrets);
+	meraki_database_done(&meraki_config.database);
 }
 
+#if 0
 /// @TODO use a for loop
 static void testMSE10Decoder_valid_enrich_multi() {
 	const char *subscriptionName1 = NULL, *sensor_name1 = NULL;
@@ -636,7 +636,7 @@ static void MerakiDecoder_default_secret_miss() {
 
 int main() {
 	MerakiDecoder_valid_enrich();
-	// testMSE10Decoder_novalid_enrich();
+	MerakiDecoder_novalid_enrich();
 	// testMSE10Decoder_valid_enrich_multi();
 	// testMSE10Decoder_empty_array();
 	MerakiDecoder_valid_enrich_per_listener();
