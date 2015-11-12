@@ -169,8 +169,6 @@ static int parse_per_uuid_opaque_config(json_t *config,
 		json_t *sensor_uuid_json = json_string(key);
 		if (NULL == sensor_uuid_json) {
 			rdlog(LOG_ERR, "Can't create json object (out of memory?)");
-		} else {
-			json_object_set_new(value, "sensor_uuid", sensor_uuid_json);
 		}
 	}
 
