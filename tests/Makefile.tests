@@ -2,6 +2,7 @@ include ../Makefile.config
 
 CC ?= cc
 TEST_PROGS := ${TEST_SRCS:%.c=%.test}
+XML_FILES  := ${TEST_SRCS:%.c=%.test.xml}
 CFLAGS += -g
 CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat
        -Werror=format-security -DFORTIFY_SOURCE=2
@@ -17,9 +18,11 @@ all: test
 
 %.test: %.c %.objdeps
 	$(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
+	-CMOCKA_MESSAGE_OUTPUT=XML CMOCKA_XML_FILE=$@.xml ./$@
+	cat ./$@.xml
 
 
 test: $(TEST_PROGS)
 
 clean:
-	rm -f $(TEST_PROGS)
+	rm -f $(TEST_PROGS) $(XML_FILES)
