@@ -45,7 +45,7 @@ function checks {
     fi
 
     mkl_meta_set "librd" "desc" "Magnus Edenhill's librd is available at http://github.com/edenhill/librd"
-    mkl_lib_check --static=-lrdkafka "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
+    mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
        "#include <librd/rd.h>"
 
     mkl_meta_set "libjansson" "desc" "C library for encoding, decoding and manipulating JSON data"
