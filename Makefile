@@ -17,7 +17,7 @@ CFLAGS+=-I. -I./src/decoder -I./src/engine -I./src/util -I./src/listener
 
 include mklove/Makefile.base
 
-.PHONY: version.c
+.PHONY: version.c tests
 
 version.c: 
 	@rm -f $@
@@ -27,5 +27,8 @@ version.c:
 install: bin-install
 
 clean: bin-clean
+
+tests:
+	cd tests; make
 
 -include $(DEPS)
