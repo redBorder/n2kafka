@@ -67,11 +67,17 @@
 struct n2kafka_config global_config;
 
 static const struct registered_decoder{
+	/// Registered decoder name.
 	const char *decode_as;
+	/// Name of config parameters
 	const char *config_parameters;
+	/// Callback that the listener needs to call for each data received
 	listener_callback cb;
+	/// Per-listener decoder information creator
 	listener_opaque_creator opaque_creator;
+	/// Per listener decoder information reload
 	listener_opaque_reload opaque_reload;
+	/// Per listener decoder information destructor
 	listener_opaque_destructor opaque_destructor;
 
 /**
@@ -79,6 +85,8 @@ static const struct registered_decoder{
     to be available
 */
 #define DECODER_F_SUPPORT_STREAMING 0x01
+
+    /// Decoders flags
     int flags;
 } registered_decoders[] = {
 	{CONFIG_DECODE_AS_NULL,NULL,dumb_decoder,NULL,NULL,NULL,0},
