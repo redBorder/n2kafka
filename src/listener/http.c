@@ -57,7 +57,7 @@ struct http_private{
 #endif
 	struct MHD_Daemon *d;
 	int redborder_uri;
-    listener_callback callback;
+    decoder_callback callback;
 	void *callback_opaque;
 };
 
@@ -419,7 +419,7 @@ struct http_loop_args {
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
-                                            listener_callback callback,void *cb_opaque) {
+                                            decoder_callback callback,void *cb_opaque) {
 	struct http_private *h = NULL;
 
 	unsigned int flags = 0;
@@ -501,8 +501,9 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	return h;
 }
 
-static void reload_listener_http(json_t *new_config,listener_opaque_reload opaque_reload,
-                               void *cb_opaque, void *_private __attribute__((unused))) {
+static void reload_listener_http(json_t *new_config,
+                decoder_listener_opaque_reload opaque_reload,
+                void *cb_opaque, void *_private __attribute__((unused))) {
 	if(opaque_reload){
 		rdlog(LOG_INFO,"Reloading opaque");
 		opaque_reload(new_config,cb_opaque);
@@ -517,7 +518,8 @@ static void break_http_loop(void *_h){
 	free(h);
 }
 
-struct listener *create_http_listener(struct json_t *config,listener_callback cb,void *cb_opaque) {
+struct listener *create_http_listener(struct json_t *config,
+        decoder_callback cb,void *cb_opaque) {
 
 	json_error_t error;
 

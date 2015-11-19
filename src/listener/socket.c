@@ -63,7 +63,7 @@ enum thread_mode{
 struct udp_thread_info{
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
-	listener_callback callback;
+	decoder_callback callback;
 	void *callback_opaque;
 };
 
@@ -194,7 +194,7 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 }
 
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
-        const char *client,listener_callback callback,void *callback_opaque){
+        const char *client,decoder_callback callback,void *callback_opaque){
 	if(unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,"received %zu data from %s: %.*s\n",recv_result,client,
 			(int)recv_result,buffer);
@@ -234,7 +234,7 @@ struct connection_private {
 	#endif
 	int first_response_sent;
 	void *callback_opaque;
-    listener_callback callback;
+    decoder_callback callback;
     const char *client;
 };
 
@@ -319,7 +319,7 @@ struct socket_listener_private {
 		size_t threads;
 		bool tcp_keepalive;
 		enum thread_mode thread_mode;
-		listener_callback callback;
+		decoder_callback callback;
 		void *callback_opaque;
 	} config;
 
@@ -563,7 +563,8 @@ static void *main_consumer_loop_udp(void *_thread_info){
 	return NULL;
 }
 
-static void main_udp_loop(int listenfd,size_t udp_threads,listener_callback callback,void *callback_opaque){
+static void main_udp_loop(int listenfd,size_t udp_threads,
+        decoder_callback callback,void *callback_opaque){
 	/* Lots of threads listening  and processing*/
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
@@ -627,7 +628,7 @@ static void join_listener_socket(void *_private){
 }
 
 static void reload_listener_socket(json_t *new_config __attribute__((unused)),
-                                         listener_opaque_reload opaque_reload,
+                                decoder_listener_opaque_reload opaque_reload,
                       void *cb_opaque,void *_private __attribute__((unused))) {
 	if(opaque_reload){
 		rdlog(LOG_INFO,"Reloading opaque");
@@ -637,7 +638,8 @@ static void reload_listener_socket(json_t *new_config __attribute__((unused)),
 	}
 }
 
-struct listener *create_socket_listener(struct json_t *config,listener_callback callback,void *callback_opaque){
+struct listener *create_socket_listener(struct json_t *config,
+            decoder_callback callback,void *callback_opaque){
 	json_error_t error;
 	char *proto;
 

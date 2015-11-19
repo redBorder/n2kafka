@@ -34,26 +34,27 @@
 
 struct json_t;
 struct listener;
-typedef void (*listener_callback)(char *buffer,size_t buf_size,const keyval_list_t *props,void *listener_callback_opaque);
+typedef void (*decoder_callback)(char *buffer,size_t buf_size,const keyval_list_t *props,void *listener_callback_opaque);
 typedef struct listener* (*listener_creator)(struct json_t *config,
-                        listener_callback cb,void *cb_opaque);
+                        decoder_callback cb,void *cb_opaque);
 typedef void (*listener_join)(void *listener_private);
-typedef int (*listener_opaque_creator)(struct json_t *config,void **opaque);
-typedef int (*listener_opaque_reload)(struct json_t *config,void *opaque);
-typedef void (*listener_opaque_destructor)(void *opaque);
+typedef int (*decoder_listener_opaque_creator)(struct json_t *config,void **opaque);
+typedef int (*decoder_listener_opaque_reload)(struct json_t *config,void *opaque);
+typedef void (*decoder_listener_opaque_destructor)(void *opaque);
 // @TODO we need this callback to split data acquiring || data processing
 // typedef void (*data_process)(void *data_process_private,const char *buffer,size_t bsize);
-typedef void (*listener_reload)(struct json_t *new_config,listener_opaque_reload opaque_reload,
-                                                       void *cb_opaque,void *listener_private);
+typedef void (*listener_reload)(struct json_t *new_config,
+    decoder_listener_opaque_reload opaque_reload,
+    void *cb_opaque,void *listener_private);
 struct listener{
     uint16_t port; // as listener ID
     void *private;
     
     struct{
         void *cb_opaque;
-        listener_callback callback;
-        listener_opaque_destructor cb_opaque_destructor;
-        listener_opaque_reload cb_opaque_reload;
+        decoder_callback callback;
+        decoder_listener_opaque_destructor cb_opaque_destructor;
+        decoder_listener_opaque_reload cb_opaque_reload;
     }cb;
     listener_creator create;
     listener_join join;

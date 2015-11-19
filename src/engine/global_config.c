@@ -72,13 +72,13 @@ static const struct registered_decoder{
 	/// Name of config parameters
 	const char *config_parameters;
 	/// Callback that the listener needs to call for each data received
-	listener_callback cb;
+	decoder_callback cb;
 	/// Per-listener decoder information creator
-	listener_opaque_creator opaque_creator;
+	decoder_listener_opaque_creator opaque_creator;
 	/// Per listener decoder information reload
-	listener_opaque_reload opaque_reload;
+	decoder_listener_opaque_reload opaque_reload;
 	/// Per listener decoder information destructor
-	listener_opaque_destructor opaque_destructor;
+	decoder_listener_opaque_destructor opaque_destructor;
 
 /**
     Tells if the listener support straming API, instead of wait to all data
