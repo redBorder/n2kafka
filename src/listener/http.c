@@ -60,6 +60,7 @@ struct http_private{
     decoder_callback callback;
 	void *callback_opaque;
 	int callback_flags;
+	void *decoder_sessp;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -144,9 +145,12 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 
-	h->callback(con_info->str.buf,con_info->str.used,
-		&con_info->decoder_params,h->callback_opaque,NULL);
-	con_info->str.buf = NULL; /* librdkafka will free it */
+	if(!h->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+		/* No streaming processing -> need to process buffer */
+		h->callback(con_info->str.buf,con_info->str.used,
+			&con_info->decoder_params,h->callback_opaque,NULL);
+		con_info->str.buf = NULL; /* librdkafka will free it */
+	}
 	
 	free_con_info(con_info);
 	*con_cls = NULL;
@@ -397,8 +401,19 @@ static int post_handle(void *_cls,
 	} else if ( *upload_data_size > 0 ) {
 		/* middle calls, process string sent */
 		struct conn_info *con_info = *ptr;
-		const size_t rc = append_http_data_to_connection_data(con_info,
-		                                upload_data,*upload_data_size);
+		size_t rc;
+		if(cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+			/* Does support streaming processing, sending the chunk */
+			cls->callback(con_info->str.buf,con_info->str.used,
+				&con_info->decoder_params,cls->callback_opaque,
+				&cls->decoder_sessp);
+			/// @TODO fix it
+			rc = *upload_data_size;
+		} else {
+			/* Does not support stream, we need to allocate a big buffer */
+			rc = append_http_data_to_connection_data(con_info,
+			                                upload_data,*upload_data_size);
+		}
 		(*upload_data_size) -= rc;
 		return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
 
