@@ -38,7 +38,7 @@ typedef void (*decoder_callback)(char *buffer,size_t buf_size,
     const keyval_list_t *props,void *listener_callback_opaque,
     void **sessionp);
 typedef struct listener* (*listener_creator)(struct json_t *config,
-                        decoder_callback cb,void *cb_opaque);
+                        decoder_callback cb,int cb_flags,void *cb_opaque);
 typedef void (*listener_join)(void *listener_private);
 typedef int (*decoder_listener_opaque_creator)(struct json_t *config,void **opaque);
 typedef int (*decoder_listener_opaque_reload)(struct json_t *config,void *opaque);
@@ -63,6 +63,14 @@ struct listener{
     listener_join join;
     listener_reload reload;
     LIST_ENTRY(listener) entry;
+};
+
+enum {
+/**
+    Tells if the listener support straming API, instead of wait to all data
+    to be available
+*/
+    DECODER_F_SUPPORT_STREAMING = 0x01,
 };
 
 typedef LIST_HEAD(,listener) listener_list;

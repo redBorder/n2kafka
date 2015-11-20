@@ -639,7 +639,8 @@ static void reload_listener_socket(json_t *new_config __attribute__((unused)),
 }
 
 struct listener *create_socket_listener(struct json_t *config,
-            decoder_callback callback,void *callback_opaque){
+        decoder_callback callback,int callback_flags __attribute__((unused)),
+        void *callback_opaque) {
 	json_error_t error;
 	char *proto;
 

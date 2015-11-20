@@ -59,6 +59,7 @@ struct http_private{
 	int redborder_uri;
     decoder_callback callback;
 	void *callback_opaque;
+	int callback_flags;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -421,7 +422,7 @@ struct http_loop_args {
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
-                                            decoder_callback callback,void *cb_opaque) {
+            decoder_callback callback,int callback_flags,void *cb_opaque) {
 	struct http_private *h = NULL;
 
 	unsigned int flags = 0;
@@ -453,6 +454,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->magic = HTTP_PRIVATE_MAGIC;
 #endif
 	h->callback = callback;
+	h->callback_flags = callback_flags;
 	h->callback_opaque = cb_opaque;
 	h->redborder_uri = args->redborder_uri;
 
@@ -521,7 +523,7 @@ static void break_http_loop(void *_h){
 }
 
 struct listener *create_http_listener(struct json_t *config,
-        decoder_callback cb,void *cb_opaque) {
+        decoder_callback cb,int cb_flags,void *cb_opaque) {
 
 	json_error_t error;
 
@@ -567,7 +569,8 @@ struct listener *create_http_listener(struct json_t *config,
 		return NULL;
 	}
 
-	struct http_private *priv = start_http_loop(&handler_args,cb,cb_opaque);
+	struct http_private *priv = start_http_loop(&handler_args,cb,cb_flags,
+	                                                           cb_opaque);
 	if( NULL == priv ) {
 		return NULL;
 	}

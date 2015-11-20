@@ -22,5 +22,6 @@
 #include "global_config.h"
 struct http_handler;
 struct json_t;
-struct listener *create_http_listener(struct json_t *config,decoder_callback cb,void *cb_opaque);
+struct listener *create_http_listener(struct json_t *config,
+            decoder_callback cb,int cb_flags,void *cb_opaque);
 #endif

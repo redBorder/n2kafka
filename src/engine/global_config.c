@@ -80,12 +80,6 @@ static const struct registered_decoder{
 	/// Per listener decoder information destructor
 	decoder_listener_opaque_destructor opaque_destructor;
 
-/**
-    Tells if the listener support straming API, instead of wait to all data
-    to be available
-*/
-#define DECODER_F_SUPPORT_STREAMING 0x01
-
     /// Decoders flags
     int flags;
 } registered_decoders[] = {
@@ -285,7 +279,8 @@ static void parse_listener(json_t *config){
 		}
 	}
 
-	struct listener *listener = (*_listener_creator)(config,decoder->cb,decoder_opaque);
+	struct listener *listener = (*_listener_creator)(config,decoder->cb,
+	                                     decoder->flags,decoder_opaque);
 
 	if( NULL == listener ) {
 		rdlog(LOG_ERR,"Can't create listener for proto %s: %s.",proto,err);
