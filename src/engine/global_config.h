@@ -57,6 +57,7 @@ struct listener{
         decoder_callback callback;
         decoder_listener_opaque_destructor cb_opaque_destructor;
         decoder_listener_opaque_reload cb_opaque_reload;
+        int flags;
     }cb;
     listener_creator create;
     listener_join join;
