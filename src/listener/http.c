@@ -148,7 +148,7 @@ static void request_completed (void *cls,
 		&decoder_params);
 
 	h->callback(con_info->str.buf,con_info->str.used,
-		&decoder_params,h->callback_opaque);
+		&decoder_params,h->callback_opaque,NULL);
 	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);

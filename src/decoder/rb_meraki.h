@@ -54,4 +54,5 @@ struct meraki_config {
 };
 
 void meraki_decode(char *buffer,size_t buf_size,
-	const keyval_list_t *attrs,void *listener_callback_opaque);
+	const keyval_list_t *attrs,void *listener_callback_opaque,
+	void **sessionp);

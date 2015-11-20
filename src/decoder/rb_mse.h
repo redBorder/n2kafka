@@ -48,4 +48,5 @@ int mse_opaque_reload(struct json_t *config, void *opaque);
 void mse_opaque_done(void *opaque);
 void mse_decode(char *buffer, size_t buf_size,
                 const keyval_list_t *keyval,
-                void *listener_callback_opaque);
+                void *listener_callback_opaque,
+                void **sessionp);

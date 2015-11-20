@@ -634,7 +634,8 @@ err:
 
 void rb_decode(char *buffer, size_t buf_size,
                const keyval_list_t *list,
-               void *_listener_callback_opaque) {
+               void *_listener_callback_opaque,
+               void **sessionp __attribute__((unused))) {
 
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
 #ifdef RB_OPAQUE_MAGIC

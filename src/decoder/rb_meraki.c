@@ -471,7 +471,8 @@ err:
 
 void meraki_decode(char *buffer,size_t buf_size,
 	            const keyval_list_t *attrs,
-	            void *_listener_callback_opaque) {
+	            void *_listener_callback_opaque,
+	            void **sessionp __attribute__((unused))) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 

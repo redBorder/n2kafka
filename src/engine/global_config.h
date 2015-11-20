@@ -34,7 +34,9 @@
 
 struct json_t;
 struct listener;
-typedef void (*decoder_callback)(char *buffer,size_t buf_size,const keyval_list_t *props,void *listener_callback_opaque);
+typedef void (*decoder_callback)(char *buffer,size_t buf_size,
+    const keyval_list_t *props,void *listener_callback_opaque,
+    void **sessionp);
 typedef struct listener* (*listener_creator)(struct json_t *config,
                         decoder_callback cb,void *cb_opaque);
 typedef void (*listener_join)(void *listener_private);
