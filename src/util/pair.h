@@ -28,6 +28,7 @@ struct pair {
 
 typedef TAILQ_HEAD(,pair) keyval_list_t;
 #define keyval_list_initializer TAILQ_HEAD_INITIALIZER
+#define keyval_list_init TAILQ_INIT
 
 void add_key_value_pair(keyval_list_t *list,struct pair *pair);
 const char *valueof(const keyval_list_t *list,const char *key);

@@ -97,6 +97,8 @@ struct conn_info {
 	const char *client;
 	const char *sensor_uuid;
 	struct string str;
+	keyval_list_t decoder_params;
+	struct pair decoder_opts[3];
 };
 
 static void free_con_info(struct conn_info *con_info) {
@@ -141,14 +143,8 @@ static void request_completed (void *cls,
 	assert(HTTP_PRIVATE_MAGIC == h->magic);
 #endif
 
-	keyval_list_t decoder_params = keyval_list_initializer(decoder_params);
-	struct pair decoder_opts[3];
-
-	prepare_decoder_params(con_info,decoder_opts,RD_ARRAY_SIZE(decoder_opts),
-		&decoder_params);
-
 	h->callback(con_info->str.buf,con_info->str.used,
-		&decoder_params,h->callback_opaque,NULL);
+		&con_info->decoder_params,h->callback_opaque,NULL);
 	con_info->str.buf = NULL; /* librdkafka will free it */
 	
 	free_con_info(con_info);
@@ -177,6 +173,12 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 		free_con_info(con_info);
 		return NULL; /* Doesn't have resources */
 	}
+
+	keyval_list_init(&con_info->decoder_params);
+
+	prepare_decoder_params(con_info,con_info->decoder_opts,
+		RD_ARRAY_SIZE(con_info->decoder_opts),
+		&con_info->decoder_params);
 
 	return con_info;
 }
