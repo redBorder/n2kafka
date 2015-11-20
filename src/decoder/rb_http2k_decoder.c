@@ -643,7 +643,7 @@ void rb_decode(char *buffer, size_t buf_size,
 #endif
 
 	if (0 == buf_size) {
-		rdlog(LOG_WARNING, "Received empty POST request");
+		rdlog(LOG_WARNING, "%s called with 0 length message");
 	} else {
 		process_rb_buffer(buffer, buf_size, list, rb_opaque);
 	}
