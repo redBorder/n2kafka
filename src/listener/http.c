@@ -404,7 +404,7 @@ static int post_handle(void *_cls,
 		size_t rc;
 		if(cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
 			/* Does support streaming processing, sending the chunk */
-			cls->callback(con_info->str.buf,con_info->str.used,
+			cls->callback(upload_data,*upload_data_size,
 				&con_info->decoder_params,cls->callback_opaque,
 				&cls->decoder_sessp);
 			/// @TODO fix it
