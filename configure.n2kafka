@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 
-mkl_require good_cflags
-mkl_require socket
+mkl_require good_cflags must pass
+mkl_require socket must pass
 mkl_require gitversion as GITVERSION
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
