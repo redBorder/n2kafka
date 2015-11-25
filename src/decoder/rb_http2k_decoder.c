@@ -79,6 +79,7 @@ struct topic_s {
 #endif
 	rd_kafka_topic_t *rkt;
 	const char *topic_name;
+	uint64_t refcnt;
 
 	rd_avl_node_t avl_node;
 	TAILQ_ENTRY(topic_s) list_node;
@@ -86,6 +87,13 @@ struct topic_s {
 	const char *partition_key;
 	enum partitioner_algorithm partitioner_algorithm;
 };
+
+static void topic_decref(struct topic_s *topic) {
+	if(0==ATOMIC_OP(sub,fetch,&topic->refcnt,1)) {
+		rd_kafka_topic_destroy(topic->rkt);
+		free(topic);
+	}
+}
 
 void init_rb_database(struct rb_database *db) {
 	memset(db, 0, sizeof(*db));
@@ -225,14 +233,12 @@ static partitioner_cb partitioner_of_name(const char *name) {
 /** @TODO each topic should have a refcnt, and live in sepparate callocs. This 
 is currently a mess */
 static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
-                                   rd_avl_t *new_topics_db, void **new_topics_memory) {
+                                   rd_avl_t *new_topics_db) {
 	const char *key;
 	json_t *value;
 	json_error_t jerr;
 	json_t *topic_list = NULL;
 	int pass = 0;
-	char *strings_buffer = NULL;
-	struct topic_s *topics = NULL;
 
 	assert(config);
 	assert(new_topics_list);
@@ -256,94 +262,77 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 		return -1;
 	}
 
-	for (pass = 0; pass < 2; pass++) {
-		size_t char_array_pos = 0;
-		size_t idx = 0;
+	json_object_foreach(topic_list, key, value) {
+		struct topic_s *topic_s = NULL;
+		const char *partition_key = NULL, *partition_algo = NULL;
+		size_t partition_key_len = 0;
+		const char *topic_name = key;
+		rd_kafka_topic_t *rkt = NULL;
 
-
-		json_object_foreach(topic_list, key, value) {
-			const char *partition_key = NULL, *partition_algo = NULL;
-			const char *topic_name = key;
-			const size_t topic_len = strlen(topic_name);
-
-			if (!json_is_object(value)) {
-				if (pass == 0) {
-					rdlog(LOG_ERR, "Topic %s is not an object. Discarding.", topic_name);
-				}
-				continue;
+		if (!json_is_object(value)) {
+			if (pass == 0) {
+				rdlog(LOG_ERR, "Topic %s is not an object. Discarding.", topic_name);
 			}
+			continue;
+		}
 
-			const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s,s?s}",
-			                            RB_TOPIC_PARTITIONER_KEY, &partition_key,
-			                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
+		const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s%,s?s%}",
+		                            RB_TOPIC_PARTITIONER_KEY, &partition_key, &partition_key_len,
+		                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
 
-			if (0 != topic_unpack_rc) {
-				if (pass == 0) {
-					rdlog(LOG_ERR, "Can't extract information of topic %s (%s). Discarding.",
-					      topic_name, jerr.text);
-				}
-				continue;
+		if (0 != topic_unpack_rc) {
+			rdlog(LOG_ERR, "Can't extract information of topic %s (%s). Discarding.",
+			      topic_name, jerr.text);
+			continue;
+		}
+
+		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
+                                global_config.kafka_topic_conf);
+		if(NULL == my_rkt_conf) {
+			rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+			continue;
+		}
+
+		if (NULL != partition_algo) {
+			partitioner_cb partitioner = partitioner_of_name(partition_algo);
+			if (NULL != partitioner) {
+				rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+			} else {
+				rdlog(LOG_ERR, 
+					"Can't found partitioner algorithm %s for topic %s", 
+					partition_algo,topic_name);
 			}
+		}
 
-			const size_t partition_key_len = partition_key ? strlen(partition_key) : 0;
 
-			if (1 == pass) {
-				char *topics_curr_pos = strings_buffer + char_array_pos;
+		rkt = rd_kafka_topic_new(global_config.rk, topic_name, my_rkt_conf);
+		if (NULL == rkt) {
+			char buf[BUFSIZ];
+			strerror_r(errno, buf, sizeof(buf));
+			rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
+			rd_kafka_topic_conf_destroy(my_rkt_conf);
+			continue;
+		}
+
+
+		rd_calloc_struct(&topic_s,sizeof(*topic_s),
+			-1,topic_name,&topic_s->topic_name,
+			partition_key_len,partition_key,&topic_s->partition_key,
+			RD_MEM_END_TOKEN);
 
 #ifdef TOPIC_S_MAGIC
-				topics[idx].magic = TOPIC_S_MAGIC;
+		topic_s->magic = TOPIC_S_MAGIC;
 #endif
-				topics[idx].topic_name = strncpy(topics_curr_pos, topic_name,
-				                                 topic_len + 1);
-				topics_curr_pos += topic_len + 1;
-				if (partition_key_len) {
-					topics[idx].partition_key = strncpy(topics_curr_pos,
-					                                    partition_key, partition_key_len + 1);
-				}
 
-				RD_AVL_INSERT(new_topics_db, &topics[idx], avl_node);
-				topic_list_push(new_topics_list, &topics[idx]);
-
-				rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(
-				                                    global_config.kafka_topic_conf);
-
-				if (NULL != partition_algo) {
-					partitioner_cb partitioner = partition_algo != NULL ?
-					                             partitioner_of_name(partition_algo) : NULL;
-					if (NULL != partitioner) {
-						rd_kafka_topic_conf_set_partitioner_cb(myconf, partitioner);
-					} else {
-						rdlog(LOG_ERR, "Can't found partitioner algorithm %s", partition_algo);
-					}
-				}
-
-				topics[idx].rkt = rd_kafka_topic_new(global_config.rk, topics[idx].topic_name,
-				                                     myconf);
-
-				if (NULL == topics[idx].rkt) {
-					char buf[BUFSIZ];
-					strerror_r(errno, buf, sizeof(buf));
-					rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
-				}
-
-			}
-
-			char_array_pos += topic_len + 1 + (partition_key_len ? partition_key_len + 1 :
-			                                   0);
-			idx++;
+		if (0 == partition_key_len) {
+			topic_s->partition_key = NULL;
 		}
 
-		if (0 == pass) {
-			const size_t array_memsize = idx * sizeof(struct topic_s);
-			const size_t needed_memory = array_memsize + char_array_pos;
-			*new_topics_memory = calloc(1, needed_memory);
-			topics = *new_topics_memory;
-			strings_buffer = (char *)topics + array_memsize;
-			if (NULL == *new_topics_memory) {
-				rdlog(LOG_ERR, "Can't allocate topics (out of memory?)");
-				return -1;
-			}
-		}
+		topic_s->rkt = rkt;
+		topic_s->refcnt = 1;
+
+		RD_AVL_INSERT(new_topics_db, topic_s, avl_node);
+		topic_list_push(new_topics_list, topic_s);
 	}
 
 	return 0;
@@ -386,7 +375,7 @@ static void free_topics(topics_list *list) {
 #ifdef TOPIC_S_MAGIC
 		assert(TOPIC_S_MAGIC == elm->magic);
 #endif
-		rd_kafka_topic_destroy(elm->rkt);
+		topic_decref(elm);
 	}
 }
 
@@ -395,7 +384,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	struct rb_opaque *opaque = _opaque;
 	topics_list old_topics_list, new_topics_list;
 	topics_db *old_topics_db = NULL, *new_topics_db = NULL;
-	void *new_topics_memory = NULL, *old_topics_memory = NULL;
 	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
 	json_t *new_dangerous_values_table = NULL,
 		*old_dangerous_values_table = NULL;
@@ -425,7 +413,7 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	topic_list_init(&new_topics_list);
 
 	const int topic_list_rc = parse_topic_list_config(config, &new_topics_list,
-	                          new_topics_db, &new_topics_memory);
+	                          new_topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
@@ -449,10 +437,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	opaque->rb_config->database.topics.topics = new_topics_db;
 	new_topics_db = NULL;
 
-	old_topics_memory = opaque->rb_config->database.topics_memory;
-	opaque->rb_config->database.topics_memory = new_topics_memory;
-	new_topics_memory = NULL;
-
 	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
 err:
@@ -468,14 +452,6 @@ err:
 	add a refcounter to this */
 	free_topics(&old_topics_list);
 	free_topics(&new_topics_list);
-
-	if (new_topics_memory) {
-		free(new_topics_memory);
-	}
-
-	if (old_topics_memory) {
-		free(old_topics_memory);
-	}
 
 	if (old_uuid_enrichment) {
 		json_decref(old_uuid_enrichment);
@@ -577,7 +553,12 @@ static struct topic_s *get_topic_nl(struct rb_database *db, const char *topic) {
 		.topic_name = buf
 	};
 
-	return RD_AVL_FIND_NODE_NL(db->topics.topics, &dumb_topic);
+	struct topic_s *ret = RD_AVL_FIND_NODE_NL(db->topics.topics, &dumb_topic);
+	if(ret) {
+		ATOMIC_OP(add,fetch,&ret->refcnt,1);
+	}
+
+	return ret;
 }
 
 int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
