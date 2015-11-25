@@ -4,6 +4,7 @@
 mkl_require good_cflags must pass
 mkl_require socket must pass
 mkl_require gitversion as GITVERSION
+mkl_require atomics must pass
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
