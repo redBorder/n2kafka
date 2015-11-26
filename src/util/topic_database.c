@@ -143,6 +143,7 @@ int topics_db_add(struct topics_db *db,rd_kafka_topic_t *rkt,
 		topic_s->refcnt = 1;
 
 		RD_AVL_INSERT(&db->topics,topic_s,avl_node);
+		topic_list_push(&db->list,topic_s);
 	}
 
 	return topic_s != NULL;
