@@ -146,14 +146,11 @@ fallback_behavior:
 	@return 0 if ok. Any other value should be checked against jerr.
 	*/
 static int parse_per_uuid_opaque_config(json_t *config,
-	                json_t **uuid_enrichment,json_t **dangerous_values) {
+	                json_t **uuid_enrichment) {
 	json_error_t jerr;
-	const char *uuid_key = NULL,*uuid_enrichment_key = NULL;
-	json_t *uuid_value = NULL,*uuid_enrichment_value = NULL;
 
 	assert(config);
 	assert(uuid_enrichment);
-	assert(dangerous_values);
 
 	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:O}",
 	                           RB_SENSOR_UUID_ENRICHMENT_KEY, uuid_enrichment);
@@ -161,32 +158,6 @@ static int parse_per_uuid_opaque_config(json_t *config,
 	if (0 != json_unpack_rc) {
 		rdlog(LOG_ERR,"Couldn't unpack %s key: %s",
 			RB_SENSOR_UUID_ENRICHMENT_KEY,jerr.text);
-	}
-
-	*dangerous_values = json_object();
-	if(NULL == *dangerous_values) {
-		rdlog(LOG_ERR,"Couldn't create dangerous values table (out of memory?)");
-	}
-
-	json_object_foreach(*uuid_enrichment,uuid_key,uuid_value) {
-		if(!json_is_object(uuid_value)) {
-			continue;
-		}
-
-		json_object_foreach(uuid_value,uuid_enrichment_key,
-		                            uuid_enrichment_value) {
-			if(NULL == json_object_get(*dangerous_values,uuid_enrichment_key)) {
-				// New empty object.
-				json_t *new_object = json_null();
-				if(NULL == new_object) {
-					rdlog(LOG_ERR,"Couldn't allocate new dangerous values object");
-					continue;
-				}
-
-				json_object_set_new_nocheck(*dangerous_values,
-					uuid_enrichment_key,new_object);
-			}
-		}
 	}
 
 	return json_unpack_rc;
@@ -314,8 +285,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	struct rb_opaque *opaque = _opaque;
 	struct topics_db *old_topics_db = NULL, *my_new_topics_db = NULL;
 	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
-	json_t *new_dangerous_values_table = NULL,
-		*old_dangerous_values_table = NULL;
 
 	assert(opaque);
 	assert(config);
@@ -324,7 +293,7 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 #endif
 
 	const int per_sensor_uuid_enrichment_rc = parse_per_uuid_opaque_config(config,
-	        &new_uuid_enrichment,&new_dangerous_values_table);
+	        &new_uuid_enrichment);
 	if (per_sensor_uuid_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
 		rc = -1;
 		goto err;
@@ -343,10 +312,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	old_uuid_enrichment = opaque->rb_config->database.uuid_enrichment;
 	opaque->rb_config->database.uuid_enrichment = new_uuid_enrichment;
 	new_uuid_enrichment = NULL;
-
-	old_dangerous_values_table = opaque->rb_config->database.dangerous_values;
-	opaque->rb_config->database.dangerous_values = new_dangerous_values_table;
-	new_dangerous_values_table = NULL;
 
 	old_topics_db = opaque->rb_config->database.topics_db;
 	opaque->rb_config->database.topics_db = my_new_topics_db;
@@ -369,14 +334,6 @@ err:
 
 	if (new_uuid_enrichment) {
 		json_decref(new_uuid_enrichment);
-	}
-
-	if (new_dangerous_values_table) {
-		json_decref(new_dangerous_values_table);
-	}
-
-	if (old_dangerous_values_table) {
-		json_decref(old_dangerous_values_table);
 	}
 
 	return rc;
