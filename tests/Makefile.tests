@@ -19,7 +19,7 @@ all: test
 %.test: %.c %.objdeps
 	$(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 	-CMOCKA_MESSAGE_OUTPUT=XML CMOCKA_XML_FILE=$@.xml ./$@
-	cat ./$@.xml
+	# cat ./$@.xml
 
 
 test: $(TEST_PROGS)
