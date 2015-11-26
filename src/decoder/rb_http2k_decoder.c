@@ -24,6 +24,7 @@
 #include "kafka.h"
 #include "global_config.h"
 #include "rb_json.h"
+#include "topic_database.h"
 
 #include <yajl/yajl_parse.h>
 #include <yajl/yajl_gen.h>
@@ -37,13 +38,6 @@
 #include <errno.h>
 #include <librd/rd.h>
 #include <librdkafka/rdkafka.h>
-
-#ifndef NDEBUG
-#define TOPIC_S_MAGIC 0x01CA1C01CA1C01CAL
-#endif
-
-#define topic_list_init(l) TAILQ_INIT(l)
-#define topic_list_push(l,e) TAILQ_INSERT_TAIL(l,e,list_node);
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
 static const char RB_SENSOR_UUID_ENRICHMENT_KEY[] = "uuids";
@@ -61,8 +55,12 @@ static int32_t (mac_partitioner) (const rd_kafka_topic_t *rkt,
                                   const void *keydata, size_t keylen, int32_t partition_cnt,
                                   void *rkt_opaque, void *msg_opaque);
 
+/** Algorithm of messages partitioner */
 enum partitioner_algorithm {
-	none, mac,
+	/** Random partitioning */
+	none,
+	/** Mac partitioning */
+	mac,
 };
 
 struct {
@@ -72,28 +70,6 @@ struct {
 } partitioner_algorithm_list[] = {
 	{mac, "mac", mac_partitioner},
 };
-
-struct topic_s {
-#ifdef TOPIC_S_MAGIC
-	uint64_t magic;
-#endif
-	rd_kafka_topic_t *rkt;
-	const char *topic_name;
-	uint64_t refcnt;
-
-	rd_avl_node_t avl_node;
-	TAILQ_ENTRY(topic_s) list_node;
-
-	const char *partition_key;
-	enum partitioner_algorithm partitioner_algorithm;
-};
-
-static void topic_decref(struct topic_s *topic) {
-	if(0==ATOMIC_OP(sub,fetch,&topic->refcnt,1)) {
-		rd_kafka_topic_destroy(topic->rkt);
-		free(topic);
-	}
-}
 
 void init_rb_database(struct rb_database *db) {
 	memset(db, 0, sizeof(*db));
@@ -230,10 +206,7 @@ static partitioner_cb partitioner_of_name(const char *name) {
 	return NULL;
 }
 
-/** @TODO each topic should have a refcnt, and live in sepparate callocs. This 
-is currently a mess */
-static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
-                                   rd_avl_t *new_topics_db) {
+static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 	const char *key;
 	json_t *value;
 	json_error_t jerr;
@@ -241,7 +214,6 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 	int pass = 0;
 
 	assert(config);
-	assert(new_topics_list);
 
 	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}",
 	                           RB_TOPICS_KEY, &topic_list);
@@ -263,7 +235,6 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 	}
 
 	json_object_foreach(topic_list, key, value) {
-		struct topic_s *topic_s = NULL;
 		const char *partition_key = NULL, *partition_algo = NULL;
 		size_t partition_key_len = 0;
 		const char *topic_name = key;
@@ -276,7 +247,7 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 			continue;
 		}
 
-		const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s%,s?s%}",
+		const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s%,s?s}",
 		                            RB_TOPIC_PARTITIONER_KEY, &partition_key, &partition_key_len,
 		                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
 
@@ -304,7 +275,6 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 			}
 		}
 
-
 		rkt = rd_kafka_topic_new(global_config.rk, topic_name, my_rkt_conf);
 		if (NULL == rkt) {
 			char buf[BUFSIZ];
@@ -314,40 +284,10 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 			continue;
 		}
 
-
-		rd_calloc_struct(&topic_s,sizeof(*topic_s),
-			-1,topic_name,&topic_s->topic_name,
-			partition_key_len,partition_key,&topic_s->partition_key,
-			RD_MEM_END_TOKEN);
-
-#ifdef TOPIC_S_MAGIC
-		topic_s->magic = TOPIC_S_MAGIC;
-#endif
-
-		if (0 == partition_key_len) {
-			topic_s->partition_key = NULL;
-		}
-
-		topic_s->rkt = rkt;
-		topic_s->refcnt = 1;
-
-		RD_AVL_INSERT(new_topics_db, topic_s, avl_node);
-		topic_list_push(new_topics_list, topic_s);
+		topics_db_add(new_topics_db,rkt,partition_key,partition_key_len);
 	}
 
 	return 0;
-}
-
-static int topics_cmp(const void *_t1, const void *_t2) {
-	const struct topic_s *t1 = _t1;
-	const struct topic_s *t2 = _t2;
-
-#ifdef TOPIC_S_MAGIC
-	assert(TOPIC_S_MAGIC == t1->magic);
-	assert(TOPIC_S_MAGIC == t2->magic);
-#endif
-
-	return strcmp(t1->topic_name, t2->topic_name);
 }
 
 int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
@@ -369,21 +309,10 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	return 0;
 }
 
-static void free_topics(topics_list *list) {
-	struct topic_s *elm = NULL, *tmpelm = NULL;
-	TAILQ_FOREACH_SAFE(elm, tmpelm, list, list_node) {
-#ifdef TOPIC_S_MAGIC
-		assert(TOPIC_S_MAGIC == elm->magic);
-#endif
-		topic_decref(elm);
-	}
-}
-
 int rb_opaque_reload(json_t *config, void *_opaque) {
 	int rc = 0;
 	struct rb_opaque *opaque = _opaque;
-	topics_list old_topics_list, new_topics_list;
-	topics_db *old_topics_db = NULL, *new_topics_db = NULL;
+	struct topics_db *old_topics_db = NULL, *my_new_topics_db = NULL;
 	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
 	json_t *new_dangerous_values_table = NULL,
 		*old_dangerous_values_table = NULL;
@@ -394,9 +323,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	assert(RB_OPAQUE_MAGIC == opaque->magic);
 #endif
 
-	memset(&old_topics_list, 0, sizeof(old_topics_list));
-	memset(&new_topics_list, 0, sizeof(new_topics_list));
-
 	const int per_sensor_uuid_enrichment_rc = parse_per_uuid_opaque_config(config,
 	        &new_uuid_enrichment,&new_dangerous_values_table);
 	if (per_sensor_uuid_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
@@ -404,16 +330,9 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 		goto err;
 	}
 
-	new_topics_db = rd_avl_init(NULL, topics_cmp, 0);
-	if (NULL == new_topics_db) {
-		rdlog(LOG_ERR, "Can't allocate new topics db (out of memory?)");
-		goto err;
-	}
+	my_new_topics_db = topics_db_new();
 
-	topic_list_init(&new_topics_list);
-
-	const int topic_list_rc = parse_topic_list_config(config, &new_topics_list,
-	                          new_topics_db);
+	const int topic_list_rc = parse_topic_list_config(config,my_new_topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
@@ -429,29 +348,20 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	opaque->rb_config->database.dangerous_values = new_dangerous_values_table;
 	new_dangerous_values_table = NULL;
 
-	old_topics_list = opaque->rb_config->database.topics.list;
-	opaque->rb_config->database.topics.list = new_topics_list;
-	TAILQ_INIT(&new_topics_list);
-
-	old_topics_db = opaque->rb_config->database.topics.topics;
-	opaque->rb_config->database.topics.topics = new_topics_db;
-	new_topics_db = NULL;
+	old_topics_db = opaque->rb_config->database.topics_db;
+	opaque->rb_config->database.topics_db = my_new_topics_db;
+	my_new_topics_db = NULL;
 
 	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
 err:
-	if (new_topics_db) {
-		rd_avl_destroy(new_topics_db);
+	if (my_new_topics_db) {
+		topics_db_done(my_new_topics_db);
 	}
 
 	if (old_topics_db) {
-		rd_avl_destroy(old_topics_db);
+		topics_db_done(old_topics_db);
 	}
-
-	/** @TODO with yajl, we could delete a topic when it is in use. We should
-	add a refcounter to this */
-	free_topics(&old_topics_list);
-	free_topics(&new_topics_list);
 
 	if (old_uuid_enrichment) {
 		json_decref(old_uuid_enrichment);
@@ -520,12 +430,7 @@ void free_valid_rb_database(struct rb_database *db) {
 		json_decref(db->uuid_enrichment);
 	}
 
-	free_topics(&db->topics.list);
-	free(db->topics_memory);
-
-	if (db->topics.topics) {
-		rd_avl_destroy(db->topics.topics);
-	}
+	topics_db_done(db->topics_db);
 
 	pthread_rwlock_destroy(&db->rwlock);
 }
@@ -542,32 +447,12 @@ int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid) {
 	return ret;
 }
 
-static struct topic_s *get_topic_nl(struct rb_database *db, const char *topic) {
-	char buf[strlen(topic) + 1];
-	strcpy(buf, topic);
-
-	struct topic_s dumb_topic = {
-#ifdef TOPIC_S_MAGIC
-		.magic = TOPIC_S_MAGIC,
-#endif
-		.topic_name = buf
-	};
-
-	struct topic_s *ret = RD_AVL_FIND_NODE_NL(db->topics.topics, &dumb_topic);
-	if(ret) {
-		ATOMIC_OP(add,fetch,&ret->refcnt,1);
-	}
-
-	return ret;
-}
-
 int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
+       pthread_rwlock_rdlock(&db->rwlock);
+       const int ret = topics_db_topic_exists(db->topics_db,topic);
+       pthread_rwlock_unlock(&db->rwlock);
 
-	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = NULL != get_topic_nl(db, topic);
-	pthread_rwlock_unlock(&db->rwlock);
-
-	return ret;
+       return ret;
 }
 
 
@@ -676,12 +561,14 @@ static void produce_or_free(struct topic_s *topic, char *buf, size_t bufsize,
 
 	assert(topic);
 
-	const int produce_ret = rd_kafka_produce(topic->rkt, RD_KAFKA_PARTITION_UA,
+	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
+
+	const int produce_ret = rd_kafka_produce(rkt, RD_KAFKA_PARTITION_UA,
 	                        RD_KAFKA_MSG_F_FREE, buf, bufsize, key, keylen, opaque);
 
 	if (produce_ret != 0) {
 		rdlog(LOG_ERR, "Can't produce to topic %s: %s",
-		      topic->topic_name,
+		      rd_kafka_topic_name(rkt),
 		      rd_kafka_err2str(rd_kafka_errno2err(errno)));
 	}
 
@@ -968,21 +855,17 @@ static const yajl_callbacks callbacks = {
 
 static struct rb_session *new_rb_session(struct rb_config *rb_config,
 	                                const keyval_list_t *msg_vars) {
-	
+
 	const char *client_ip = valueof(msg_vars, "client_ip");
 	const char *sensor_uuid = valueof(msg_vars, "sensor_uuid");
 	const char *topic = valueof(msg_vars, "topic");
 	struct topic_s *topic_handler = NULL;
-	const char *kafka_partition_key = NULL;
 	json_t *client_enrichment = NULL;
-
-	pthread_rwlock_rdlock(&rb_config->database.rwlock);
 	
-	topic_handler = get_topic_nl(&rb_config->database,topic);
-	if(topic_handler) {
-		kafka_partition_key = topic_handler->partition_key?
-			strdup(topic_handler->partition_key):NULL;
+	pthread_rwlock_rdlock(&rb_config->database.rwlock);
+	topic_handler = topics_db_get_topic(rb_config->database.topics_db,topic);
 
+	if(topic_handler) {
 		client_enrichment = json_object_get(
 		        rb_config->database.uuid_enrichment,sensor_uuid);
 		
@@ -992,7 +875,6 @@ static struct rb_session *new_rb_session(struct rb_config *rb_config,
 			pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
 		}
 	}
-
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
 	if (NULL == topic_handler) {
@@ -1005,12 +887,14 @@ static struct rb_session *new_rb_session(struct rb_config *rb_config,
 		return NULL;
 	}
 
+	const char *kafka_partitioner_key = topics_db_partition_key(topic_handler);
+
 	struct rb_session *sess = NULL;
 	rd_calloc_struct(&sess,sizeof(*sess),
 		-1,client_ip,&sess->client_ip,
 		-1,sensor_uuid,&sess->sensor_uuid,
 		-1,topic,&sess->topic,
-		kafka_partition_key?-1:0,kafka_partition_key,&sess->kafka_partitioner_key,
+		kafka_partitioner_key?-1:0,kafka_partitioner_key,&sess->kafka_partitioner_key,
 		RD_MEM_END_TOKEN);
 
 	if(NULL == sess) {
@@ -1021,7 +905,7 @@ static struct rb_session *new_rb_session(struct rb_config *rb_config,
 	sess->client_enrichment = client_enrichment;
 	sess->topic_handler = topic_handler;
 
-	if(NULL == kafka_partition_key) {
+	if(NULL == kafka_partitioner_key) {
 		sess->kafka_partitioner_key = NULL;
 	}
 
@@ -1088,10 +972,6 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 
 	session = *sessionp;
 
-	// const char *client_ip = session->client_ip;
-	// const char *sensor_uuid = session->sensor_uuid;
-	// const char *topic = session->topic;
-
 	yajl_status stat = yajl_parse(session->handler, in_iterator, bsize);
 
 	if (stat != yajl_status_ok) {
@@ -1100,18 +980,7 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 		fprintf(stderr, "%s", (const char *) str);
 		yajl_free_error(session->handler, str);
 	}
-
-	/*
-err:
-	if (json) {
-		pthread_mutex_lock(&db->uuid_enrichment_mutex);
-		json_decref(json);
-		pthread_mutex_unlock(&db->uuid_enrichment_mutex);
-	}
-	*/
 }
-
-
 
 void rb_decode(char *buffer, size_t buf_size,
                const keyval_list_t *list,

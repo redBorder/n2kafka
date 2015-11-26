@@ -6,7 +6,8 @@ SRCS=	src/decoder/rb_http2k_decoder.c src/decoder/rb_meraki.c \
 	src/util/pair.c \
 	src/engine/rb_addr.c src/listener/http.c \
 	src/listener/socket.c src/util/in_addr_list.c \
-	src/util/kafka.c src/util/rb_json.c src/util/rb_mac.c
+	src/util/kafka.c src/util/rb_json.c src/util/rb_mac.c \
+	src/util/topic_database.c
 OBJS=	$(SRCS:.c=.o)
 
 .PHONY:
