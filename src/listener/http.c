@@ -393,6 +393,7 @@ static int post_handle(void *_cls,
 				&global_config.rb.database,&aok,&topic,&uuid,client);
 			if(0 == aok) {
 				free(topic);
+				free(uuid);
 				return rc;
 			}
 		}
