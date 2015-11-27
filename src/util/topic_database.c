@@ -121,6 +121,9 @@ int topics_db_topic_exists(struct topics_db *db, const char *topic) {
 
 int topics_db_add(struct topics_db *db,rd_kafka_topic_t *rkt,
         const char *partition_key, size_t partition_key_len) {
+	/* Quick hack */
+	char zero='\0',*aux_zero=NULL;
+
 	struct topic_s *topic_s = NULL;
 
 	const char *topic_name = rd_kafka_topic_name(rkt);
@@ -128,6 +131,7 @@ int topics_db_add(struct topics_db *db,rd_kafka_topic_t *rkt,
 	rd_calloc_struct(&topic_s,sizeof(*topic_s),
 			-1,topic_name,&topic_s->topic_name,
 			partition_key_len,partition_key,&topic_s->partition_key,
+			1,&zero,aux_zero,
 			RD_MEM_END_TOKEN);
 
 	if(topic_s) {
