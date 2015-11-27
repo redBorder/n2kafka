@@ -37,7 +37,8 @@ void dumb_decoder(char *buffer,size_t buf_size,const keyval_list_t *keyval,
     void *listener_callback_opaque,void **sessionp);
 
 struct kafka_message_array *new_kafka_message_array(size_t size);
-int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_t buf_size,void *opaque);
+int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,
+	size_t buf_size,void *opaque);
 void send_array_to_kafka(struct kafka_message_array *);
 
 

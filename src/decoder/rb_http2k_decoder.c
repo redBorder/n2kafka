@@ -25,6 +25,7 @@
 #include "global_config.h"
 #include "rb_json.h"
 #include "topic_database.h"
+#include "kafka_message_list.h"
 
 #include <yajl/yajl_parse.h>
 #include <yajl/yajl_gen.h>
@@ -513,22 +514,32 @@ static int gen_jansson_object(yajl_gen gen, json_t *object) {
 	return 1;
 }
 
-static void produce_or_free(struct topic_s *topic, char *buf, size_t bufsize,
-                            const char *key, size_t keylen, void *opaque) {
-
+/** Produce a batch of messages
+	@param topic Topic handler
+	@param msgs Messages to send
+	@param len Length of msgs */
+static void produce_or_free(struct topic_s *topic, rd_kafka_message_t *msgs,
+                                                                int len) {
 	assert(topic);
+	assert(msgs);
 
 	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
 
-	const int produce_ret = rd_kafka_produce(rkt, RD_KAFKA_PARTITION_UA,
-	                        RD_KAFKA_MSG_F_FREE, buf, bufsize, key, keylen, opaque);
+	const int produce_ret = rd_kafka_produce_batch(rkt, RD_KAFKA_PARTITION_UA,
+	                        RD_KAFKA_MSG_F_FREE, msgs, len);
 
-	if (produce_ret != 0) {
-		rdlog(LOG_ERR, "Can't produce to topic %s: %s",
-		      rd_kafka_topic_name(rkt),
-		      rd_kafka_err2str(rd_kafka_errno2err(errno)));
+	if (produce_ret != len) {
+		int i;
+		for(i=0;i<len;++i) {
+			if(msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+				rdlog(LOG_ERR, "Can't produce to topic %s: %s",
+				      rd_kafka_topic_name(rkt),
+				      rd_kafka_err2str(msgs[i].err));
+			}
+
+			free(msgs[i].payload);
+		}
 	}
-
 }
 
 /// @TODO many of the fields here could be a state machine
@@ -556,6 +567,9 @@ struct rb_session {
 		const unsigned char *current_key;
 		size_t current_key_length;
 	} message;
+
+	/// Message list in this call to decode()
+	rd_kafka_message_queue_t msg_queue;
 
 	/// We are parsing value of kafka_partitioner_key
 	int in_partition_key;
@@ -740,33 +754,33 @@ static int rb_parse_end_map(void * ctx)
 
 	--sess->object_array_parsing_stack;
 	if(0 == sess->object_array_parsing_stack) {
+		rd_kafka_message_t msg;
+
 		/* Ending message, we need to add enrichment values */
 		gen_jansson_object(g,sess->client_enrichment);
 
+		memset(&msg,0,sizeof(msg));
+		msg.partition = RD_KAFKA_PARTITION_UA;
+		msg.key_len = sess->message.current_key_length;
+
 		const unsigned char * buf;
-		size_t len;
 		yajl_gen_map_close(g);
-		yajl_gen_get_buf(sess->gen, &buf, &len);
+		yajl_gen_get_buf(sess->gen, &buf, &msg.len);
 
 		/// @TODO do not copy, steal the buffer!
-		char *send_buffer = strdup((const char *)buf);
-		if(NULL == send_buffer) {
+		msg.payload = strdup((const char *)buf);
+		if(NULL == msg.payload) {
 			rdlog(LOG_ERR,"Unable to duplicate buffer");
 			return 0;
 		}
 
-		// Key in duplicated buffer
-		const char *key = NULL;
 		if(sess->message.current_key) {
 			const long int message_key_offset = sess->message.current_key - buf;
-			key = send_buffer + message_key_offset;
+			msg.key = (char *)msg.payload + message_key_offset;
 			sess->message.current_key = NULL;
 		}
 
-		/// @TODO send outside, in order to be able to test!
-	
-		produce_or_free(sess->topic_handler, send_buffer, len, key, 
-			sess->message.current_key_length, NULL);
+		rd_kafka_msg_q_add(&sess->msg_queue,&msg);
 		
 		yajl_gen_clear(sess->gen);
 		return 1;
@@ -859,6 +873,7 @@ static struct rb_session *new_rb_session(struct rb_config *rb_config,
 		goto client_enrichment_err;
 	}
 
+	rd_kafka_msg_q_init(&sess->msg_queue);
 	sess->client_enrichment = client_enrichment;
 	sess->topic_handler = topic_handler;
 
@@ -943,7 +958,6 @@ void rb_decode(char *buffer, size_t buf_size,
                const keyval_list_t *list,
                void *_listener_callback_opaque,
                void **vsessionp) {
-
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
 	struct rb_session **sessionp = (struct rb_session **)vsessionp;
 	/// Helper pointer to simulate streaming behavior
@@ -954,12 +968,22 @@ void rb_decode(char *buffer, size_t buf_size,
 #endif
 
 	if(NULL == vsessionp) {
+		// Simulate an active
 		sessionp = &my_session;
 	}
 
 	process_rb_buffer(buffer, buf_size, list, rb_opaque,sessionp);
 
+	const size_t n_messages = rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
+	rd_kafka_message_t msgs[n_messages];
+	rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
+
+	if((*sessionp)->topic) {
+		produce_or_free((*sessionp)->topic_handler, msgs, n_messages);
+	}
+
 	if(NULL == vsessionp) {
+		// Simulate last call that will free my_session
 		process_rb_buffer(NULL,0,list,rb_opaque, sessionp);
 	}
 }

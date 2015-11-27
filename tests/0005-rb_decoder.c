@@ -74,6 +74,10 @@ static void test_validate_uri() {
 	json_decref(config);
 }
 
+static void test_rb_decoder() {
+
+}
+
 int main() {
 	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
 	init_global_config();
