@@ -912,6 +912,19 @@ client_enrichment_err:
 	return NULL;
 }
 
+static void free_rb_session(struct rb_config *rb_config,struct rb_session *sess) {
+	yajl_free(sess->handler);
+	yajl_gen_free(sess->gen);
+
+	pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
+	json_decref(sess->client_enrichment);
+	pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+
+	topic_decref(sess->topic_handler);
+
+	free(sess);
+}
+
 /*
  *  MAIN ENTRY POINT
  */
@@ -927,8 +940,6 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 	struct rb_session *session = NULL;
 	const unsigned char *in_iterator = (const unsigned char *)buffer;
 
-	assert(buffer);
-	assert(bsize);
 	assert(sessionp);
 
 	if(NULL == *sessionp) {
@@ -938,8 +949,9 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 			return;
 		}
 	} else if (0 == bsize) {
-		/* TODO Last call, need to free sessionp */
-
+		/* Last call, need to free session */
+		free_rb_session(opaque->rb_config,*sessionp);
+		return;
 	}
 
 	session = *sessionp;
