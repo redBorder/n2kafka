@@ -38,3 +38,8 @@ int rd_kafka_msg_q_add(rd_kafka_message_queue_t *q,
 	@note after this call, queue will be empty */
 void rd_kafka_msg_q_dump(rd_kafka_message_queue_t *q,
 	rd_kafka_message_t *msgs);
+
+/** Discards all messages in queue
+	@param q Queue
+	*/
+void rd_kafka_msg_q_clean(rd_kafka_message_queue_t *q);

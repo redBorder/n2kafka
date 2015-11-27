@@ -28,7 +28,7 @@ int rd_kafka_msg_q_add(rd_kafka_message_queue_t *q,
 	return elm != NULL;
 }
 
-void rd_kafka_msg_q_dump(rd_kafka_message_queue_t *q,
+static void rd_kafka_msg_q_dump0(rd_kafka_message_queue_t *q,
 	rd_kafka_message_t *msgs) {
 
 	rd_kafka_message_queue_elm_t *elm = NULL;
@@ -36,9 +36,21 @@ void rd_kafka_msg_q_dump(rd_kafka_message_queue_t *q,
 
 	while((elm = TAILQ_FIRST(&q->list))) {
 		TAILQ_REMOVE(&q->list,elm,list_entry);
-		memcpy(&msgs[i++],&elm->msg,sizeof(msgs[0]));
+		if(msgs) {
+			memcpy(&msgs[i++],&elm->msg,sizeof(msgs[0]));
+		}
 		free(elm);
 	}
 
 	q->count = 0;
+}
+
+void rd_kafka_msg_q_dump(rd_kafka_message_queue_t *q,
+	rd_kafka_message_t *msgs) {
+
+	rd_kafka_msg_q_dump0(q,msgs);
+}
+
+void rd_kafka_msg_q_clean(rd_kafka_message_queue_t *q) {
+	rd_kafka_msg_q_dump0(q,NULL);
 }
