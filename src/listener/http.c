@@ -30,6 +30,7 @@
 
 #include "http.h"
 #include "rb_addr.h"
+#include "topic_database.h"
 
 #include "global_config.h"
 
@@ -285,6 +286,7 @@ static const char *client_addr(char *buf, size_t buf_size,
 	return sockaddr2str(buf, buf_size, cinfo->client_addr);
 }
 
+/// @TODO this should be in the decoder, not here
 static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 							struct rb_database *rb_database, int *allok,
 							char **ret_topic,char **ret_uuid,const char *source) {
@@ -391,6 +393,7 @@ static int post_handle(void *_cls,
 				&global_config.rb.database,&aok,&topic,&uuid,client);
 			if(0 == aok) {
 				free(topic);
+				free(uuid);
 				return rc;
 			}
 		}
@@ -404,7 +407,7 @@ static int post_handle(void *_cls,
 		size_t rc;
 		if(cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
 			/* Does support streaming processing, sending the chunk */
-			cls->callback(con_info->str.buf,con_info->str.used,
+			cls->callback(upload_data,*upload_data_size,
 				&con_info->decoder_params,cls->callback_opaque,
 				&cls->decoder_sessp);
 			/// @TODO fix it

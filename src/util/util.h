@@ -42,3 +42,4 @@ static inline char *mystrerror(int _errno,char *buffer,size_t buffer_size){
 	strerror_r(_errno,buffer,buffer_size);
 	return buffer;
 }
+

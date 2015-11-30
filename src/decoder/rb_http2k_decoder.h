@@ -31,12 +31,6 @@
 #include <pthread.h>
 
 /* All functions are thread-safe here, excepting free_valid_mse_database */
-
-struct topic_s;
-
-typedef rd_avl_t topics_db;
-typedef TAILQ_HEAD(,topic_s) topics_list;
-
 struct json_t;
 struct rb_database {
 	/* UUID enrichment read-only database */
@@ -44,10 +38,9 @@ struct rb_database {
 	/* UUID enrichment refcnt */
 	pthread_mutex_t uuid_enrichment_mutex;
 	struct json_t *uuid_enrichment;
-	struct {
-		topics_db *topics;
-		topics_list list;
-	} topics;
+	/// @TODO this should be another kind to save "unknown values"
+	struct json_t *dangerous_values;
+	struct topics_db *topics_db;
 
 	void *topics_memory;
 };

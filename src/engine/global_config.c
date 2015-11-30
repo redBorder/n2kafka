@@ -90,7 +90,7 @@ static const struct registered_decoder{
 	{CONFIG_DECODE_AS_MERAKI,CONFIG_MERAKI_SECRETS_KEY,meraki_decode,meraki_opaque_creator,
 	    meraki_opaque_reload,meraki_opaque_destructor,0},
 	{CONFIG_DECODE_AS_RBHTTP2K,CONFIG_RBHTTP2K_CONFIG,rb_decode,rb_opaque_creator,
-	    rb_opaque_reload,rb_opaque_done,0}
+	    rb_opaque_reload,rb_opaque_done,DECODER_F_SUPPORT_STREAMING}
 };
 
 static const struct registered_listener{

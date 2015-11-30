@@ -1,9 +1,10 @@
 #!/bin/bash
 #
 
-mkl_require good_cflags
-mkl_require socket
+mkl_require good_cflags must pass
+mkl_require socket must pass
 mkl_require gitversion as GITVERSION
+mkl_require atomics must pass
 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
@@ -51,7 +52,15 @@ function checks {
     mkl_meta_set "libjansson" "desc" "C library for encoding, decoding and manipulating JSON data"
     mkl_meta_set "libjansson" "deb" "libjansson-dev"
     mkl_lib_check --static=-ljansson "libjansson" "" fail CC "-ljansson" \
-       "#include <jansson.h>"
+       "#include <jansson.h>
+       #if JANSSON_VERSION_HEX < 0x020700
+       #error Need jansson library version >2.7
+       #endif"
+
+    # TODO include some function that is only in v2, because CentOS bring us v1
+    mkl_meta_set "yajl" "desc" "Small event-driven (SAX-style) JSON parser"
+    mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
+       "#include <yajl.h>"
 
     if [[ "x$WITHOUT_OPTIMIZATION" != "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"

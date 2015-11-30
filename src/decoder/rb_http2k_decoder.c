@@ -24,8 +24,13 @@
 #include "kafka.h"
 #include "global_config.h"
 #include "rb_json.h"
+#include "topic_database.h"
+#include "kafka_message_list.h"
 
+#include <yajl/yajl_parse.h>
+#include <yajl/yajl_gen.h>
 #include <librd/rdlog.h>
+#include <librd/rdmem.h>
 #include <assert.h>
 #include <jansson.h>
 #include <stdint.h>
@@ -34,13 +39,6 @@
 #include <errno.h>
 #include <librd/rd.h>
 #include <librdkafka/rdkafka.h>
-
-#ifndef NDEBUG
-#define TOPIC_S_MAGIC 0x01CA1C01CA1C01CAL
-#endif
-
-#define topic_list_init(l) TAILQ_INIT(l)
-#define topic_list_push(l,e) TAILQ_INSERT_TAIL(l,e,list_node);
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
 static const char RB_SENSOR_UUID_ENRICHMENT_KEY[] = "uuids";
@@ -58,8 +56,12 @@ static int32_t (mac_partitioner) (const rd_kafka_topic_t *rkt,
                                   const void *keydata, size_t keylen, int32_t partition_cnt,
                                   void *rkt_opaque, void *msg_opaque);
 
+/** Algorithm of messages partitioner */
 enum partitioner_algorithm {
-	none, mac,
+	/** Random partitioning */
+	none,
+	/** Mac partitioning */
+	mac,
 };
 
 struct {
@@ -68,20 +70,6 @@ struct {
 	partitioner_cb partitioner;
 } partitioner_algorithm_list[] = {
 	{mac, "mac", mac_partitioner},
-};
-
-struct topic_s {
-#ifdef TOPIC_S_MAGIC
-	uint64_t magic;
-#endif
-	rd_kafka_topic_t *rkt;
-	const char *topic_name;
-
-	rd_avl_node_t avl_node;
-	TAILQ_ENTRY(topic_s) list_node;
-
-	const char *partition_key;
-	enum partitioner_algorithm partitioner_algorithm;
 };
 
 void init_rb_database(struct rb_database *db) {
@@ -150,26 +138,27 @@ fallback_behavior:
 	                                       rkt_opaque, msg_opaque);
 }
 
+/** Parsing of per uuid enrichment.
+	@param config original config with
+	RB_SENSOR_UUID_ENRICHMENT_KEY to extract it.
+	@param uuid_enrichment per-uuid enrichment object.
+	@param dangerous_values Json hsahtable with values that could could belong
+	to any client
+	@return 0 if ok. Any other value should be checked against jerr.
+	*/
 static int parse_per_uuid_opaque_config(json_t *config,
-                                        json_t **uuid_enrichment) {
-	assert(uuid_enrichment);
-	assert(config);
+	                json_t **uuid_enrichment) {
 	json_error_t jerr;
-	const char *key = NULL;
-	json_t *value   = NULL;
+
+	assert(config);
+	assert(uuid_enrichment);
 
 	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:O}",
 	                           RB_SENSOR_UUID_ENRICHMENT_KEY, uuid_enrichment);
 
 	if (0 != json_unpack_rc) {
-		rdlog(LOG_ERR, "Can't parse valid uuid: %s", jerr.text);
-	}
-
-	json_object_foreach(*uuid_enrichment, key, value) {
-		json_t *sensor_uuid_json = json_string(key);
-		if (NULL == sensor_uuid_json) {
-			rdlog(LOG_ERR, "Can't create json object (out of memory?)");
-		}
+		rdlog(LOG_ERR,"Couldn't unpack %s key: %s",
+			RB_SENSOR_UUID_ENRICHMENT_KEY,jerr.text);
 	}
 
 	return json_unpack_rc;
@@ -189,18 +178,14 @@ static partitioner_cb partitioner_of_name(const char *name) {
 	return NULL;
 }
 
-static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
-                                   rd_avl_t *new_topics_db, void **new_topics_memory) {
+static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 	const char *key;
 	json_t *value;
 	json_error_t jerr;
 	json_t *topic_list = NULL;
 	int pass = 0;
-	char *strings_buffer = NULL;
-	struct topic_s *topics = NULL;
 
 	assert(config);
-	assert(new_topics_list);
 
 	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}",
 	                           RB_TOPICS_KEY, &topic_list);
@@ -221,109 +206,60 @@ static int parse_topic_list_config(json_t *config, topics_list *new_topics_list,
 		return -1;
 	}
 
-	for (pass = 0; pass < 2; pass++) {
-		size_t char_array_pos = 0;
-		size_t idx = 0;
+	json_object_foreach(topic_list, key, value) {
+		const char *partition_key = NULL, *partition_algo = NULL;
+		size_t partition_key_len = 0;
+		const char *topic_name = key;
+		rd_kafka_topic_t *rkt = NULL;
 
-
-		json_object_foreach(topic_list, key, value) {
-			const char *partition_key = NULL, *partition_algo = NULL;
-			const char *topic_name = key;
-			const size_t topic_len = strlen(topic_name);
-
-			if (!json_is_object(value)) {
-				if (pass == 0) {
-					rdlog(LOG_ERR, "Topic %s is not an object. Discarding.", topic_name);
-				}
-				continue;
+		if (!json_is_object(value)) {
+			if (pass == 0) {
+				rdlog(LOG_ERR, "Topic %s is not an object. Discarding.", topic_name);
 			}
-
-			const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s,s?s}",
-			                            RB_TOPIC_PARTITIONER_KEY, &partition_key,
-			                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
-
-			if (0 != topic_unpack_rc) {
-				if (pass == 0) {
-					rdlog(LOG_ERR, "Can't extract information of topic %s (%s). Discarding.",
-					      topic_name, jerr.text);
-				}
-				continue;
-			}
-
-			const size_t partition_key_len = partition_key ? strlen(partition_key) : 0;
-
-			if (1 == pass) {
-				char *topics_curr_pos = strings_buffer + char_array_pos;
-
-#ifdef TOPIC_S_MAGIC
-				topics[idx].magic = TOPIC_S_MAGIC;
-#endif
-				topics[idx].topic_name = strncpy(topics_curr_pos, topic_name,
-				                                 topic_len + 1);
-				topics_curr_pos += topic_len + 1;
-				if (partition_key_len) {
-					topics[idx].partition_key = strncpy(topics_curr_pos,
-					                                    partition_key, partition_key_len + 1);
-				}
-
-				RD_AVL_INSERT(new_topics_db, &topics[idx], avl_node);
-				topic_list_push(new_topics_list, &topics[idx]);
-
-				rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(
-				                                    global_config.kafka_topic_conf);
-
-				if (NULL != partition_algo) {
-					partitioner_cb partitioner = partition_algo != NULL ?
-					                             partitioner_of_name(partition_algo) : NULL;
-					if (NULL != partitioner) {
-						rd_kafka_topic_conf_set_partitioner_cb(myconf, partitioner);
-					} else {
-						rdlog(LOG_ERR, "Can't found partitioner algorithm %s", partition_algo);
-					}
-				}
-
-				topics[idx].rkt = rd_kafka_topic_new(global_config.rk, topics[idx].topic_name,
-				                                     myconf);
-
-				if (NULL == topics[idx].rkt) {
-					char buf[BUFSIZ];
-					strerror_r(errno, buf, sizeof(buf));
-					rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
-				}
-
-			}
-
-			char_array_pos += topic_len + 1 + (partition_key_len ? partition_key_len + 1 :
-			                                   0);
-			idx++;
+			continue;
 		}
 
-		if (0 == pass) {
-			const size_t array_memsize = idx * sizeof(struct topic_s);
-			const size_t needed_memory = array_memsize + char_array_pos;
-			*new_topics_memory = calloc(1, needed_memory);
-			topics = *new_topics_memory;
-			strings_buffer = (char *)topics + array_memsize;
-			if (NULL == *new_topics_memory) {
-				rdlog(LOG_ERR, "Can't allocate topics (out of memory?)");
-				return -1;
+		const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s%,s?s}",
+		                            RB_TOPIC_PARTITIONER_KEY, &partition_key, &partition_key_len,
+		                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
+
+		if (0 != topic_unpack_rc) {
+			rdlog(LOG_ERR, "Can't extract information of topic %s (%s). Discarding.",
+			      topic_name, jerr.text);
+			continue;
+		}
+
+		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
+                                global_config.kafka_topic_conf);
+		if(NULL == my_rkt_conf) {
+			rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+			continue;
+		}
+
+		if (NULL != partition_algo) {
+			partitioner_cb partitioner = partitioner_of_name(partition_algo);
+			if (NULL != partitioner) {
+				rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+			} else {
+				rdlog(LOG_ERR, 
+					"Can't found partitioner algorithm %s for topic %s", 
+					partition_algo,topic_name);
 			}
 		}
+
+		rkt = rd_kafka_topic_new(global_config.rk, topic_name, my_rkt_conf);
+		if (NULL == rkt) {
+			char buf[BUFSIZ];
+			strerror_r(errno, buf, sizeof(buf));
+			rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
+			rd_kafka_topic_conf_destroy(my_rkt_conf);
+			continue;
+		}
+
+		topics_db_add(new_topics_db,rkt,partition_key,partition_key_len);
 	}
 
 	return 0;
-}
-
-static int topics_cmp(const void *_t1, const void *_t2) {
-	const struct topic_s *t1 = _t1;
-	const struct topic_s *t2 = _t2;
-
-#ifdef TOPIC_S_MAGIC
-	assert(TOPIC_S_MAGIC == t1->magic);
-	assert(TOPIC_S_MAGIC == t2->magic);
-#endif
-
-	return strcmp(t1->topic_name, t2->topic_name);
 }
 
 int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
@@ -345,22 +281,10 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	return 0;
 }
 
-static void free_topics(topics_list *list) {
-	struct topic_s *elm = NULL, *tmpelm = NULL;
-	TAILQ_FOREACH_SAFE(elm, tmpelm, list, list_node) {
-#ifdef TOPIC_S_MAGIC
-		assert(TOPIC_S_MAGIC == elm->magic);
-#endif
-		rd_kafka_topic_destroy(elm->rkt);
-	}
-}
-
 int rb_opaque_reload(json_t *config, void *_opaque) {
 	int rc = 0;
 	struct rb_opaque *opaque = _opaque;
-	topics_list old_topics_list, new_topics_list;
-	topics_db *old_topics_db = NULL, *new_topics_db = NULL;
-	void *new_topics_memory = NULL, *old_topics_memory = NULL;
+	struct topics_db *old_topics_db = NULL, *my_new_topics_db = NULL;
 	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
 
 	assert(opaque);
@@ -369,9 +293,6 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	assert(RB_OPAQUE_MAGIC == opaque->magic);
 #endif
 
-	memset(&old_topics_list, 0, sizeof(old_topics_list));
-	memset(&new_topics_list, 0, sizeof(new_topics_list));
-
 	const int per_sensor_uuid_enrichment_rc = parse_per_uuid_opaque_config(config,
 	        &new_uuid_enrichment);
 	if (per_sensor_uuid_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
@@ -379,16 +300,9 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 		goto err;
 	}
 
-	new_topics_db = rd_avl_init(NULL, topics_cmp, 0);
-	if (NULL == new_topics_db) {
-		rdlog(LOG_ERR, "Can't allocate new topics db (out of memory?)");
-		goto err;
-	}
+	my_new_topics_db = topics_db_new();
 
-	topic_list_init(&new_topics_list);
-
-	const int topic_list_rc = parse_topic_list_config(config, &new_topics_list,
-	                          new_topics_db, &new_topics_memory);
+	const int topic_list_rc = parse_topic_list_config(config,my_new_topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
@@ -400,38 +314,19 @@ int rb_opaque_reload(json_t *config, void *_opaque) {
 	opaque->rb_config->database.uuid_enrichment = new_uuid_enrichment;
 	new_uuid_enrichment = NULL;
 
-	old_topics_list = opaque->rb_config->database.topics.list;
-	opaque->rb_config->database.topics.list = new_topics_list;
-	TAILQ_INIT(&new_topics_list);
-
-	old_topics_db = opaque->rb_config->database.topics.topics;
-	opaque->rb_config->database.topics.topics = new_topics_db;
-	new_topics_db = NULL;
-
-	old_topics_memory = opaque->rb_config->database.topics_memory;
-	opaque->rb_config->database.topics_memory = new_topics_memory;
-	new_topics_memory = NULL;
+	old_topics_db = opaque->rb_config->database.topics_db;
+	opaque->rb_config->database.topics_db = my_new_topics_db;
+	my_new_topics_db = NULL;
 
 	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
 
 err:
-	if (new_topics_db) {
-		rd_avl_destroy(new_topics_db);
+	if (my_new_topics_db) {
+		topics_db_done(my_new_topics_db);
 	}
 
 	if (old_topics_db) {
-		rd_avl_destroy(old_topics_db);
-	}
-
-	free_topics(&old_topics_list);
-	free_topics(&new_topics_list);
-
-	if (new_topics_memory) {
-		free(new_topics_memory);
-	}
-
-	if (old_topics_memory) {
-		free(old_topics_memory);
+		topics_db_done(old_topics_db);
 	}
 
 	if (old_uuid_enrichment) {
@@ -493,12 +388,7 @@ void free_valid_rb_database(struct rb_database *db) {
 		json_decref(db->uuid_enrichment);
 	}
 
-	free_topics(&db->topics.list);
-	free(db->topics_memory);
-
-	if (db->topics.topics) {
-		rd_avl_destroy(db->topics.topics);
-	}
+	topics_db_done(db->topics_db);
 
 	pthread_rwlock_destroy(&db->rwlock);
 }
@@ -515,138 +405,606 @@ int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid) {
 	return ret;
 }
 
-static struct topic_s *get_topic_nl(struct rb_database *db, const char *topic) {
-	char buf[strlen(topic) + 1];
-	strcpy(buf, topic);
-
-	struct topic_s dumb_topic = {
-#ifdef TOPIC_S_MAGIC
-		.magic = TOPIC_S_MAGIC,
-#endif
-		.topic_name = buf
-	};
-
-	return RD_AVL_FIND_NODE_NL(db->topics.topics, &dumb_topic);
-}
-
 int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
+       pthread_rwlock_rdlock(&db->rwlock);
+       const int ret = topics_db_topic_exists(db->topics_db,topic);
+       pthread_rwlock_unlock(&db->rwlock);
 
-	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = NULL != get_topic_nl(db, topic);
-	pthread_rwlock_unlock(&db->rwlock);
-
-	return ret;
+       return ret;
 }
 
 
 /*
-    ENRICHMENT
+    PARSING & ENRICHMENT
 */
 
-static void enrich_rb_json(json_t *json, /* TODO const */ json_t
-                           *enrichment_data) {
-	assert(json);
-	assert(enrichment_data);
+static int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
+static int gen_jansson_array(yajl_gen gen, json_t *enrichment_data);
 
-	json_object_update(json, enrichment_data);
+static int gen_jansson_value(yajl_gen gen, json_t *value) {
+	json_error_t jerr;
+	const char *str;
+	size_t len;
+	int rc;
+
+	int type = json_typeof(value);
+	switch(type) {
+	case JSON_OBJECT:
+		yajl_gen_map_open(gen);
+		gen_jansson_object(gen,value);
+		yajl_gen_map_close(gen);
+		break;
+
+	case JSON_ARRAY:
+		yajl_gen_array_open(gen);
+		gen_jansson_array(gen,value);
+		yajl_gen_array_close(gen);
+		break;
+
+	case JSON_STRING:
+		rc = json_unpack_ex(value, &jerr, 0, "s%", &str,&len);
+		if(rc != 0) {
+			rdlog(LOG_ERR,"Couldn't extract string: %s",jerr.text);
+			return 0;
+		}
+		yajl_gen_string(gen, (const unsigned char *)str, len);
+		break;
+
+	case JSON_INTEGER:
+		{
+			json_int_t i = json_integer_value(value);
+			yajl_gen_integer(gen,i);
+		}
+		break;
+
+	case JSON_REAL:
+		{
+			double d = json_number_value(value);
+			yajl_gen_double(gen,d);
+		}
+		break;
+
+	case JSON_TRUE:
+		yajl_gen_bool(gen,1);
+		break;
+
+	case JSON_FALSE:
+		yajl_gen_bool(gen,0);
+		break;
+
+	case JSON_NULL:
+		yajl_gen_null(gen);
+		break;
+
+	default:
+		rdlog(LOG_ERR,"Unkown jansson type %d",type);
+		break;
+	};
+
+	return 1;
 }
 
-static void produce_or_free(struct topic_s *topic, char *buf, size_t bufsize,
-                            const char *key, size_t keylen, void *opaque) {
+/// @TODO check gen_ return
+static int gen_jansson_array(yajl_gen gen, json_t *array) {
+	size_t array_index;
+	json_t *value;
 
-	assert(topic);
-
-	const int produce_ret = rd_kafka_produce(topic->rkt, RD_KAFKA_PARTITION_UA,
-	                        RD_KAFKA_MSG_F_FREE, buf, bufsize, key, keylen, opaque);
-
-	if (produce_ret != 0) {
-		rdlog(LOG_ERR, "Can't produce to topic %s: %s",
-		      topic->topic_name,
-		      rd_kafka_err2str(rd_kafka_errno2err(errno)));
+	json_array_foreach(array, array_index, value) {
+		gen_jansson_value(gen,value);
 	}
 
+	return 1;
 }
 
-static void process_rb_buffer(const char *buffer, size_t bsize,
-                              const keyval_list_t *msg_vars, struct rb_opaque *opaque) {
-	json_error_t err;
-	struct rb_database *db = &opaque->rb_config->database;
-	/* @TODO const */ json_t *uuid_enrichment_entry = NULL;
-	char *ret = NULL;
-	assert(buffer);
-	assert(bsize);
+/// @TODO check gen_ return
+static int gen_jansson_object(yajl_gen gen, json_t *object) {
+	assert(gen);
+	assert(object);
+
+	json_t *value;
+	const char *key;
+
+	/// This function is suppose to be thread-safe
+	json_object_foreach(object,key,value) {
+		size_t key_len = strlen(key);
+		yajl_gen_string(gen, (const unsigned char *)key, key_len);
+		gen_jansson_value(gen,value);
+	}
+
+	return 1;
+}
+
+/** Produce a batch of messages
+	@param topic Topic handler
+	@param msgs Messages to send
+	@param len Length of msgs */
+static void produce_or_free(struct topic_s *topic, rd_kafka_message_t *msgs,
+                                                                int len) {
+	assert(topic);
+	assert(msgs);
+
+	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
+
+	const int produce_ret = rd_kafka_produce_batch(rkt, RD_KAFKA_PARTITION_UA,
+	                        RD_KAFKA_MSG_F_FREE, msgs, len);
+
+	if (produce_ret != len) {
+		int i;
+		for(i=0;i<len;++i) {
+			if(msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+				rdlog(LOG_ERR, "Can't produce to topic %s: %s",
+				      rd_kafka_topic_name(rkt),
+				      rd_kafka_err2str(msgs[i].err));
+			}
+
+			free(msgs[i].payload);
+		}
+	}
+}
+
+/// @TODO many of the fields here could be a state machine
+struct rb_session {
+	/// Output generator.
+	yajl_gen gen;
+
+	/// JSON handler
+	yajl_handle handler;
+
+	/// json_uuid with this flow client.
+	json_t *client_enrichment;
+
+	/// Bookmark if we are skipping an object or array
+	size_t object_array_parsing_stack;
+
+	/// Per POST business.
+	const char *client_ip,*sensor_uuid,*topic,*kafka_partitioner_key;
+
+	/// Topid handler
+	struct topic_s *topic_handler;
+
+	struct {
+		/// current kafka message key
+		const unsigned char *current_key;
+		size_t current_key_length;
+	} message;
+
+	/// Message list in this call to decode()
+	rd_kafka_message_queue_t msg_queue;
+
+	/// We are parsing value of kafka_partitioner_key
+	int in_partition_key;
+
+	/// Skip next parsing value
+	int skip_value;
+};
+
+#define GEN_AND_RETURN(func)                         \
+  {                                                  \
+	yajl_gen_status __stat = func;                   \
+	if (__stat == yajl_gen_generation_complete) {    \
+		yajl_gen_reset(g, NULL);                     \
+		__stat = func;                               \
+	}                                                \
+	return __stat == yajl_gen_status_ok; }
+
+#define GEN_OR_SKIP(sess,func)                                 \
+	{                                                          \
+		if(!(sess)->skip_value) {                              \
+			GEN_AND_RETURN(func);                              \
+		} else {                                               \
+			if(1 == (sess)->object_array_parsing_stack) {      \
+				/* We are in the root, so we end the skip */   \
+				(sess)->skip_value = 0;                        \
+			}                                                  \
+			return 1;                                          \
+		}                                                      \
+	}
+
+#define CHECK_PARTITIONER_KEY_IS(sess,expected_val,...) \
+	if(expected_val != (sess)->in_partition_key) {          \
+		rdlog(LOG_ERR,__VA_ARGS__);                         \
+		/* Stop parsing */                                  \
+		return 0;                                           \
+	}
+
+#define CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,...) \
+	CHECK_PARTITIONER_KEY_IS(sess,0,__VA_ARGS__)
+
+#define CHECK_SESSION_IN_ROOT_OBJECT(sess,...)    \
+	if((sess)->object_array_parsing_stack != 1) { \
+		rdlog(LOG_WARNING,__VA_ARGS__);           \
+		return 0;                                 \
+	}
+
+#define CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,...) \
+	if((sess)->object_array_parsing_stack == 1) {  \
+		rdlog(LOG_WARNING,__VA_ARGS__);            \
+		return 0;                                  \
+	}
+
+/// Checks that we are in an object different than root object
+#define CHECK_IN_OBJECT(sess,...)                 \
+	if((sess)->object_array_parsing_stack > 1) { \
+		rdlog(LOG_WARNING,__VA_ARGS__);           \
+		return 0;                                 \
+	}
+
+static int rb_parse_null(void * ctx)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%s as partition key","null");
+	GEN_OR_SKIP(sess,yajl_gen_null(g));
+}
+
+static int rb_parse_boolean(void * ctx, int boolean)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%s as partition key",
+		boolean?"true":"false");
+	GEN_OR_SKIP(sess,yajl_gen_bool(g, boolean));
+}
+
+static int rb_parse_number(void * ctx, const char * s, size_t l)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%.*s as partition key",
+		(int)l,s);
+	GEN_OR_SKIP(sess,yajl_gen_number(g, s, l));
+}
+
+static int rb_parse_string(void * ctx, const unsigned char * stringVal,
+                           size_t stringLen)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	if(sess->in_partition_key) {
+		if(sess->message.current_key) {
+			rdlog(LOG_ERR,"Partition key already present (%s key twice?)",
+				sess->kafka_partitioner_key);
+			return 0;
+		}
+
+		size_t curr_gen_len = 0;
+		sess->message.current_key = NULL;
+		const int get_buf_rc = yajl_gen_get_buf(g,
+                                  &sess->message.current_key,
+                                  &curr_gen_len);
+
+		if(get_buf_rc != yajl_gen_status_ok) {
+			/// @TODO manage this
+		}
+
+		// Message key will be the next stuff printed.
+		sess->message.current_key += strlen(":\"") + curr_gen_len;
+		sess->message.current_key_length = stringLen;
+		sess->in_partition_key = 0;
+	}
+
+	GEN_OR_SKIP(sess,yajl_gen_string(g, stringVal, stringLen));
+}
+
+static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
+                            size_t stringLen)
+{
+	char buf[stringLen+1];
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,
+		"Searching for kafka partition key while scanning json key %.*s",
+		(int)stringLen,(const char *)stringVal);
+
+	if(sess->object_array_parsing_stack > 1) {
+		/// We are not in root object. Should we print?
+		if(sess->skip_value) {
+			return 0;
+		} else {
+			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
+		}
+	} else {
+		/// We are in the root object
+		if (sess->skip_value) {
+			/* Just a check */
+			rdlog(LOG_ERR,"Received unexpected key when ignoring value");
+			return -1;
+		}
+
+		if (0 == strncmp(sess->kafka_partitioner_key,(const char *)stringVal,
+		                                                        stringLen)) {
+			/* We are in kafka partitioner key, need to watch for it */
+			sess->in_partition_key = 1;
+		}
+
+		buf[stringLen] = '\0';
+		memcpy(buf,stringVal,stringLen);
+		json_t *uuid_enrichment = json_object_get(sess->client_enrichment,buf);
+		if(NULL == uuid_enrichment) {
+			/* Nothing to worry, go ahead */
+			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
+		} else {
+			/* Need to skip this value, since it is contained in enrichment 
+			values */
+			sess->skip_value = 1;
+			return 1;
+		}
+	}
+}
+
+static int rb_parse_start_map(void * ctx)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object as partitioner key");
+
+	++sess->object_array_parsing_stack;
+
+	GEN_OR_SKIP(sess,yajl_gen_map_open(g));
+}
+
+static int rb_parse_end_map(void * ctx)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+	if(0 == sess->object_array_parsing_stack) {
+		rdlog(LOG_WARNING,"Discarding parsing because closing an unopen JSON");
+		return 0;
+	}
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object closing as partitioner key");
+
+	--sess->object_array_parsing_stack;
+	if(0 == sess->object_array_parsing_stack) {
+		rd_kafka_message_t msg;
+
+		/* Ending message, we need to add enrichment values */
+		gen_jansson_object(g,sess->client_enrichment);
+
+		memset(&msg,0,sizeof(msg));
+		msg.partition = RD_KAFKA_PARTITION_UA;
+		msg.key_len = sess->message.current_key_length;
+
+		const unsigned char * buf;
+		yajl_gen_map_close(g);
+		yajl_gen_get_buf(sess->gen, &buf, &msg.len);
+
+		/// @TODO do not copy, steal the buffer!
+		msg.payload = strdup((const char *)buf);
+		if(NULL == msg.payload) {
+			rdlog(LOG_ERR,"Unable to duplicate buffer");
+			return 0;
+		}
+
+		if(sess->message.current_key) {
+			const long int message_key_offset = sess->message.current_key - buf;
+			msg.key = (char *)msg.payload + message_key_offset;
+			sess->message.current_key = NULL;
+		}
+
+		rd_kafka_msg_q_add(&sess->msg_queue,&msg);
+		
+		yajl_gen_clear(sess->gen);
+		return 1;
+	} else {
+		GEN_OR_SKIP(sess,yajl_gen_map_close(g));
+	}
+}
+
+static int rb_parse_start_array(void * ctx)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array start as partition key");
+
+	++sess->object_array_parsing_stack;
+	GEN_OR_SKIP(sess,yajl_gen_array_open(g));
+}
+
+static int rb_parse_end_array(void * ctx)
+{
+	struct rb_session *sess = ctx;
+	yajl_gen g = sess->gen;
+
+	CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,"Root object end with an array.");
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array en as partition key");
+
+	--sess->object_array_parsing_stack;
+	GEN_OR_SKIP(sess,yajl_gen_array_close(g));
+}
+
+static const yajl_callbacks callbacks = {
+    rb_parse_null,
+    rb_parse_boolean,
+    NULL,
+    NULL,
+    rb_parse_number,
+    rb_parse_string,
+    rb_parse_start_map,
+    rb_parse_map_key,
+    rb_parse_end_map,
+    rb_parse_start_array,
+    rb_parse_end_array
+};
+
+static struct rb_session *new_rb_session(struct rb_config *rb_config,
+	                                const keyval_list_t *msg_vars) {
 
 	const char *client_ip = valueof(msg_vars, "client_ip");
 	const char *sensor_uuid = valueof(msg_vars, "sensor_uuid");
 	const char *topic = valueof(msg_vars, "topic");
+	struct topic_s *topic_handler = NULL;
+	json_t *client_enrichment = NULL;
+	
+	pthread_rwlock_rdlock(&rb_config->database.rwlock);
+	topic_handler = topics_db_get_topic(rb_config->database.topics_db,topic);
 
-	json_t *json = json_loadb(buffer, bsize, 0, &err);
-	if (NULL == json) {
-		rdlog(LOG_ERR,
-		      "Error decoding RB JSON (%s) of source %s, line %d column %d: %s",
-		      buffer, client_ip, err.line, err.column, err.text);
-		goto err;
+	if(topic_handler) {
+		client_enrichment = json_object_get(
+		        rb_config->database.uuid_enrichment,sensor_uuid);
+		
+		if (NULL != client_enrichment) {
+			pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
+			json_incref(client_enrichment);
+			pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+		}
 	}
+	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
-	pthread_rwlock_rdlock(&opaque->rb_config->database.rwlock);
-
-	struct topic_s *topic_handler = get_topic_nl(&opaque->rb_config->database,
-	                                topic);
 	if (NULL == topic_handler) {
-		rdlog(LOG_ERR, "Can't produce to topic %s: topic not found", topic);
-	} else {
-		const char *key = NULL;
-		if (NULL != topic_handler->partition_key) {
-			const int unpack_partitioner_key_rc = json_unpack_ex(json, &err, 0, "{s:s}",
-			                                      topic_handler->partition_key, &key);
-			if (0 != unpack_partitioner_key_rc) {
-				rdlog(LOG_ERR, "Can't unpack %s key from message of %s",
-				      topic_handler->partition_key, client_ip);
-				rdlog(LOG_ERR, "Message was:\n%.*s", (int)bsize, buffer);
-			}
-		}
-		uuid_enrichment_entry = json_object_get(db->uuid_enrichment, sensor_uuid);
-		if ( NULL != uuid_enrichment_entry) {
-			pthread_mutex_lock(&db->uuid_enrichment_mutex);
-			enrich_rb_json(json, uuid_enrichment_entry);
-			pthread_mutex_unlock(&db->uuid_enrichment_mutex);
-
-			ret = json_dumps(json, JSON_COMPACT | JSON_ENSURE_ASCII);
-			if (ret == NULL) {
-				rdlog(LOG_ERR, "Can't create json dump (out of memory?)");
-			} else {
-				const char *msgkey = key ? strstr(ret, key) : NULL;
-				size_t msgkeylen = key ? strlen(key) : 0;
-				produce_or_free(topic_handler, ret, strlen(ret), msgkey, msgkeylen, NULL);
-			}
-		}
+		rdlog(LOG_ERR,"Invalid topic %s received from client %s",
+			topic,client_ip);
+		return NULL;
+	} else if (NULL == client_enrichment) {
+		rdlog(LOG_ERR,"Invalid sensor UUID %s from client %s",
+			sensor_uuid,client_ip);
+		return NULL;
 	}
 
-	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
+	const char *kafka_partitioner_key = topics_db_partition_key(topic_handler);
 
-err:
-	if (json) {
-		pthread_mutex_lock(&db->uuid_enrichment_mutex);
-		json_decref(json);
-		pthread_mutex_unlock(&db->uuid_enrichment_mutex);
+	struct rb_session *sess = NULL;
+	rd_calloc_struct(&sess,sizeof(*sess),
+		-1,client_ip,&sess->client_ip,
+		-1,sensor_uuid,&sess->sensor_uuid,
+		-1,topic,&sess->topic,
+		kafka_partitioner_key?-1:0,kafka_partitioner_key,&sess->kafka_partitioner_key,
+		RD_MEM_END_TOKEN);
+
+	if(NULL == sess) {
+		rdlog(LOG_CRIT, "Couldn't allocate sess pointer");
+		goto client_enrichment_err;
+	}
+
+	rd_kafka_msg_q_init(&sess->msg_queue);
+	sess->client_enrichment = client_enrichment;
+	sess->topic_handler = topic_handler;
+
+	if(NULL == kafka_partitioner_key) {
+		sess->kafka_partitioner_key = NULL;
+	}
+
+	sess->gen = yajl_gen_alloc(NULL);
+	if(NULL == sess->gen) {
+		rdlog(LOG_CRIT,"Couldn't allocate yajl_gen");
+		goto err_sess;
+	}
+
+	sess->handler = yajl_alloc(&callbacks, NULL, sess);
+	if(NULL == sess->handler) {
+		rdlog(LOG_CRIT,"Couldn't allocate yajl_handler");
+		goto err_yajl_gen;
+	}
+
+	yajl_config(sess->handler, yajl_allow_multiple_values, 1);
+	yajl_config(sess->handler, yajl_allow_trailing_garbage, 1);
+
+	return sess;
+
+err_yajl_gen:
+	yajl_gen_free(sess->gen);
+
+err_sess:
+	free(sess);
+
+client_enrichment_err:
+	pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
+	json_decref(client_enrichment);
+	pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+
+	return NULL;
+}
+
+static void free_rb_session(struct rb_config *rb_config,struct rb_session *sess) {
+	yajl_free(sess->handler);
+	yajl_gen_free(sess->gen);
+
+	pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
+	json_decref(sess->client_enrichment);
+	pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+
+	topic_decref(sess->topic_handler);
+
+	free(sess);
+}
+
+/*
+ *  MAIN ENTRY POINT
+ */
+
+static void process_rb_buffer(const char *buffer, size_t bsize,
+            const keyval_list_t *msg_vars, struct rb_opaque *opaque,
+            struct rb_session **sessionp) {
+
+	// json_error_t err;
+	// struct rb_database *db = &opaque->rb_config->database;
+	// /* @TODO const */ json_t *uuid_enrichment_entry = NULL;
+	// char *ret = NULL;
+	struct rb_session *session = NULL;
+	const unsigned char *in_iterator = (const unsigned char *)buffer;
+
+	assert(sessionp);
+
+	if(NULL == *sessionp) {
+		/* First call */
+		*sessionp = new_rb_session(opaque->rb_config,msg_vars);
+		if(NULL == *sessionp) {
+			return;
+		}
+	} else if (0 == bsize) {
+		/* Last call, need to free session */
+		free_rb_session(opaque->rb_config,*sessionp);
+		*sessionp = NULL;
+		return;
+	}
+
+	session = *sessionp;
+
+	yajl_status stat = yajl_parse(session->handler, in_iterator, bsize);
+
+	if (stat != yajl_status_ok) {
+		/// @TODO improve this!
+		unsigned char * str = yajl_get_error(session->handler, 1, in_iterator, bsize);
+		fprintf(stderr, "%s", (const char *) str);
+		yajl_free_error(session->handler, str);
 	}
 }
 
 void rb_decode(char *buffer, size_t buf_size,
                const keyval_list_t *list,
                void *_listener_callback_opaque,
-               void **sessionp __attribute__((unused))) {
-
+               void **vsessionp) {
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
+	struct rb_session **sessionp = (struct rb_session **)vsessionp;
+	/// Helper pointer to simulate streaming behavior
+	struct rb_session *my_session = NULL;
+
 #ifdef RB_OPAQUE_MAGIC
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	if (0 == buf_size) {
-		rdlog(LOG_WARNING, "%s called with 0 length message");
-	} else {
-		process_rb_buffer(buffer, buf_size, list, rb_opaque);
+	if(NULL == vsessionp) {
+		// Simulate an active
+		sessionp = &my_session;
 	}
 
-	free(buffer);
+	process_rb_buffer(buffer, buf_size, list, rb_opaque,sessionp);
+
+	const size_t n_messages = rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
+	rd_kafka_message_t msgs[n_messages];
+	rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
+
+	if((*sessionp)->topic) {
+		produce_or_free((*sessionp)->topic_handler, msgs, n_messages);
+	}
+
+	if(NULL == vsessionp) {
+		// Simulate last call that will free my_session
+		process_rb_buffer(NULL,0,list,rb_opaque, sessionp);
+	}
 }

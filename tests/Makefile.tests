@@ -4,10 +4,10 @@ CC ?= cc
 TEST_PROGS := ${TEST_SRCS:%.c=%.test}
 XML_FILES  := ${TEST_SRCS:%.c=%.test.xml}
 CFLAGS += -g
-CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat
-       -Werror=format-security -DFORTIFY_SOURCE=2
-CFLAGS += -Wall -Werror -Wfloat-equal -Wpointer-arith -O0 -I ../src/decoder/ \
--I ../src/engine -I ../ -I ../src/listener/ -I ../src/util/ \-I/opt/rb/include
+CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat \
+       -DFORTIFY_SOURCE=2
+CFLAGS += -Wall -Wfloat-equal -Wpointer-arith -O0 -I ../src/decoder/ \
+	-I ../src/engine -I ../ -I ../src/listener/ -I ../src/util/ \-I/opt/rb/include
 LDFLAGS += -lpthread -lrt -lz -lrd -lcmocka
 
 # Profiling
@@ -19,7 +19,7 @@ all: test
 %.test: %.c %.objdeps
 	$(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 	-CMOCKA_MESSAGE_OUTPUT=XML CMOCKA_XML_FILE=$@.xml ./$@
-	cat ./$@.xml
+	# cat ./$@.xml
 
 
 test: $(TEST_PROGS)
