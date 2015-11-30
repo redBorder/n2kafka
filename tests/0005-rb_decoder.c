@@ -105,6 +105,15 @@ static void check_null_session(struct rb_session **sess,
 	assert(NULL == *sess);
 }
 
+/** Fucntions that check that session has no messages */
+static void check_zero_messages(struct rb_session **sess,
+                    void *unused __attribute__((unused))) {
+
+	assert(NULL != sess);
+	assert(NULL != *sess);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+}
+
 static void check_rb_decoder_double0(struct rb_session **sess,
                 void *unused __attribute__((unused)),size_t expected_size) {
 	int i=0;
@@ -278,6 +287,39 @@ static void test_rb_decoder_double() {
 
 	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
 		NULL);
+
+#undef MESSAGES
+}
+
+static void test_rb_decoder_half() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", ",check_zero_messages)         \
+	X("\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}",    \
+		check_rb_decoder_simple)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
 }
 
 int main() {
@@ -294,6 +336,7 @@ int main() {
 	test_validate_uri();
 	test_rb_decoder_simple();
 	test_rb_decoder_double();
+	test_rb_decoder_half();
 
 	free_global_config();
 
