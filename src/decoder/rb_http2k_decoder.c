@@ -610,15 +610,21 @@ struct rb_session {
 #define CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,...) \
 	CHECK_PARTITIONER_KEY_IS(sess,0,__VA_ARGS__)
 
-#define SESSION_IN_ROOT_OBJECT(sess,...)          \
+#define CHECK_SESSION_IN_ROOT_OBJECT(sess,...)    \
 	if((sess)->object_array_parsing_stack != 1) { \
 		rdlog(LOG_WARNING,__VA_ARGS__);           \
 		return 0;                                 \
-	}                                             \
+	}
 
-/// Checks that session is in an object
+#define CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,...) \
+	if((sess)->object_array_parsing_stack == 1) {  \
+		rdlog(LOG_WARNING,__VA_ARGS__);            \
+		return 0;                                  \
+	}
+
+/// Checks that we are in an object different than root object
 #define CHECK_IN_OBJECT(sess,...)                 \
-	if((sess)->object_array_parsing_stack != 0) { \
+	if((sess)->object_array_parsing_stack > 1) { \
 		rdlog(LOG_WARNING,__VA_ARGS__);           \
 		return 0;                                 \
 	}
@@ -793,7 +799,7 @@ static int rb_parse_start_array(void * ctx)
 {
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
-	CHECK_IN_OBJECT(sess,"Root object starts with an array.");
+
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array start as partition key");
 
 	++sess->object_array_parsing_stack;
@@ -804,9 +810,11 @@ static int rb_parse_end_array(void * ctx)
 {
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
-	--sess->object_array_parsing_stack;
+
+	CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,"Root object end with an array.");
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array en as partition key");
-	CHECK_IN_OBJECT(sess,"Root object end with an array.");
+
+	--sess->object_array_parsing_stack;
 	GEN_OR_SKIP(sess,yajl_gen_array_close(g));
 }
 
