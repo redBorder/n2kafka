@@ -11,8 +11,8 @@
 static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 
 static const char CONFIG_TEST[] =
-	"{"
-		"\"brokers\": \"localhost\","
+    "{"
+        "\"brokers\": \"localhost\","
         "\"rb_http2k_config\": {"
             "\"uuids\" : {"
                     "\"abc\" : {"
@@ -28,6 +28,11 @@ static const char CONFIG_TEST[] =
                             "\"g\":\"w\","
                             "\"h\":false,"
                             "\"i\":null"
+                    "},"
+                    "\"ghi\" : {"
+                        "\"o\": {"
+                            "\"a\":90"
+                        "}"
                     "}"
             "},"
             "\"topics\" : {"
@@ -39,7 +44,7 @@ static const char CONFIG_TEST[] =
                     "}"
             "}"
         "}"
-	"}";
+    "}";
 
 static const char *VALID_URL = "/rbdata/abc/rb_flow";
 
@@ -116,7 +121,7 @@ static void check_zero_messages(struct rb_session **sess,
 
 static void check_rb_decoder_double0(struct rb_session **sess,
                 void *unused __attribute__((unused)),size_t expected_size) {
-	int i=0;
+	size_t i=0;
 	rd_kafka_message_t rkm[2];
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid,*b;
@@ -166,6 +171,98 @@ static void check_rb_decoder_simple(struct rb_session **sess,void *opaque) {
 
 static void check_rb_decoder_double(struct rb_session **sess,void *opaque) {
 	check_rb_decoder_double0(sess,opaque,2);
+}
+
+static void check_rb_decoder_object(struct rb_session **sess,
+                void *unused __attribute__((unused))) {
+	size_t i=0;
+	rd_kafka_message_t rkm;
+	json_error_t jerr;
+	const char *client_mac,*application_name,*sensor_uuid,*b;
+	json_int_t a,t1;
+	int d;
+
+	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	if(NULL == root) {
+		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		assert(0);
+	}
+
+	const int rc = json_unpack_ex(root, &jerr, 0,
+		"{s:s,s:s,s:s,s:I,s:s,s:n,s:b,s:{s:I}}",
+		"client_mac",&client_mac,"application_name",&application_name,
+		"sensor_uuid",&sensor_uuid,"a",&a,"b",&b,"e","d",&d,
+		"object","t1",&t1
+		);
+
+	if(rc != 0) {
+		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+		assert(0);
+	}
+
+	if(i==0) {
+		assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	} else {
+		assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
+	}
+	assert(0==strcmp(application_name,"wwww"));
+	assert(0==strcmp(sensor_uuid,"abc"));
+	assert(a == 1); /* Enrichment! original message had 5 here */
+	assert(0==strcmp(b,"c"));
+	assert(d == 1);
+	assert(t1== 1);
+
+	json_decref(root);
+	free(rkm.payload);
+}
+
+static void check_rb_decoder_object_enrich(struct rb_session **sess,
+                void *unused __attribute__((unused))) {
+	size_t i=0;
+	rd_kafka_message_t rkm;
+	json_error_t jerr;
+	const char *client_mac,*application_name,*sensor_uuid;
+	json_int_t a,a2;
+
+	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	if(NULL == root) {
+		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		assert(0);
+	}
+
+	const int rc = json_unpack_ex(root, &jerr, 0,
+		"{s:s,s:s,s:s,s:I,s:{s:I}}",
+		"client_mac",&client_mac,"application_name",&application_name,
+		"sensor_uuid",&sensor_uuid,"a",&a,
+		"o","a",&a2
+		);
+
+	if(rc != 0) {
+		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+		assert(0);
+	}
+
+	if(i==0) {
+		assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	} else {
+		assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
+	}
+	assert(0==strcmp(application_name,"wwww"));
+	assert(0==strcmp(sensor_uuid,"ghi"));
+	assert(a == 5);
+	/* Enrichment */
+	assert(a2 == 90);
+
+	json_decref(root);
+	free(rkm.payload);
 }
 
 struct message_in {
@@ -322,6 +419,146 @@ static void test_rb_decoder_half() {
 #undef MESSAGES
 }
 
+/** Checks that the decoder can handle to receive the half of a string */
+static void test_rb_decoder_half_string() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:",check_zero_messages)                     \
+	X("db:88:01\", \"application_name\": \"wwww\", "                          \
+		"\"sensor_uuid\":\"abc\", \"a\":5}",                                  \
+		check_rb_decoder_simple)                                              \
+	X("{\"client_mac\": \"",check_zero_messages)                              \
+	X("54:26:96:db:88:01\", \"application_name\": \"wwww\", "                 \
+		"\"sensor_uuid\":\"abc\", \"a\":5}",                                  \
+		check_rb_decoder_simple)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
+/** Checks that the decoder can handle to receive the half of a key */
+static void test_rb_decoder_half_key() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_",check_zero_messages)                                       \
+	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
+		"\"sensor_uuid\":\"abc\", \"a\":5}",                                  \
+		check_rb_decoder_simple)                                              \
+	X("{\"client_mac",check_zero_messages)                                    \
+	X("\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "           \
+		"\"sensor_uuid\":\"abc\", \"a\":5}",                                  \
+		check_rb_decoder_simple)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
+/** Test object that don't need to enrich */
+static void test_rb_decoder_objects() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_",check_zero_messages)                                       \
+	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
+		"\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, \"a\":5}",           \
+		check_rb_decoder_object)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
+/** Test if we can enrich by an object*/
+static void test_rb_object_enrich() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","ghi","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_",check_zero_messages)                                       \
+	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
+		"\"sensor_uuid\":\"ghi\", \"a\":5}",                                  \
+		check_rb_decoder_object_enrich)                                       \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
 int main() {
 	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
 	init_global_config();
@@ -337,6 +574,10 @@ int main() {
 	test_rb_decoder_simple();
 	test_rb_decoder_double();
 	test_rb_decoder_half();
+	test_rb_decoder_half_string();
+	test_rb_decoder_half_key();
+	test_rb_decoder_objects();
+	test_rb_object_enrich();
 
 	free_global_config();
 
