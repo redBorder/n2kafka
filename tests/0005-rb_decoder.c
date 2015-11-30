@@ -97,43 +97,89 @@ static void prepare_args(
 	add_key_value_pair(list,&mem[2]);
 }
 
-static void check_rb_decoder_simple(rd_kafka_message_t *msgs,size_t msgs_size) {
+/** This function just checks that session is NULL */
+static void check_null_session(struct rb_session **sess,
+                    void *unused __attribute__((unused))) {
+
+	assert(NULL != sess);
+	assert(NULL == *sess);
+}
+
+static void check_rb_decoder_double0(struct rb_session **sess,
+                void *unused __attribute__((unused)),size_t expected_size) {
+	int i=0;
+	rd_kafka_message_t rkm[2];
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid,*b;
 	json_int_t a;
 	int d;
 
-	assert(msgs_size == 1);
-	json_t *root = json_loadb(msgs->payload, msgs->len, 0, &jerr);
-	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
-		assert(0);
+	assert(expected_size==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	for(i=0;i<expected_size;++i) {
+		json_t *root = json_loadb(rkm[i].payload, rkm[i].len, 0, &jerr);
+		if(NULL == root) {
+			rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+			assert(0);
+		}
+
+		const int rc = json_unpack_ex(root, &jerr, 0,
+			"{s:s,s:s,s:s,s:I,s:s,s:n,s:b}",
+			"client_mac",&client_mac,"application_name",&application_name,
+			"sensor_uuid",&sensor_uuid,"a",&a,"b",&b,"e","d",&d);
+
+		if(rc != 0) {
+			rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+			assert(0);
+		}
+
+		if(i==0) {
+			assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+		} else {
+			assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
+		}
+		assert(0==strcmp(application_name,"wwww"));
+		assert(0==strcmp(sensor_uuid,"abc"));
+		assert(a == 1); /* Enrichment! original message had 5 here */
+		assert(0==strcmp(b,"c"));
+		assert(d == 1);
+
+		json_decref(root);
+		free(rkm[i].payload);
 	}
-
-	const int rc = json_unpack_ex(root, &jerr, 0,
-		"{s:s,s:s,s:s,s:I,s:s,s:n,s:b}",
-		"client_mac",&client_mac,"application_name",&application_name,
-		"sensor_uuid",&sensor_uuid,"a",&a,"b",&b,"e","d",&d);
-
-	if(rc != 0) {
-		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
-	}
-
-	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	assert(0==strcmp(application_name,"wwww"));
-	assert(0==strcmp(sensor_uuid,"abc"));
-	assert(a == 1); /* Enrichment! original message had 5 here */
-	assert(0==strcmp(b,"c"));
-	assert(d == 1);
-
-	json_decref(root);
-	free(msgs->payload);
 }
 
-static void test_rb_decoder_simple() {
+static void check_rb_decoder_simple(struct rb_session **sess,void *opaque) {
+	check_rb_decoder_double0(sess,opaque,1);
+}
+
+static void check_rb_decoder_double(struct rb_session **sess,void *opaque) {
+	check_rb_decoder_double0(sess,opaque,2);
+}
+
+struct message_in {
+	const char *msg;
+	size_t size;
+};
+
+typedef void (*check_callback_fn)(struct rb_session **,void *opaque);
+
+/** Template for rb_decoder test
+	@param args Arguments like client_ip, topic, etc
+	@param msgs Input messages
+	@param msgs_len Length of msgs
+	@param check_callback Array of functions that will be called with each
+	session status. It is suppose to be the same length as msgs array.
+	@param check_callback_opaque Opaque used in the second parameter of
+	check_callback[iteration] call
+	*/
+static void test_rb_decoder0(keyval_list_t *args, struct message_in *msgs,
+            check_callback_fn *check_callback, size_t msgs_len,
+            void *check_callback_opaque) {
 	json_error_t jerr;
-	rd_kafka_message_t rkm;
+	size_t i;
 	json_t *config = json_loads(CONFIG_TEST, 0, &jerr);
 	if(NULL == config) {
 		rdlog(LOG_CRIT,"Couldn't unpack JSON config: %s",jerr.text);
@@ -152,36 +198,86 @@ static void test_rb_decoder_simple() {
 	init_rb_database(&rb_db);
 	parse_rb_config(&rb_db,decoder_config);
 
+	struct rb_opaque rb_opaque = {
+#ifdef RB_OPAQUE_MAGIC
+		.magic = RB_OPAQUE_MAGIC,
+#endif
+		.rb_config = &global_config.rb,
+	};
+
+	struct rb_session *my_session = NULL;
+
+	for(i=0;i<msgs_len;++i) {
+		process_rb_buffer(msgs[i].msg, msgs[i].msg ? msgs[i].size : 0, args,
+			&rb_opaque, &my_session);
+		check_callback[i](&my_session,check_callback_opaque);
+	}
+
+	free_valid_rb_database(&rb_db);
+	json_decref(config);
+}
+
+static void test_rb_decoder_simple() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
 	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
 
-	struct rb_opaque rb_opaque = {
-#ifdef RB_OPAQUE_MAGIC
-		.magic = RB_OPAQUE_MAGIC,
-#endif
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}",  \
+		check_rb_decoder_simple)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
 
-		.rb_config = &global_config.rb,
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
 	};
 
-	struct rb_session *my_session = NULL;
-	const char msg[] = "{\"client_mac\": \"54:26:96:db:88:01\", "
-		"\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}";
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
 
-	process_rb_buffer(msg, sizeof(msg)-1, &args, &rb_opaque, &my_session);
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
 
-	assert(1==rd_kafka_msg_q_size(&my_session->msg_queue));
-	rd_kafka_msg_q_dump(&my_session->msg_queue,&rkm);
-	assert(0==rd_kafka_msg_q_size(&my_session->msg_queue));
+#undef MESSAGES
+}
 
-	check_rb_decoder_simple(&rkm,1);
+/** Two messages in the same input string */
+static void test_rb_decoder_double() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","abc","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
 
-	// Free session
-	process_rb_buffer(NULL, 0, &args, &rb_opaque, &my_session);
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}"   \
+	  "{\"client_mac\": \"54:26:96:db:88:02\", "                              \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}",  \
+		check_rb_decoder_double)                                              \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
 
-	free_valid_rb_database(&rb_db);
-	json_decref(config);
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
 }
 
 int main() {
@@ -197,6 +293,7 @@ int main() {
 	unlink(temp_filename);
 	test_validate_uri();
 	test_rb_decoder_simple();
+	test_rb_decoder_double();
 
 	free_global_config();
 
