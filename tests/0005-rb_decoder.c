@@ -33,6 +33,9 @@ static const char CONFIG_TEST[] =
                         "\"o\": {"
                             "\"a\":90"
                         "}"
+                    "},"
+                    "\"jkl\" : {"
+                        "\"v\":[1,2,3,4,5]"
                     "}"
             "},"
             "\"topics\" : {"
@@ -175,7 +178,6 @@ static void check_rb_decoder_double(struct rb_session **sess,void *opaque) {
 
 static void check_rb_decoder_object(struct rb_session **sess,
                 void *unused __attribute__((unused))) {
-	size_t i=0;
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid,*b;
@@ -204,11 +206,7 @@ static void check_rb_decoder_object(struct rb_session **sess,
 		assert(0);
 	}
 
-	if(i==0) {
-		assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	} else {
-		assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
-	}
+	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
 	assert(0==strcmp(application_name,"wwww"));
 	assert(0==strcmp(sensor_uuid,"abc"));
 	assert(a == 1); /* Enrichment! original message had 5 here */
@@ -222,7 +220,6 @@ static void check_rb_decoder_object(struct rb_session **sess,
 
 static void check_rb_decoder_object_enrich(struct rb_session **sess,
                 void *unused __attribute__((unused))) {
-	size_t i=0;
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid;
@@ -250,16 +247,80 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 		assert(0);
 	}
 
-	if(i==0) {
-		assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	} else {
-		assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
-	}
+	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
 	assert(0==strcmp(application_name,"wwww"));
 	assert(0==strcmp(sensor_uuid,"ghi"));
 	assert(a == 5);
 	/* Enrichment */
 	assert(a2 == 90);
+
+	json_decref(root);
+	free(rkm.payload);
+}
+
+static void check_rb_decoder_array_enrich(struct rb_session **sess,
+                void *unused __attribute__((unused))) {
+	rd_kafka_message_t rkm;
+	json_error_t jerr;
+	const char *client_mac,*application_name,*sensor_uuid;
+	json_t *g=NULL,*v=NULL;
+	json_t *g0=NULL,*g1=NULL,*g2=NULL;
+	json_t *v0=NULL,*v1=NULL,*v2=NULL,*v3=NULL,*v4=NULL;
+
+	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	if(NULL == root) {
+		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		assert(0);
+	}
+
+	const int rc = json_unpack_ex(root, &jerr, 0,
+		"{s:s,s:s,s:s,s:o,s:o}",
+		"client_mac",&client_mac,"application_name",&application_name,
+		"sensor_uuid",&sensor_uuid,"g",&g,"v",&v);
+
+	if(rc != 0) {
+		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+		assert(0);
+	}
+
+	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert(0==strcmp(application_name,"wwww"));
+	assert(0==strcmp(sensor_uuid,"jkl"));
+
+	/* Original vector */
+	assert(json_is_array(g));
+	assert(3==json_array_size(g));
+	g0 = json_array_get(g,0);
+	g1 = json_array_get(g,1);
+	g2 = json_array_get(g,2);
+	assert(json_is_string(g0));
+	assert(0==strcmp("a",json_string_value(g0)));
+	assert(json_is_integer(g1));
+	assert(5==json_integer_value(g1));
+	assert(json_is_null(g2));
+
+	/* Enrichment vector */
+	assert(json_is_array(v));
+	assert(5==json_array_size(v));
+	v0 = json_array_get(v,0);
+	v1 = json_array_get(v,1);
+	v2 = json_array_get(v,2);
+	v3 = json_array_get(v,3);
+	v4 = json_array_get(v,4);
+	assert(json_is_integer(v0));
+	assert(json_is_integer(v1));
+	assert(json_is_integer(v2));
+	assert(json_is_integer(v3));
+	assert(json_is_integer(v4));
+	assert(1 == json_integer_value(v0));
+	assert(2 == json_integer_value(v1));
+	assert(3 == json_integer_value(v2));
+	assert(4 == json_integer_value(v3));
+	assert(5 == json_integer_value(v4));
 
 	json_decref(root);
 	free(rkm.payload);
@@ -559,6 +620,41 @@ static void test_rb_object_enrich() {
 #undef MESSAGES
 }
 
+/** Test if we can enrich by an object*/
+static void test_rb_array_enrich() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","jkl","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_",check_zero_messages)                                       \
+	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
+		"\"sensor_uuid\":\"jkl\", \"v\":5, \"g\":[\"a\",5,null]}",            \
+		check_rb_decoder_array_enrich)                                        \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
+/** Test array behavior */
+
 int main() {
 	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
 	init_global_config();
@@ -578,6 +674,7 @@ int main() {
 	test_rb_decoder_half_key();
 	test_rb_decoder_objects();
 	test_rb_object_enrich();
+	test_rb_array_enrich();
 
 	free_global_config();
 
