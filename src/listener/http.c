@@ -113,6 +113,7 @@ static void free_con_info(struct conn_info *con_info) {
 static void prepare_decoder_params(struct conn_info *con_info,struct pair *mem,
         size_t memsiz,keyval_list_t *list) {
 	assert(3==memsiz);
+	(void)memsiz;
 	memset(mem,0,sizeof(*mem)*3);
 
 	mem[0].key   = "topic";
