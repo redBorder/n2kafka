@@ -162,6 +162,10 @@ static void request_completed (void *cls,
 		h->callback(con_info->str.buf,con_info->str.used,
 			&con_info->decoder_params,h->callback_opaque,NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
+	} else {
+		/* Streaming processing -> need to free buffer */
+		h->callback(NULL,0,&con_info->decoder_params,
+			h->callback_opaque,&h->decoder_sessp);
 	}
 	
 	free_con_info(con_info);
