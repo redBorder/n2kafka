@@ -78,9 +78,6 @@ struct http_private{
 
 	/// Callback flags
 	int callback_flags;
-
-	/// Session pointer.
-	void *decoder_sessp;
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -128,6 +125,9 @@ struct conn_info {
 		z_stream strm;
 		char *mem;
 	} zlib;
+
+	/// Session pointer.
+	void *decoder_sessp;
 };
 
 static void free_con_info(struct conn_info *con_info) {
@@ -181,7 +181,7 @@ static void request_completed (void *cls,
 	} else {
 		/* Streaming processing -> need to free session pointer */
 		h->callback(NULL,0,&con_info->decoder_params,
-			h->callback_opaque,&h->decoder_sessp);
+			h->callback_opaque,&con_info->decoder_sessp);
 	}
 
 	if(con_info->zlib.enable) {
@@ -506,7 +506,7 @@ static size_t compressed_callback(struct http_private * cls,
 		rc += zprocessed; // @TODO this should be returned by callback call
 		cls->callback((char *)buffer,zprocessed,
 			&con_info->decoder_params,cls->callback_opaque,
-			&cls->decoder_sessp);
+			&con_info->decoder_sessp);
 	} while(con_info->zlib.strm.avail_out == 0);
 
 	/* Do not want to waste memory */
@@ -578,7 +578,7 @@ static int post_handle(void *_cls,
 			/* Does support streaming processing, sending the chunk */
 			cls->callback(upload_data,*upload_data_size,
 				&con_info->decoder_params,cls->callback_opaque,
-				&cls->decoder_sessp);
+				&con_info->decoder_sessp);
 			/// @TODO fix it
 			rc = *upload_data_size;
 		}
