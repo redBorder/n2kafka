@@ -163,9 +163,13 @@ static void request_completed (void *cls,
 			&con_info->decoder_params,h->callback_opaque,NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	} else {
-		/* Streaming processing -> need to free buffer */
+		/* Streaming processing -> need to free session pointer */
 		h->callback(NULL,0,&con_info->decoder_params,
 			h->callback_opaque,&h->decoder_sessp);
+	}
+
+	if(con_info->zlib.enable) {
+		inflateEnd(&con_info->zlib.strm);
 	}
 	
 	free_con_info(con_info);
