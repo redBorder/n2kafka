@@ -132,8 +132,6 @@ struct conn_info {
 		int enable;
 		/// zlib handler
 		z_stream strm;
-		/// Usually this pointer will be NULL, except when we are deflating
-		char *mem;
 	} zlib;
 
 	/// Session pointer.
