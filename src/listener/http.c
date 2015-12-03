@@ -111,18 +111,28 @@ static size_t string_grow(struct string *str,size_t delta) {
 	return str->allocated;
 }
 
+/// Per connection information
 struct conn_info {
+	/// URL specified Topic
 	const char *topic;
+	/// URL specified client
 	const char *client;
+	/// URL specified sensor uuid
 	const char *sensor_uuid;
+	/// Per connection string
 	struct string str;
+	/// Decoders parameters
 	keyval_list_t decoder_params;
+	/// Memory pool for decoder_params
 	struct pair decoder_opts[3];
 
+	/// libz related
 	struct {
+		/// Request has asked for compressed data
 		int enable;
 		/// zlib handler
 		z_stream strm;
+		/// Usually this pointer will be NULL, except when we are deflating
 		char *mem;
 	} zlib;
 
