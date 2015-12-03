@@ -995,12 +995,15 @@ void rb_decode(char *buffer, size_t buf_size,
 
 	process_rb_buffer(buffer, buf_size, list, rb_opaque,sessionp);
 
-	const size_t n_messages = rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
-	rd_kafka_message_t msgs[n_messages];
-	rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
+	if(buffer) {
+		/* It was not the last call, designed to free session */
+		const size_t n_messages = rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
+		rd_kafka_message_t msgs[n_messages];
+		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
 
-	if((*sessionp)->topic) {
-		produce_or_free((*sessionp)->topic_handler, msgs, n_messages);
+		if((*sessionp)->topic) {
+			produce_or_free((*sessionp)->topic_handler, msgs, n_messages);
+		}
 	}
 
 	if(NULL == vsessionp) {

@@ -43,8 +43,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <zlib.h>
 
 #define STRING_INITIAL_SIZE 2048
+/// Chunk to store decompression flow
+#define ZLIB_CHUNK          (512*1024)
 
 struct string {
 	char *buf;
@@ -102,6 +105,13 @@ struct conn_info {
 	struct string str;
 	keyval_list_t decoder_params;
 	struct pair decoder_opts[3];
+
+	struct {
+		int enable;
+		/// zlib handler
+		z_stream strm;
+		char *mem;
+	} zlib;
 };
 
 static void free_con_info(struct conn_info *con_info) {
@@ -113,6 +123,7 @@ static void free_con_info(struct conn_info *con_info) {
 static void prepare_decoder_params(struct conn_info *con_info,struct pair *mem,
         size_t memsiz,keyval_list_t *list) {
 	assert(3==memsiz);
+	(void)memsiz;
 	memset(mem,0,sizeof(*mem)*3);
 
 	mem[0].key   = "topic";
@@ -151,14 +162,67 @@ static void request_completed (void *cls,
 		h->callback(con_info->str.buf,con_info->str.used,
 			&con_info->decoder_params,h->callback_opaque,NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
+	} else {
+		/* Streaming processing -> need to free session pointer */
+		h->callback(NULL,0,&con_info->decoder_params,
+			h->callback_opaque,&h->decoder_sessp);
+	}
+
+	if(con_info->zlib.enable) {
+		inflateEnd(&con_info->zlib.strm);
 	}
 	
 	free_con_info(con_info);
 	*con_cls = NULL;
 }
 
-static struct conn_info *create_connection_info(size_t string_size,const char *topic, 
-                                            const char *client,const char *s_uuid) {
+static int connection_gzip_iterator(void *cls,enum MHD_ValueKind kind,
+                                    const char *key,const char *value) {
+	int *ret = cls;
+
+	(void)kind;
+
+	if(key && value && 0 == strcmp("Content-Encoding",key)
+	                                        && 0==strcmp("gzip",value)) {
+		*ret = 1;
+		return MHD_NO; /* We have found what we were looking for */
+	} else {
+		return MHD_YES;
+	}
+}
+
+/** Find if 'Content-Encoding' header of the connection is gzipped */
+static int is_connection_gzip(struct MHD_Connection *conn) {
+	int ret = 0;
+	MHD_get_connection_values(conn,MHD_HEADER_KIND,connection_gzip_iterator,&ret);
+	return ret;
+}
+
+static const char *zlib_error2str(const int z_status) {
+	switch(z_status) {
+	case Z_OK:
+		return "success";
+		break;
+	case Z_MEM_ERROR:
+		return "there was not enough memory";
+		break;
+	case Z_VERSION_ERROR:
+		return "the zlib library version is incompatible with the"
+			" version assumed by the caller";
+		break;
+	case Z_STREAM_ERROR:
+		return "the parameters are invalid";
+		break;
+	default:
+		return "Unknown error";
+		break;
+	};
+}
+
+static struct conn_info *create_connection_info(size_t string_size,
+		const char *topic,const char *client,const char *s_uuid,
+		struct MHD_Connection *connection) {
+
 	/* First call, creating all needed structs */
 
 	struct conn_info *con_info = NULL;
@@ -168,7 +232,7 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 		client?-1:0,client,&con_info->client,
 		s_uuid?-1:0,s_uuid,&con_info->sensor_uuid,
 		RD_MEM_END_TOKEN);
-	
+
 	if( NULL == con_info ){
 		rdlog(LOG_ERR,"Can't allocate conection context (out of memory?)");
 		return NULL; /* Doesn't have resources */
@@ -185,6 +249,21 @@ static struct conn_info *create_connection_info(size_t string_size,const char *t
 	prepare_decoder_params(con_info,con_info->decoder_opts,
 		RD_ARRAY_SIZE(con_info->decoder_opts),
 		&con_info->decoder_params);
+
+	con_info->zlib.enable = is_connection_gzip(connection);
+	if(con_info->zlib.enable) {
+		con_info->zlib.strm.zalloc = Z_NULL;
+		con_info->zlib.strm.zfree = Z_NULL;
+		con_info->zlib.strm.opaque = Z_NULL;
+		con_info->zlib.strm.avail_in = 0;
+		con_info->zlib.strm.next_in = Z_NULL;
+
+		const int rc = inflateInit(&con_info->zlib.strm);
+		if(rc != Z_OK) {
+			rdlog(LOG_ERR,"Couldn't init inflate. Error was %d: %s",rc,
+				zlib_error2str(rc));
+		}
+	}
 
 	return con_info;
 }
@@ -356,6 +435,71 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 	return MHD_YES;
 }
 
+static size_t compressed_callback(struct http_private * cls,
+                struct conn_info *con_info,
+                const char *upload_data,size_t upload_data_size) {
+	size_t rc = 0;
+
+	/* Ugly hack, assignement discard const qualifier */
+	memcpy(&con_info->zlib.strm.next_in,&upload_data,sizeof(upload_data));
+	con_info->zlib.strm.avail_in = upload_data_size;
+
+	unsigned char *buffer = malloc(ZLIB_CHUNK);
+
+	/* run inflate until output buffer not full */
+	do {
+		/* Reset counters */
+		con_info->zlib.strm.next_out = buffer;
+		con_info->zlib.strm.avail_out = ZLIB_CHUNK;
+
+		const int ret = inflate(&con_info->zlib.strm, Z_NO_FLUSH /* TODO compare different flush */);
+		switch(ret) {
+		case Z_STREAM_ERROR:
+			/// @TODO improve error messages, client+topic+uuid
+			rdlog(LOG_ERR,"Input is not a valid zlib stream");
+			break;
+
+		case Z_NEED_DICT:
+			rdlog(LOG_ERR,"Need unkown dict in input stream");
+			break;
+
+		case Z_DATA_ERROR:
+			rdlog(LOG_ERR,"Error in compressed input");
+			break;
+
+		case Z_MEM_ERROR:
+			rdlog(LOG_ERR,"Memory error, couldn't allocate memory");
+			break;
+
+		case Z_OK:
+		case Z_STREAM_END:
+			/* All ok, keep working */
+			break;
+
+		default:
+			rdlog(LOG_ERR, "Unknown error: inflate returned %d",ret);
+			break;
+		};
+
+		if(ret != Z_OK && ret != Z_STREAM_END ) {
+			inflateEnd(&con_info->zlib.strm);
+			break; // @TODO send HTTP error!
+		}
+
+		const size_t zprocessed = ZLIB_CHUNK - con_info->zlib.strm.avail_out;
+		rc += zprocessed; // @TODO this should be returned by callback call
+		cls->callback((char *)buffer,zprocessed,
+			&con_info->decoder_params,cls->callback_opaque,
+			&cls->decoder_sessp);
+	} while(con_info->zlib.strm.avail_out == 0);
+
+	/* Do not want to waste memory */
+	free(buffer);
+	con_info->zlib.strm.next_out = NULL;
+
+	return upload_data_size - con_info->zlib.strm.avail_in;
+}
+
 static int post_handle(void *_cls,
 						 struct MHD_Connection *connection,
 						 const char *url,
@@ -397,7 +541,8 @@ static int post_handle(void *_cls,
 				return rc;
 			}
 		}
-		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic,client,uuid);
+		*ptr = create_connection_info(STRING_INITIAL_SIZE,topic,client,uuid,
+			connection);
 		free(topic);
 		free(uuid);
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
@@ -405,17 +550,21 @@ static int post_handle(void *_cls,
 		/* middle calls, process string sent */
 		struct conn_info *con_info = *ptr;
 		size_t rc;
-		if(cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+		if(!cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+			/* Does not support stream, we need to allocate a big buffer */
+			rc = append_http_data_to_connection_data(con_info,
+			                                upload_data,*upload_data_size);
+		} else if (con_info->zlib.enable) {
+			/* Does support streaming, we will decompress & process until */
+			/* end of received chunk */
+			rc = compressed_callback(cls,con_info,upload_data,*upload_data_size);
+		} else {
 			/* Does support streaming processing, sending the chunk */
 			cls->callback(upload_data,*upload_data_size,
 				&con_info->decoder_params,cls->callback_opaque,
 				&cls->decoder_sessp);
 			/// @TODO fix it
 			rc = *upload_data_size;
-		} else {
-			/* Does not support stream, we need to allocate a big buffer */
-			rc = append_http_data_to_connection_data(con_info,
-			                                upload_data,*upload_data_size);
 		}
 		(*upload_data_size) -= rc;
 		return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
