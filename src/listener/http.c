@@ -45,7 +45,9 @@
 #include <math.h>
 #include <zlib.h>
 
+/// Initial string to start with
 #define STRING_INITIAL_SIZE 2048
+
 /// Chunk to store decompression flow
 #define ZLIB_CHUNK          (512*1024)
 
@@ -55,15 +57,29 @@ struct string {
 };
 
 #define HTTP_PRIVATE_MAGIC 0xC0B345FE
+
+/// Connection private data
 struct http_private{
 #ifdef HTTP_PRIVATE_MAGIC
+	/// Casting magic
 	uint64_t magic;
 #endif
+	/// Associated daemon
 	struct MHD_Daemon *d;
+
+	/// Check redborder-style URI
 	int redborder_uri;
-    decoder_callback callback;
+
+	/// Callback associated with received data
+	decoder_callback callback;
+
+	/// Opaque to send to callback
 	void *callback_opaque;
+
+	/// Callback flags
 	int callback_flags;
+
+	/// Session pointer.
 	void *decoder_sessp;
 };
 
