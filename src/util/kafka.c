@@ -112,9 +112,15 @@ static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(global_config.rk,timeout_ms);
 }
 
-void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
+void send_to_kafka(rd_kafka_topic_t *my_rkt,char *buf,const size_t bufsize,
+                                                int flags,void *opaque) {
 	int retried = 0;
 	char errbuf[ERROR_BUFFER_SIZE];
+
+	/// @TODO quick hack, delete it
+	if(NULL == my_rkt) {
+		my_rkt = rkt;
+	}
 
 	do{
 		if(NULL == rkt) {
@@ -174,8 +180,14 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	return 0;
 }
 
-void send_array_to_kafka(struct kafka_message_array *msgs) {
+void send_array_to_kafka(rd_kafka_topic_t *my_rkt, 
+                                struct kafka_message_array *msgs) {
 	size_t i;
+
+	if(NULL == my_rkt) {
+		my_rkt = rkt;
+	}
+
 	if(rkt) {
 		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
 			msgs->msgs,msgs->count);
@@ -189,7 +201,7 @@ void send_array_to_kafka(struct kafka_message_array *msgs) {
 			rdlog(LOG_ERR,"Couldn't produce message [%.*s]: %s",payload_len,payload,msg_error);
 		}
 
-		if(!rkt || msgs->msgs[i].err) {
+		if(!my_rkt || msgs->msgs[i].err) {
 			free(msgs->msgs[i].payload);
 		}
 	}
@@ -200,7 +212,7 @@ void dumb_decoder(char *buffer,size_t buf_size,
             const keyval_list_t *keyval __attribute__((unused)),
             void *listener_callback_opaque,
             void **sessionp __attribute__((unused))) {
-	send_to_kafka(buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
+	send_to_kafka(NULL,buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
 }
 
 void flush_kafka(){

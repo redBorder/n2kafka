@@ -619,7 +619,7 @@ void mse_decode(char *buffer, size_t buf_size,
 
 	for (i = 0; i < notifications->size; ++i) {
 		if (notifications->data[i].string) {
-			send_to_kafka(notifications->data[i].string,
+			send_to_kafka(NULL,notifications->data[i].string,
 			              notifications->data[i].string_size,
 			              RD_KAFKA_MSG_F_FREE, (void *)(intptr_t)notifications->data[i].client_mac);
 		}

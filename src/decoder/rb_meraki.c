@@ -486,7 +486,7 @@ void meraki_decode(char *buffer,size_t buf_size,
 	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,client,meraki_opaque);
 
 	if(notifications){
-		send_array_to_kafka(notifications);
+		send_array_to_kafka(NULL,notifications);
 		free(notifications);
 	}
 	free(buffer);
