@@ -36,6 +36,7 @@
 
 static const char CONFIG_MERAKI_SECRETS_KEY[] = "meraki-secrets";
 static const char CONFIG_MERAKI_DEFAULT_SECRET_KEY[] = "*";
+static const char CONFIG_MERAKI_TOPIC_KEY[] = "topic";
 
 static const char MERAKI_TYPE_KEY[] = "type";
 static const char MERAKI_TYPE_VALUE[] = "meraki";
@@ -125,6 +126,8 @@ struct meraki_opaque{
 	pthread_rwlock_t per_listener_enrichment_rwlock;
 	struct meraki_config *meraki_config;
 	json_t *per_listener_enrichment;
+
+	rd_kafka_topic_t *rkt;
 };
 
 static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
@@ -139,12 +142,27 @@ static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t 
 	assert(opaque);
 	assert(config);
 	json_error_t jerr;
+	const char *topic_name = NULL;
+	char err[BUFSIZ];
 
-	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
-		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment);
+	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s:s}",
+		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment,
+		MERAKI_TOPIC_KEY,&topic_name);
 
-	if(0!=json_unpack_rc)
-		rdlog(LOG_ERR,"%s",jerr.text);
+	if(0!=json_unpack_rc) {
+		rdlog(LOG_ERR,"Can't unpack meraki config: %s",jerr.text);
+		return json_unpack_rc;
+	}
+
+	if(topic_name) {
+		opaque->rkt = new_rkt_global_config(topic_name,
+			rb_client_mac_partitioner,err,sizeof(err));
+	}
+
+	if(NULL == opaque->rkt) {
+		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
+		return -1;
+	}
 
 	return json_unpack_rc;
 }
@@ -486,7 +504,7 @@ void meraki_decode(char *buffer,size_t buf_size,
 	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,client,meraki_opaque);
 
 	if(notifications){
-		send_array_to_kafka(NULL,notifications);
+		send_array_to_kafka(meraki_opaque->rkt,notifications);
 		free(notifications);
 	}
 	free(buffer);
