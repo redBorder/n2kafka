@@ -51,12 +51,12 @@ void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 	}
 }
 
-static int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
-					 const void *key __attribute__((unused)),
-					 size_t keylen __attribute__((unused)),
-					 int32_t partition_cnt,
-					 void *rkt_opaque,
-					 void *msg_opaque){
+int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
+					const void *key __attribute__((unused)),
+					size_t keylen __attribute__((unused)),
+					int32_t partition_cnt,
+					void *rkt_opaque,
+					void *msg_opaque){
 	const uint64_t client_mac = (uint64_t)(intptr_t)msg_opaque;
 	if(client_mac == 0)
 		return rd_kafka_msg_partitioner_random(_rkt,NULL,0,partition_cnt,rkt_opaque,msg_opaque);

@@ -19,6 +19,7 @@
 #pragma once
 #include "parse.h"
 #include "pair.h"
+#include <librdkafka/rdkafka.h>
 
 #include <string.h>
 
@@ -35,6 +36,11 @@ void init_rdkafka();
 void send_to_kafka(char *buffer,const size_t bufsize,int flags,void *opaque);
 void dumb_decoder(char *buffer,size_t buf_size,const keyval_list_t *keyval,
     void *listener_callback_opaque,void **sessionp);
+
+/// @TODO join with rb_http2k_decoder mac partitioner
+int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
+					const void *key,size_t keylen,int32_t partition_cnt,
+					void *rkt_opaque,void *msg_opaque);
 
 struct kafka_message_array *new_kafka_message_array(size_t size);
 int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,
