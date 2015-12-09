@@ -147,7 +147,7 @@ static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t 
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s:s}",
 		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment,
-		MERAKI_TOPIC_KEY,&topic_name);
+		CONFIG_MERAKI_TOPIC_KEY,&topic_name);
 
 	if(0!=json_unpack_rc) {
 		rdlog(LOG_ERR,"Can't unpack meraki config: %s",jerr.text);
@@ -241,8 +241,14 @@ void meraki_opaque_destructor(void *_opaque) {
 #ifdef MERAKI_OPAQUE_MAGIC
 	assert(MERAKI_OPAQUE_MAGIC == opaque->magic);
 #endif
-	if(opaque->per_listener_enrichment)
+	if(opaque->per_listener_enrichment) {
 		json_decref(opaque->per_listener_enrichment);
+	}
+
+	if (opaque->rkt) {
+		rd_kafka_topic_destroy(opaque->rkt);
+	}
+
 	free(opaque);
 }
 
