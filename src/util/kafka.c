@@ -34,6 +34,33 @@ static rd_kafka_topic_t *rkt = NULL;
 #define ERROR_BUFFER_SIZE   256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
 
+/** Creates a new topic handler using global configuration
+    @param topic_name Topic name
+    @param partitioner Partitioner function
+    @return New topic handler */
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
+        rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsize) {
+	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
+	rd_kafka_topic_conf_t *my_rkt_conf 
+		= rd_kafka_topic_conf_dup(template_config);
+
+	if(NULL == my_rkt_conf) {
+		rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+		return NULL;
+	}
+
+	rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+
+	rd_kafka_topic_t *ret = rd_kafka_topic_new(global_config.rk, topic_name,
+		my_rkt_conf);
+	if (NULL == ret) {
+		strerror_r(errno, err, errsize);
+		rd_kafka_topic_conf_destroy(my_rkt_conf);
+	}
+
+	return ret;
+}
+
 /**
 * Message delivery report callback.
 * Called once for each message.

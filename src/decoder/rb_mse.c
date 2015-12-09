@@ -113,6 +113,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	json_int_t max_time_offset = 3600;
 	json_int_t max_time_offset_warning_wait = 0;
 	const char *topic_name = NULL;
+	char err[BUFSIZ];
 
 	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
 	                                    "{s?O"
@@ -135,27 +136,14 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		return json_unpack_rc;
 	}
 
-	if (topic_name) {
-		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
-                            global_config.kafka_topic_conf);
-
-		if(NULL == my_rkt_conf) {
-			rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
-			return -1;
-		}
-
-		rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, 
-			rb_client_mac_partitioner);
-
-		opaque->rkt = rd_kafka_topic_new(global_config.rk, topic_name, 
-			my_rkt_conf);
-		if (NULL == opaque->rkt) {
-			char buf[BUFSIZ];
-			strerror_r(errno, buf, sizeof(buf));
-			rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
-			rd_kafka_topic_conf_destroy(my_rkt_conf);
-			return -1;
-		}
+	if(topic_name) {
+		opaque->rkt = new_rkt_global_config(topic_name,
+			rb_client_mac_partitioner,err,sizeof(err));
+	}
+	
+	if(NULL == opaque->rkt) {
+		rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, err);
+		return -1;
 	}
 
 	return 0;

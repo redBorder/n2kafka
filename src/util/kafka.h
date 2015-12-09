@@ -50,5 +50,20 @@ void send_array_to_kafka(rd_kafka_topic_t *rkt,struct kafka_message_array *);
 
 void kafka_poll();
 
+typedef int32_t (*rb_rd_kafka_partitioner_t) (
+						const rd_kafka_topic_t *rkt,
+						const void *keydata,
+						size_t keylen,
+						int32_t partition_cnt,
+						void *rkt_opaque,
+						void *msg_opaque);
+
+/** Creates a new topic handler using global configuration
+    @param topic_name Topic name
+    @param partitioner Partitioner function
+    @return New topic handler */
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
+    rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsiz);
+
 void flush_kafka();
 void stop_rdkafka();
