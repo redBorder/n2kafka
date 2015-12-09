@@ -207,33 +207,57 @@ _err:
 	return -1;
 }
 
-int meraki_opaque_reload(json_t *config,void *_opaque) {
-	struct meraki_opaque *opaque = _opaque;
+#define swap_ptrs(p1,p2) do{void *aux = p1;p1 = p2;p2 = aux;}while(0)
+
+/// @TODO Join with meraki_opaque_creator
+int meraki_opaque_reload(json_t *config,void *vopaque) {
+	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);
 	assert(config);
-#ifdef MSE_OPAQUE_MAGIC
-	assert(MSE_OPAQUE_MAGIC == opaque->magic);
-#endif
+	opaque = meraki_opaque_cast(vopaque);
+	int rc = 0;
+	const char *topic_name = NULL;
+	char err[BUFSIZ];
 
-	json_t *new_enrichment = NULL,*old_enrichment = opaque->per_listener_enrichment;
+	json_t *enrichment_aux = opaque->per_listener_enrichment;
+	rd_kafka_topic_t *rkt_aux = NULL;
 
 	json_error_t jerr;
 
-	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O}",
-		MERAKI_ENRICHMENT_KEY,&new_enrichment);
+	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s:s}",
+		MERAKI_ENRICHMENT_KEY,&enrichment_aux,
+		CONFIG_MERAKI_TOPIC_KEY,&topic_name);
 
 	if(unpack_rc != 0) {
 		rdlog(LOG_ERR,"Can't parse enrichment config: %s",jerr.text);
-		return -1;
+		rc = -1;
+		goto enrichment_err;
+	}
+
+	if(topic_name) {
+		rkt_aux = new_rkt_global_config(topic_name,
+			rb_client_mac_partitioner,err,sizeof(err));
+	}
+
+	if(NULL == rkt_aux) {
+		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
+		goto rkt_err;
 	}
 
 	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
-	opaque->per_listener_enrichment = new_enrichment;
+	swap_ptrs(opaque->per_listener_enrichment,enrichment_aux);
+	swap_ptrs(rkt_aux,opaque->rkt);
 	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
 
-	json_decref(old_enrichment);
+	if(rkt_aux) {
+		rd_kafka_topic_destroy(rkt_aux);
+	}
 
-	return 0;
+rkt_err:
+enrichment_err:
+	json_decref(enrichment_aux);
+
+	return rc;
 }
 
 void meraki_opaque_destructor(void *_opaque) {
