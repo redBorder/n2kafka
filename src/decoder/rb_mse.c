@@ -54,6 +54,9 @@ static const char MSE_ENRICHMENT_KEY[] = "enrichment";
 static const char MSE_MAX_TIME_OFFSET[] = "max_time_offset";
 static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
     "max_time_offset_warning_wait";
+
+static const char MSE_TOPIC[] = "topic";
+
 /*
     VALIDATING MSE
 */
@@ -98,6 +101,8 @@ struct mse_opaque {
 	long max_time_offset;
 	long max_time_offset_warning_wait;
 	struct mse_config *mse_config;
+
+	rd_kafka_topic_t *rkt;
 };
 
 static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
@@ -107,25 +112,53 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	json_error_t jerr;
 	json_int_t max_time_offset = 3600;
 	json_int_t max_time_offset_warning_wait = 0;
+	const char *topic_name = NULL;
 
 	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
 	                                    "{s?O"
 	                                    "s?I"
-	                                    "s?I}",
+	                                    "s?I"
+	                                    "s:s}",
 	                                    MSE_ENRICHMENT_KEY,
 	                                    &opaque->per_listener_enrichment,
 	                                    MSE_MAX_TIME_OFFSET_WARNING_WAIT,
 	                                    &max_time_offset_warning_wait,
 	                                    MSE_MAX_TIME_OFFSET,
-	                                    &max_time_offset);
+	                                    &max_time_offset,
+	                                    MSE_TOPIC,&topic_name);
 
 	opaque->max_time_offset = max_time_offset;
 	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
 
-	if (0 != json_unpack_rc)
-		rdlog(LOG_ERR, "%s", jerr.text);
+	if (0 != json_unpack_rc) {
+		rdlog(LOG_ERR, "Couldn't parse MSE listener config: %s", jerr.text);
+		return json_unpack_rc;
+	}
 
-	return json_unpack_rc;
+	if (topic_name) {
+		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
+                            global_config.kafka_topic_conf);
+
+		if(NULL == my_rkt_conf) {
+			rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+			return -1;
+		}
+
+		rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, 
+			rb_client_mac_partitioner);
+
+		opaque->rkt = rd_kafka_topic_new(global_config.rk, topic_name, 
+			my_rkt_conf);
+		if (NULL == opaque->rkt) {
+			char buf[BUFSIZ];
+			strerror_r(errno, buf, sizeof(buf));
+			rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
+			rd_kafka_topic_conf_destroy(my_rkt_conf);
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 int mse_opaque_creator(json_t *config, void **_opaque) {
@@ -235,8 +268,12 @@ void mse_opaque_done(void *_opaque) {
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
 	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
-	if (opaque->per_listener_enrichment)
+	if (opaque->per_listener_enrichment) {
 		json_decref(opaque->per_listener_enrichment);
+	}
+	if (opaque->rkt) {
+		rd_kafka_topic_destroy(opaque->rkt);
+	}
 	free(opaque);
 }
 
@@ -617,11 +654,14 @@ void mse_decode(char *buffer, size_t buf_size,
 	if (NULL == notifications)
 		return;
 
+	/// @TODO use send_array
 	for (i = 0; i < notifications->size; ++i) {
 		if (notifications->data[i].string) {
-			send_to_kafka(NULL,notifications->data[i].string,
-			              notifications->data[i].string_size,
-			              RD_KAFKA_MSG_F_FREE, (void *)(intptr_t)notifications->data[i].client_mac);
+			send_to_kafka(mse_opaque->rkt,
+				notifications->data[i].string,
+			    notifications->data[i].string_size,
+			    RD_KAFKA_MSG_F_FREE,
+			    (void *)(intptr_t)notifications->data[i].client_mac);
 		}
 	}
 }

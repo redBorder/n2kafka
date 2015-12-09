@@ -130,7 +130,7 @@ void send_to_kafka(rd_kafka_topic_t *my_rkt,char *buf,const size_t bufsize,
 			}
 		}
 
-		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,flags,
+		const int produce_ret = rd_kafka_produce(my_rkt,RD_KAFKA_PARTITION_UA,flags,
 			buf,bufsize,NULL,0,opaque);
 
 		if(produce_ret == 0)
@@ -189,7 +189,7 @@ void send_array_to_kafka(rd_kafka_topic_t *my_rkt,
 	}
 
 	if(rkt) {
-		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
+		rd_kafka_produce_batch(my_rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
 			msgs->msgs,msgs->count);
 	}
 
