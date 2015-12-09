@@ -25,6 +25,8 @@
 #include "kafka.h"
 #include "global_config.h"
 
+#include "util.h"
+
 #include <librd/rdlog.h>
 #include <assert.h>
 #include <jansson.h>
@@ -206,8 +208,6 @@ _err:
 	*_opaque = NULL;
 	return -1;
 }
-
-#define swap_ptrs(p1,p2) do{void *aux = p1;p1 = p2;p2 = aux;}while(0)
 
 /// @TODO Join with meraki_opaque_creator
 int meraki_opaque_reload(json_t *config,void *vopaque) {

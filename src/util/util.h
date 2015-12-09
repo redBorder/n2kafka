@@ -38,6 +38,8 @@
 
 #define fatal(msg...) do{rblog(LOG_ERR,msg);exit(1);}while(0)
 
+#define swap_ptrs(p1,p2) do{void *aux = p1;p1 = p2;p2 = aux;}while(0)
+
 static inline char *mystrerror(int _errno,char *buffer,size_t buffer_size){
 	strerror_r(_errno,buffer,buffer_size);
 	return buffer;
