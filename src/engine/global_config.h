@@ -85,7 +85,6 @@ struct n2kafka_config{
 
     char *format;
 
-    char *topic;
     char *brokers;
 
     rd_kafka_conf_t *kafka_conf;
@@ -111,7 +110,7 @@ struct n2kafka_config{
 extern struct n2kafka_config global_config;
 
 static inline bool only_stdout_output(){
-	return global_config.debug && !global_config.brokers && !global_config.topic;
+	return global_config.debug && !global_config.brokers;
 }
 
 void init_global_config();

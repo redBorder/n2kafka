@@ -29,10 +29,35 @@
 #include <errno.h>
 #include <unistd.h>
 
-static rd_kafka_topic_t *rkt = NULL;
-
 #define ERROR_BUFFER_SIZE   256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
+
+/** Creates a new topic handler using global configuration
+    @param topic_name Topic name
+    @param partitioner Partitioner function
+    @return New topic handler */
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
+        rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsize) {
+	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
+	rd_kafka_topic_conf_t *my_rkt_conf
+		= rd_kafka_topic_conf_dup(template_config);
+
+	if(NULL == my_rkt_conf) {
+		rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+		return NULL;
+	}
+
+	rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+
+	rd_kafka_topic_t *ret = rd_kafka_topic_new(global_config.rk, topic_name,
+		my_rkt_conf);
+	if (NULL == ret) {
+		strerror_r(errno, err, errsize);
+		rd_kafka_topic_conf_destroy(my_rkt_conf);
+	}
+
+	return ret;
+}
 
 /**
 * Message delivery report callback.
@@ -51,12 +76,12 @@ void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 	}
 }
 
-static int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
-					 const void *key __attribute__((unused)),
-					 size_t keylen __attribute__((unused)),
-					 int32_t partition_cnt,
-					 void *rkt_opaque,
-					 void *msg_opaque){
+int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
+					const void *key __attribute__((unused)),
+					size_t keylen __attribute__((unused)),
+					int32_t partition_cnt,
+					void *rkt_opaque,
+					void *msg_opaque){
 	const uint64_t client_mac = (uint64_t)(intptr_t)msg_opaque;
 	if(client_mac == 0)
 		return rd_kafka_msg_partitioner_random(_rkt,NULL,0,partition_cnt,rkt_opaque,msg_opaque);
@@ -95,15 +120,6 @@ void init_rdkafka(){
 		fatal( "%% No valid brokers specified\n");
 	}
 
-	rd_kafka_topic_conf_set_partitioner_cb(global_config.kafka_topic_conf, rb_client_mac_partitioner);
-	rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
-	if(global_config.topic) {
-		rkt = rd_kafka_topic_new(global_config.rk, global_config.topic, myconf);
-		if(rkt == NULL){
-			fatal("%% Cannot create kafka topic\n");
-		}
-	}
-
 	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
 	sleep(1); 
 }
@@ -112,7 +128,8 @@ static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(global_config.rk,timeout_ms);
 }
 
-void send_to_kafka(char *buf,const size_t bufsize,int flags,void *opaque){
+void send_to_kafka(rd_kafka_topic_t *rkt,char *buf,const size_t bufsize,
+                                                int flags,void *opaque) {
 	int retried = 0;
 	char errbuf[ERROR_BUFFER_SIZE];
 
@@ -163,7 +180,6 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	}
 
 	const size_t i = array->count;
-	array->msgs[i].rkt = rkt;
 	array->msgs[i].partition = RD_KAFKA_PARTITION_UA;
 	array->msgs[i].payload = buffer;
 	array->msgs[i].len = buf_size;
@@ -174,8 +190,10 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	return 0;
 }
 
-void send_array_to_kafka(struct kafka_message_array *msgs) {
+void send_array_to_kafka(rd_kafka_topic_t *rkt, 
+                                struct kafka_message_array *msgs) {
 	size_t i;
+
 	if(rkt) {
 		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
 			msgs->msgs,msgs->count);
@@ -200,7 +218,7 @@ void dumb_decoder(char *buffer,size_t buf_size,
             const keyval_list_t *keyval __attribute__((unused)),
             void *listener_callback_opaque,
             void **sessionp __attribute__((unused))) {
-	send_to_kafka(buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
+	send_to_kafka(NULL,buffer,buf_size,RD_KAFKA_MSG_F_FREE,listener_callback_opaque);
 }
 
 void flush_kafka(){
@@ -213,9 +231,6 @@ void kafka_poll(int timeout_ms){
 
 void stop_rdkafka(){
 	rdlog(LOG_INFO,"Waiting kafka handler to stop properly");
-	if(rkt) {
-		rd_kafka_topic_destroy(rkt);
-	}
 	rd_kafka_destroy(global_config.rk);
 	rd_kafka_wait_destroyed(5000);
 }

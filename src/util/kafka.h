@@ -19,6 +19,7 @@
 #pragma once
 #include "parse.h"
 #include "pair.h"
+#include <librdkafka/rdkafka.h>
 
 #include <string.h>
 
@@ -32,17 +33,37 @@ struct kafka_message_array{
 };
 
 void init_rdkafka();
-void send_to_kafka(char *buffer,const size_t bufsize,int flags,void *opaque);
+void send_to_kafka(rd_kafka_topic_t *rkt,char *buffer,const size_t bufsize,
+	int flags,void *opaque);
 void dumb_decoder(char *buffer,size_t buf_size,const keyval_list_t *keyval,
     void *listener_callback_opaque,void **sessionp);
+
+/// @TODO join with rb_http2k_decoder mac partitioner
+int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
+					const void *key,size_t keylen,int32_t partition_cnt,
+					void *rkt_opaque,void *msg_opaque);
 
 struct kafka_message_array *new_kafka_message_array(size_t size);
 int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,
 	size_t buf_size,void *opaque);
-void send_array_to_kafka(struct kafka_message_array *);
-
+void send_array_to_kafka(rd_kafka_topic_t *rkt,struct kafka_message_array *);
 
 void kafka_poll();
+
+typedef int32_t (*rb_rd_kafka_partitioner_t) (
+						const rd_kafka_topic_t *rkt,
+						const void *keydata,
+						size_t keylen,
+						int32_t partition_cnt,
+						void *rkt_opaque,
+						void *msg_opaque);
+
+/** Creates a new topic handler using global configuration
+    @param topic_name Topic name
+    @param partitioner Partitioner function
+    @return New topic handler */
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
+    rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsiz);
 
 void flush_kafka();
 void stop_rdkafka();

@@ -25,6 +25,8 @@
 #include "global_config.h"
 #include "rb_json.h"
 
+#include "util.h"
+
 #include <librd/rdlog.h>
 #include <assert.h>
 #include <jansson.h>
@@ -54,6 +56,12 @@ static const char MSE_ENRICHMENT_KEY[] = "enrichment";
 static const char MSE_MAX_TIME_OFFSET[] = "max_time_offset";
 static const char MSE_MAX_TIME_OFFSET_WARNING_WAIT[] =
     "max_time_offset_warning_wait";
+
+static const char MSE_TOPIC[] = "topic";
+
+static const json_int_t MAX_TIME_OFFSET_DEFAULT = 3600;
+static const json_int_t MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT = 0;
+
 /*
     VALIDATING MSE
 */
@@ -98,6 +106,8 @@ struct mse_opaque {
 	long max_time_offset;
 	long max_time_offset_warning_wait;
 	struct mse_config *mse_config;
+
+	rd_kafka_topic_t *rkt;
 };
 
 static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
@@ -105,27 +115,43 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	assert(opaque);
 	assert(config);
 	json_error_t jerr;
-	json_int_t max_time_offset = 3600;
-	json_int_t max_time_offset_warning_wait = 0;
+	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
+	json_int_t max_time_offset_warning_wait = MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT;
+	const char *topic_name = NULL;
+	char err[BUFSIZ];
 
 	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
 	                                    "{s?O"
 	                                    "s?I"
-	                                    "s?I}",
+	                                    "s?I"
+	                                    "s:s}",
 	                                    MSE_ENRICHMENT_KEY,
 	                                    &opaque->per_listener_enrichment,
 	                                    MSE_MAX_TIME_OFFSET_WARNING_WAIT,
 	                                    &max_time_offset_warning_wait,
 	                                    MSE_MAX_TIME_OFFSET,
-	                                    &max_time_offset);
+	                                    &max_time_offset,
+	                                    MSE_TOPIC,&topic_name);
 
 	opaque->max_time_offset = max_time_offset;
 	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
 
-	if (0 != json_unpack_rc)
-		rdlog(LOG_ERR, "%s", jerr.text);
+	if (0 != json_unpack_rc) {
+		rdlog(LOG_ERR, "Couldn't parse MSE listener config: %s", jerr.text);
+		return json_unpack_rc;
+	}
 
-	return json_unpack_rc;
+	if(topic_name) {
+		opaque->rkt = new_rkt_global_config(topic_name,
+			rb_client_mac_partitioner,err,sizeof(err));
+	}
+
+	if(NULL == opaque->rkt) {
+		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		return -1;
+	}
+
+	return 0;
 }
 
 int mse_opaque_creator(json_t *config, void **_opaque) {
@@ -196,33 +222,66 @@ static void mse_warn_timestamp(struct mse_data *data,
 	pthread_mutex_unlock(&db->warning_ht_lock);
 }
 
+/// @TODO join with mse_opaque_creator
 int mse_opaque_reload(json_t *config, void *_opaque) {
+	json_error_t jerr;
 	struct mse_opaque *opaque = _opaque;
 	assert(opaque);
 	assert(config);
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
+	char err[BUFSIZ];
+	const char *topic_name = NULL;
+	json_t *enrichment_aux = NULL;
+	rd_kafka_topic_t *rkt_aux = NULL;
+	json_int_t max_time_offset_warning_wait = MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT;
+	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
 
-	json_t *new_enrichment = NULL,
-	        *old_enrichment = opaque->per_listener_enrichment;
-
-	json_error_t jerr;
-
-	const int unpack_rc = json_unpack_ex(config, &jerr, 0, "{s?O}",
-	                                     MSE_ENRICHMENT_KEY, &new_enrichment);
+	int unpack_rc = json_unpack_ex(config, &jerr, 0,
+	                                "{s?O"
+	                                "s?I"
+	                                "s?I"
+	                                "s:s}",
+	                                MSE_ENRICHMENT_KEY,
+	                                &enrichment_aux,
+	                                MSE_MAX_TIME_OFFSET_WARNING_WAIT,
+	                                &max_time_offset_warning_wait,
+	                                MSE_MAX_TIME_OFFSET,
+	                                &max_time_offset,
+	                                MSE_TOPIC,&topic_name);
 
 	if (unpack_rc != 0) {
 		rdlog(LOG_ERR, "Can't parse enrichment config: %s", jerr.text);
-		return -1;
+		goto enrichment_err;
 	}
 
+	if(topic_name) {
+		rkt_aux = new_rkt_global_config(topic_name,
+			rb_client_mac_partitioner,err,sizeof(err));
+	}
+
+	if(NULL == rkt_aux) {
+		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		goto rkt_err;
+	}
 
 	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
-	opaque->per_listener_enrichment = new_enrichment;
+	swap_ptrs(opaque->per_listener_enrichment,enrichment_aux);
+	swap_ptrs(opaque->rkt,rkt_aux);
+	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
+	opaque->max_time_offset = max_time_offset;
 	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
 
-	json_decref(old_enrichment);
+rkt_err:
+enrichment_err:
+	if(rkt_aux) {
+		rd_kafka_topic_destroy(rkt_aux);
+	}
+
+	if(enrichment_aux) {
+		json_decref(enrichment_aux);
+	}
 
 	return 0;
 }
@@ -235,8 +294,12 @@ void mse_opaque_done(void *_opaque) {
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
 	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
-	if (opaque->per_listener_enrichment)
+	if (opaque->per_listener_enrichment) {
 		json_decref(opaque->per_listener_enrichment);
+	}
+	if (opaque->rkt) {
+		rd_kafka_topic_destroy(opaque->rkt);
+	}
 	free(opaque);
 }
 
@@ -617,11 +680,14 @@ void mse_decode(char *buffer, size_t buf_size,
 	if (NULL == notifications)
 		return;
 
+	/// @TODO use send_array
 	for (i = 0; i < notifications->size; ++i) {
 		if (notifications->data[i].string) {
-			send_to_kafka(notifications->data[i].string,
-			              notifications->data[i].string_size,
-			              RD_KAFKA_MSG_F_FREE, (void *)(intptr_t)notifications->data[i].client_mac);
+			send_to_kafka(mse_opaque->rkt,
+				notifications->data[i].string,
+			    notifications->data[i].string_size,
+			    RD_KAFKA_MSG_F_FREE,
+			    (void *)(intptr_t)notifications->data[i].client_mac);
 		}
 	}
 }
