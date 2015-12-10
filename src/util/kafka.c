@@ -29,8 +29,6 @@
 #include <errno.h>
 #include <unistd.h>
 
-static rd_kafka_topic_t *rkt = NULL;
-
 #define ERROR_BUFFER_SIZE   256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
 
@@ -122,15 +120,6 @@ void init_rdkafka(){
 		fatal( "%% No valid brokers specified\n");
 	}
 
-	rd_kafka_topic_conf_set_partitioner_cb(global_config.kafka_topic_conf, rb_client_mac_partitioner);
-	rd_kafka_topic_conf_t *myconf = rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
-	if(global_config.topic) {
-		rkt = rd_kafka_topic_new(global_config.rk, global_config.topic, myconf);
-		if(rkt == NULL){
-			fatal("%% Cannot create kafka topic\n");
-		}
-	}
-
 	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
 	sleep(1); 
 }
@@ -139,15 +128,10 @@ static void flush_kafka0(int timeout_ms){
 	rd_kafka_poll(global_config.rk,timeout_ms);
 }
 
-void send_to_kafka(rd_kafka_topic_t *my_rkt,char *buf,const size_t bufsize,
+void send_to_kafka(rd_kafka_topic_t *rkt,char *buf,const size_t bufsize,
                                                 int flags,void *opaque) {
 	int retried = 0;
 	char errbuf[ERROR_BUFFER_SIZE];
-
-	/// @TODO quick hack, delete it
-	if(NULL == my_rkt) {
-		my_rkt = rkt;
-	}
 
 	do{
 		if(NULL == rkt) {
@@ -157,7 +141,7 @@ void send_to_kafka(rd_kafka_topic_t *my_rkt,char *buf,const size_t bufsize,
 			}
 		}
 
-		const int produce_ret = rd_kafka_produce(my_rkt,RD_KAFKA_PARTITION_UA,flags,
+		const int produce_ret = rd_kafka_produce(rkt,RD_KAFKA_PARTITION_UA,flags,
 			buf,bufsize,NULL,0,opaque);
 
 		if(produce_ret == 0)
@@ -196,7 +180,6 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	}
 
 	const size_t i = array->count;
-	array->msgs[i].rkt = rkt;
 	array->msgs[i].partition = RD_KAFKA_PARTITION_UA;
 	array->msgs[i].payload = buffer;
 	array->msgs[i].len = buf_size;
@@ -207,16 +190,12 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	return 0;
 }
 
-void send_array_to_kafka(rd_kafka_topic_t *my_rkt, 
+void send_array_to_kafka(rd_kafka_topic_t *rkt, 
                                 struct kafka_message_array *msgs) {
 	size_t i;
 
-	if(NULL == my_rkt) {
-		my_rkt = rkt;
-	}
-
 	if(rkt) {
-		rd_kafka_produce_batch(my_rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
+		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
 			msgs->msgs,msgs->count);
 	}
 
@@ -228,7 +207,7 @@ void send_array_to_kafka(rd_kafka_topic_t *my_rkt,
 			rdlog(LOG_ERR,"Couldn't produce message [%.*s]: %s",payload_len,payload,msg_error);
 		}
 
-		if(!my_rkt || msgs->msgs[i].err) {
+		if(!rkt || msgs->msgs[i].err) {
 			free(msgs->msgs[i].payload);
 		}
 	}
@@ -252,9 +231,6 @@ void kafka_poll(int timeout_ms){
 
 void stop_rdkafka(){
 	rdlog(LOG_INFO,"Waiting kafka handler to stop properly");
-	if(rkt) {
-		rd_kafka_topic_destroy(rkt);
-	}
 	rd_kafka_destroy(global_config.rk);
 	rd_kafka_wait_destroyed(5000);
 }
