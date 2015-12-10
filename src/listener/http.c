@@ -516,9 +516,11 @@ static size_t compressed_callback(struct http_private * cls,
 
 		const size_t zprocessed = ZLIB_CHUNK - con_info->zlib.strm.avail_out;
 		rc += zprocessed; // @TODO this should be returned by callback call
-		cls->callback((char *)buffer,zprocessed,
-			&con_info->decoder_params,cls->callback_opaque,
-			&con_info->decoder_sessp);
+		if(zprocessed > 0) {
+			cls->callback((char *)buffer,zprocessed,
+				&con_info->decoder_params,cls->callback_opaque,
+				&con_info->decoder_sessp);
+		}
 	} while(con_info->zlib.strm.avail_out == 0);
 
 	/* Do not want to waste memory */
