@@ -1,20 +1,22 @@
 {
   "listeners": [{
     "proto": "http",
-    "port": 2057,
+    "port": 2050,
     "mode": "epoll",
     "num_threads": 20,
     "decode_as": "MSE",
     "max_time_offset": 3600,
-    "max_time_offset_warning_wait": 3600
+    "max_time_offset_warning_wait": 3600,
+    "topic":"rb_event"
   }, {
-    "proto": "tcp",
-    "port": 2056,
+    "proto": "http",
+    "port": 2051,
     "tcp_keepalive": true,
     "num_threads": 40,
     "decode_as": "MSE",
     "max_time_offset": 3600,
-    "max_time_offset_warning_wait": 3600
+    "max_time_offset_warning_wait": 3600,
+    "topic":"rb_flow"
   }],
   "brokers": "eugeniodev",
   "topic": "rb_flow",
