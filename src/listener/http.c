@@ -207,7 +207,7 @@ static int connection_gzip_iterator(void *cls,enum MHD_ValueKind kind,
 	(void)kind;
 
 	if(key && value && 0 == strcmp("Content-Encoding",key)
-	                                        && 0==strcmp("gzip",value)) {
+	                                        && 0==strcmp("deflate",value)) {
 		*ret = 1;
 		return MHD_NO; /* We have found what we were looking for */
 	} else {
