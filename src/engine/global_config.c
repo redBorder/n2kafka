@@ -334,7 +334,9 @@ static void parse_config_keyval(const char *key,const json_t *value){
 }
 
 static void parse_rdkafka_config_keyval(const char *key,const json_t *value) {
-	if(!strcasecmp(key,CONFIG_BROKERS_KEY)) {
+	if(!strcasecmp(key,CONFIG_TOPIC_KEY)){
+		global_config.topic = strdup(assert_json_string(key,value));
+	} else if(!strcasecmp(key,CONFIG_BROKERS_KEY)) {
 		global_config.brokers = strdup(assert_json_string(key,value));
 	} else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))) {
 		// if starts with
@@ -621,6 +623,7 @@ void free_global_config(){
 	free(global_config.config_path);
 
 	in_addr_list_done(global_config.blacklist);
+	free(global_config.topic);
 	free(global_config.brokers);
 	free(global_config.response);
 }

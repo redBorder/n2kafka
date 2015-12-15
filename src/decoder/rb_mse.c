@@ -124,7 +124,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	                                    "{s?O"
 	                                    "s?I"
 	                                    "s?I"
-	                                    "s:s}",
+	                                    "s?s}",
 	                                    MSE_ENRICHMENT_KEY,
 	                                    &opaque->per_listener_enrichment,
 	                                    MSE_MAX_TIME_OFFSET_WARNING_WAIT,
@@ -141,10 +141,12 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		return json_unpack_rc;
 	}
 
-	if(topic_name) {
-		opaque->rkt = new_rkt_global_config(topic_name,
-			rb_client_mac_partitioner,err,sizeof(err));
+	if(!topic_name) {
+		topic_name = global_config.topic;
 	}
+
+	opaque->rkt = new_rkt_global_config(topic_name,
+		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
 		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
@@ -242,7 +244,7 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 	                                "{s?O"
 	                                "s?I"
 	                                "s?I"
-	                                "s:s}",
+	                                "s?s}",
 	                                MSE_ENRICHMENT_KEY,
 	                                &enrichment_aux,
 	                                MSE_MAX_TIME_OFFSET_WARNING_WAIT,
@@ -256,10 +258,12 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		goto enrichment_err;
 	}
 
-	if(topic_name) {
-		rkt_aux = new_rkt_global_config(topic_name,
-			rb_client_mac_partitioner,err,sizeof(err));
+	if(!topic_name) {
+		topic_name = global_config.topic;
 	}
+
+	rkt_aux = new_rkt_global_config(topic_name,
+		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
 		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);

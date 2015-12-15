@@ -85,6 +85,7 @@ struct n2kafka_config{
 
     char *format;
 
+    char *topic;
     char *brokers;
 
     rd_kafka_conf_t *kafka_conf;

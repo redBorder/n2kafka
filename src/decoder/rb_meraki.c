@@ -224,7 +224,7 @@ int meraki_opaque_reload(json_t *config,void *vopaque) {
 
 	json_error_t jerr;
 
-	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s:s}",
+	const int unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s?s}",
 		MERAKI_ENRICHMENT_KEY,&enrichment_aux,
 		CONFIG_MERAKI_TOPIC_KEY,&topic_name);
 
@@ -234,10 +234,12 @@ int meraki_opaque_reload(json_t *config,void *vopaque) {
 		goto enrichment_err;
 	}
 
-	if(topic_name) {
-		rkt_aux = new_rkt_global_config(topic_name,
-			rb_client_mac_partitioner,err,sizeof(err));
+	if(!topic_name) {
+		topic_name = global_config.topic;
 	}
+
+	rkt_aux = new_rkt_global_config(topic_name,
+		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
 		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
