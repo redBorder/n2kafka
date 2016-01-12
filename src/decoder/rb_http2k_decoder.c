@@ -716,7 +716,8 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 			return -1;
 		}
 
-		if (0 == strncmp(sess->kafka_partitioner_key,(const char *)stringVal,
+		if (sess->kafka_partitioner_key &&
+			0 == strncmp(sess->kafka_partitioner_key,(const char *)stringVal,
 		                                                        stringLen)) {
 			/* We are in kafka partitioner key, need to watch for it */
 			sess->in_partition_key = 1;
