@@ -97,7 +97,11 @@ static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
 	char mac_key[sizeof("00:00:00:00:00:00")];
 
 	if (keylen != strlen("00:00:00:00:00:00")) {
-		rdlog(LOG_WARNING, "Invalid mac %.*s len", (int)keylen, (const char *)keydata);
+		if (keylen != 0) {
+			/* We were expecting a MAC and we do not have it */
+			rdlog(LOG_WARNING, "Invalid mac %.*s len", (int)keylen,
+				(const char *)keydata);
+		}
 		goto fallback_behavior;
 	}
 
