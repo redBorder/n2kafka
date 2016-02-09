@@ -539,9 +539,9 @@ static void produce_or_free(struct topic_s *topic, rd_kafka_message_t *msgs,
 				rdlog(LOG_ERR, "Can't produce to topic %s: %s",
 				      rd_kafka_topic_name(rkt),
 				      rd_kafka_err2str(msgs[i].err));
-			}
 
-			free(msgs[i].payload);
+				free(msgs[i].payload);
+			}
 		}
 	}
 }
