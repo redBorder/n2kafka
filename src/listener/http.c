@@ -462,6 +462,8 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,const char *url,
 static size_t compressed_callback(struct http_private * cls,
                 struct conn_info *con_info,
                 const char *upload_data,size_t upload_data_size) {
+	static pthread_mutex_t last_zlib_warning_timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
+	time_t last_zlib_warning_timestamp = 0;
 	size_t rc = 0;
 
 	/* Ugly hack, assignement discard const qualifier */
@@ -477,39 +479,48 @@ static size_t compressed_callback(struct http_private * cls,
 		con_info->zlib.strm.avail_out = ZLIB_CHUNK;
 
 		const int ret = inflate(&con_info->zlib.strm, Z_NO_FLUSH /* TODO compare different flush */);
-		switch(ret) {
-		case Z_STREAM_ERROR:
-			rdlog(LOG_ERR,"Input from uuid %s (ip %s) is not a valid zlib stream",
-				con_info->sensor_uuid,con_info->client);
-			break;
+		if(ret != Z_OK && ret != Z_STREAM_END) {
+			static const time_t threshold_s = 5*60;
 
-		case Z_NEED_DICT:
-			rdlog(LOG_ERR,"Need unkown dict in input stream from %s(%s)",
-				con_info->sensor_uuid,con_info->client);
-			break;
+			pthread_mutex_lock(&last_zlib_warning_timestamp_mutex);
+			const time_t now = time(NULL);
+			const int warn = difftime(now,last_zlib_warning_timestamp) > threshold_s;
+			pthread_mutex_unlock(&last_zlib_warning_timestamp_mutex);
 
-		case Z_DATA_ERROR:
-			rdlog(LOG_ERR,"Error in compressed input from %s(%s)",
-				con_info->sensor_uuid,con_info->client);
-			break;
+			if(warn) {
+				switch(ret) {
+				case Z_STREAM_ERROR:
+					rdlog(LOG_ERR,"Input from uuid %s (ip %s) is not a valid zlib stream",
+						con_info->sensor_uuid,con_info->client);
+					break;
 
-		case Z_MEM_ERROR:
-			rdlog(LOG_ERR,"Memory error, couldn't allocate memory for %s(%s)",
-				con_info->sensor_uuid,con_info->client);
-			break;
+				case Z_NEED_DICT:
+					rdlog(LOG_ERR,"Need unkown dict in input stream from %s(%s)",
+						con_info->sensor_uuid,con_info->client);
+					break;
 
-		case Z_OK:
-		case Z_STREAM_END:
-			/* All ok, keep working */
-			break;
+				case Z_DATA_ERROR:
+					rdlog(LOG_ERR,"Error in compressed input from %s(%s)",
+						con_info->sensor_uuid,con_info->client);
+					break;
 
-		default:
-			rdlog(LOG_ERR, "Unknown error: inflate returned %d for %s uuid (%s ip)",ret,
-				con_info->sensor_uuid,con_info->client);
-			break;
-		};
+				case Z_MEM_ERROR:
+					rdlog(LOG_ERR,"Memory error, couldn't allocate memory for %s(%s)",
+						con_info->sensor_uuid,con_info->client);
+					break;
 
-		if(ret != Z_OK && ret != Z_STREAM_END ) {
+				case Z_OK:
+				case Z_STREAM_END:
+					/* All ok, keep working */
+					break;
+
+				default:
+					rdlog(LOG_ERR, "Unknown error: inflate returned %d for %s uuid (%s ip)",ret,
+						con_info->sensor_uuid,con_info->client);
+					break;
+				};
+			}
+
 			inflateEnd(&con_info->zlib.strm);
 			break; // @TODO send HTTP error!
 		}
