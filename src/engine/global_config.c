@@ -117,21 +117,21 @@ void init_global_config(){
 
 static const char *assert_json_string(const char *key,const json_t *value){
 	if(!json_is_string(value)){
-		fatal("%s value must be a string in config file\n",key);
+		fatal("%s value must be a string in config file",key);
 	}
 	return json_string_value(value);
 }
 
 static int assert_json_integer(const char *key,const json_t *value){
 	if(!json_is_integer(value)){
-		fatal("%s value must be an integer in config file\n",key);
+		fatal("%s value must be an integer in config file",key);
 	}
 	return json_integer_value(value);
 }
 
 static const json_t *assert_json_array(const char *key,const json_t *value){
 	if(!json_is_array(value)){
-		fatal("%s value must be an array\n",key);
+		fatal("%s value must be an array",key);
 	}
 	return value;
 }
@@ -147,8 +147,8 @@ static void *assert_pton(int af,const char *src,void *dst){
 static void parse_response(const char *key,const json_t *value){
 	const char *filename = assert_json_string(key,value);
 	global_config.response = rd_file_read(filename,&global_config.response_len);
-    if(global_config.response == NULL)
-    	fatal("Cannot open response file %s\n",assert_json_string(key,value));
+	if(global_config.response == NULL)
+		fatal("Cannot open response file %s",assert_json_string(key,value));
 }
 
 static void parse_debug(const char *key,const json_t *value){
@@ -329,7 +329,7 @@ static void parse_config_keyval(const char *key,const json_t *value){
 	}else if(!strcasecmp(key,CONFIG_RBHTTP2K_CONFIG)){
 		// Already parsed
 	}else{
-		fatal("Unknown config key %s\n",key);
+		fatal("Unknown config key %s",key);
 	}
 }
 
@@ -399,7 +399,7 @@ static void parse_config0(json_t *root){
 
 static void check_config(){
 	if(!only_stdout_output() && global_config.brokers == NULL){
-		fatal("You have to set a brokers to write to\n");
+		fatal("You have to set a brokers to write to");
 	}
 }
 
@@ -408,12 +408,12 @@ void parse_config(const char *config_file_path){
 	global_config.config_path = strdup(config_file_path);
 	json_t *root = json_load_file(config_file_path,0,&error);
 	if(root==NULL){
-		rblog(LOG_ERR,"Error parsing config file, line %d: %s\n",error.line,error.text);
+		rblog(LOG_ERR,"Error parsing config file, line %d: %s",error.line,error.text);
 		exit(1);
 	}
 
 	if(!json_is_object(root)){
-		rblog(LOG_ERR,"JSON config is not an object\n");
+		rblog(LOG_ERR,"JSON config is not an object");
 		exit(1);
 	}
 
@@ -537,13 +537,13 @@ static json_t *reload_decoder(struct n2kafka_config *config,const char *decoder_
 
 	json_t *root = json_load_file(config->config_path,0,&json_err);
 	if(root==NULL){
-		rblog(LOG_ERR,"Can't reload, Error parsing config file, line %d: %s\n",
+		rblog(LOG_ERR,"Can't reload, Error parsing config file, line %d: %s",
 			json_err.line,json_err.text);
 		return NULL;
 	}
 
 	if(!json_is_object(root)){
-		rblog(LOG_ERR,"Can't reload, JSON config is not an object\n");
+		rblog(LOG_ERR,"Can't reload, JSON config is not an object");
 		goto error_free_root;
 	}
 

@@ -70,9 +70,9 @@ int error_code,
 void *opaque RB_UNUSED, void *msg_opaque RB_UNUSED) {
 
 	if (error_code){
-		rblog(LOG_ERR,   "Message delivery failed: %s\n",rd_kafka_err2str(error_code));
+		rblog(LOG_ERR,   "Message delivery failed: %s",rd_kafka_err2str(error_code));
 	}else{
-		rblog(LOG_DEBUG, "Message delivered (%zd bytes): %*.*s\n", len, (int)len,(int)len, (char *)payload);
+		rblog(LOG_DEBUG, "Message delivered (%zd bytes): %*.*s", len, (int)len,(int)len, (char *)payload);
 	}
 }
 
@@ -96,7 +96,7 @@ void init_rdkafka(){
 	assert(global_config.kafka_topic_conf);
 
 	if(only_stdout_output()){
-		rblog(LOG_DEBUG,"No brokers and no topic specified. Output will be printed in stdout.\n");
+		rblog(LOG_DEBUG,"No brokers and no topic specified. Output will be printed in stdout.");
 		return;
 	}
 
@@ -104,7 +104,7 @@ void init_rdkafka(){
 	global_config.rk = rd_kafka_new(RD_KAFKA_PRODUCER,global_config.kafka_conf,errstr,RDKAFKA_ERRSTR_SIZE);
 
 	if(!global_config.rk){
-		fatal("%% Failed to create new producer: %s\n",errstr);
+		fatal("%% Failed to create new producer: %s",errstr);
 	}
 
 	if(global_config.debug){
@@ -112,12 +112,12 @@ void init_rdkafka(){
 	}
 
 	if(global_config.brokers == NULL){
-		fatal("%% No brokers specified\n");
+		fatal("%% No brokers specified");
 	}
 
 	const int brokers_res = rd_kafka_brokers_add(global_config.rk,global_config.brokers);
 	if(brokers_res==0){
-		fatal( "%% No valid brokers specified\n");
+		fatal( "%% No valid brokers specified");
 	}
 
 	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
@@ -150,8 +150,8 @@ void send_to_kafka(rd_kafka_topic_t *rkt,char *buf,const size_t bufsize,
 		if(ENOBUFS==errno && !(retried++)){
 			rd_kafka_poll(global_config.rk,5); // backpressure
 		}else{
-			//rdbg(LOG_ERR, "Failed to produce message: %s\n",rd_kafka_errno2err(errno));
-			rblog(LOG_ERR, "Failed to produce message: %s\n",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
+			//rdbg(LOG_ERR, "Failed to produce message: %s",rd_kafka_errno2err(errno));
+			rblog(LOG_ERR, "Failed to produce message: %s",mystrerror(errno,errbuf,ERROR_BUFFER_SIZE));
 			if(flags & RD_KAFKA_MSG_F_FREE)
 				free(buf);
 			break;

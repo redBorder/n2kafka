@@ -158,7 +158,7 @@ static void set_keepalive_opt(int fd){
 	int i=1;
 	const int sso_rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char*)&i, sizeof(int));
 	if(sso_rc == -1)
-		rdbg("Can't set SO_KEEPALIVE option\n");
+		rdbg("Can't set SO_KEEPALIVE option");
 }
 
 static uint16_t get_port(const struct sockaddr_in *sa){
@@ -196,7 +196,7 @@ static int receive_from_socket(int fd,struct sockaddr_in6 *addr,char *buffer,con
 static void process_data_received_from_socket(char *buffer,const size_t recv_result,
         const char *client,decoder_callback callback,void *callback_opaque){
 	if(unlikely(global_config.debug))
-		rdlog(LOG_DEBUG,"received %zu data from %s: %.*s\n",recv_result,client,
+		rdlog(LOG_DEBUG,"received %zu data from %s: %.*s",recv_result,client,
 			(int)recv_result,buffer);
 
 	struct pair attrs_mem[1];
@@ -219,7 +219,7 @@ static int send_to_socket(int fd,const char *data,size_t len){
 	if(select_result > 0){
 		return write(fd,data,len);
 	}else if(select_result == 0){
-		rdlog(LOG_ERR,"Socket not ready for writing in %ld.%6ld. Closing.\n",
+		rdlog(LOG_ERR,"Socket not ready for writing in %ld.%6ld. Closing.",
 			WRITE_SELECT_TIMEVAL.tv_sec,WRITE_SELECT_TIMEVAL.tv_usec);
 		return select_result;
 	}else{
@@ -612,7 +612,7 @@ static void *main_socket_loop(void *_params) {
 		main_tcp_loop(listenfd,params);
 	}
 
-	rdlog(LOG_INFO,"Closing listening socket.\n");
+	rdlog(LOG_INFO,"Closing listening socket.");
 	close(listenfd);
 
 	return NULL;
