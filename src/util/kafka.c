@@ -231,6 +231,12 @@ void kafka_poll(int timeout_ms){
 
 void stop_rdkafka(){
 	rdlog(LOG_INFO,"Waiting kafka handler to stop properly");
+
+	/* Make sure all outstanding requests are transmitted and handled. */
+	while (rd_kafka_outq_len(global_config.rk) > 0) {
+		rd_kafka_poll(global_config.rk, 50);
+	}
+
 	rd_kafka_destroy(global_config.rk);
-	rd_kafka_wait_destroyed(5000);
+	while(0 != rd_kafka_wait_destroyed(5000));
 }
