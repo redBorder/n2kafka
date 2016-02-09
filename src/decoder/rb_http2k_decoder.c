@@ -81,13 +81,40 @@ void init_rb_database(struct rb_database *db) {
 #define RB_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
 #endif
 
+enum warning_times_pos {
+	LAST_WARNING_TIME__QUEUE_FULL,
+	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
+	LAST_WARNING_TIME__UNKNOWN_PARTITION,
+	LAST_WARNING_TIME__UNKNOWN_TOPIC,
+	LAST_WARNING_TIME__END
+};
+
 struct rb_opaque {
 #ifdef RB_OPAQUE_MAGIC
 	uint64_t magic;
 #endif
 
 	struct rb_config *rb_config;
+
+	pthread_mutex_t produce_error_last_time_mutex[LAST_WARNING_TIME__END];
+	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
+
+static enum warning_times_pos kafka_error_to_warning_time_pos(
+                                                    rd_kafka_resp_err_t err) {
+	switch(err) {
+	case RD_KAFKA_RESP_ERR__QUEUE_FULL:
+		return LAST_WARNING_TIME__QUEUE_FULL;
+	case RD_KAFKA_RESP_ERR_MSG_SIZE_TOO_LARGE:
+		return LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE;
+	case RD_KAFKA_RESP_ERR__UNKNOWN_PARTITION:
+		return LAST_WARNING_TIME__UNKNOWN_PARTITION;
+	case RD_KAFKA_RESP_ERR__UNKNOWN_TOPIC:
+		return LAST_WARNING_TIME__UNKNOWN_TOPIC;
+	default:
+		return LAST_WARNING_TIME__END;
+	};
+}
 
 static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
                                 const void *keydata, size_t keylen, int32_t partition_cnt,
@@ -267,6 +294,8 @@ static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_
 }
 
 int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
+	size_t i;
+
 	assert(_opaque);
 
 	struct rb_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
@@ -278,6 +307,10 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 #ifdef RB_OPAQUE_MAGIC
 	opaque->magic = RB_OPAQUE_MAGIC;
 #endif
+
+	for(i=0;i<RD_ARRAYSIZE(opaque->produce_error_last_time_mutex);++i) {
+		pthread_mutex_init(&opaque->produce_error_last_time_mutex[i], NULL);
+	}
 
 	/// @TODO move global_config to static allocated buffer
 	opaque->rb_config = &global_config.rb;
@@ -522,10 +555,11 @@ static int gen_jansson_object(yajl_gen gen, json_t *object) {
 	@param topic Topic handler
 	@param msgs Messages to send
 	@param len Length of msgs */
-static void produce_or_free(struct topic_s *topic, rd_kafka_message_t *msgs,
-                                                                int len) {
+static void produce_or_free(struct rb_opaque *opaque, struct topic_s *topic,
+                                        rd_kafka_message_t *msgs, int len) {
 	assert(topic);
 	assert(msgs);
+	static const time_t alert_threshold = 5*60;
 
 	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
 
@@ -536,9 +570,27 @@ static void produce_or_free(struct topic_s *topic, rd_kafka_message_t *msgs,
 		int i;
 		for(i=0;i<len;++i) {
 			if(msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-				rdlog(LOG_ERR, "Can't produce to topic %s: %s",
-				      rd_kafka_topic_name(rkt),
-				      rd_kafka_err2str(msgs[i].err));
+				time_t last_warning_time = 0;
+				int warn = 0;
+				const size_t last_warning_time_pos = kafka_error_to_warning_time_pos(msgs[i].err);
+
+				if(last_warning_time_pos < LAST_WARNING_TIME__END) {
+					const time_t curr_time = time(NULL);
+					pthread_mutex_lock(&opaque->produce_error_last_time_mutex[last_warning_time_pos]);
+					last_warning_time = opaque->produce_error_last_time[last_warning_time_pos];
+					if(difftime(curr_time,last_warning_time) > alert_threshold) {
+						opaque->produce_error_last_time[last_warning_time_pos] = curr_time;
+						warn = 1;
+					}
+					pthread_mutex_unlock(&opaque->produce_error_last_time_mutex[last_warning_time_pos]);
+				}
+
+				if(warn) {
+					/* If no alert threshold established or last alert is too old */
+					rdlog(LOG_ERR, "Can't produce to topic %s: %s",
+					      rd_kafka_topic_name(rkt),
+					      rd_kafka_err2str(msgs[i].err));
+				}
 
 				free(msgs[i].payload);
 			}
@@ -1007,7 +1059,7 @@ void rb_decode(char *buffer, size_t buf_size,
 		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
 
 		if((*sessionp)->topic) {
-			produce_or_free((*sessionp)->topic_handler, msgs, n_messages);
+			produce_or_free(rb_opaque,(*sessionp)->topic_handler, msgs, n_messages);
 		}
 	}
 
