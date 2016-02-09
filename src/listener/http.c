@@ -599,7 +599,6 @@ static int post_handle(void *_cls,
 			/* Does support streaming, we will decompress & process until */
 			/* end of received chunk */
 			rc = compressed_callback(cls,con_info,upload_data,*upload_data_size);
-			send_http_bad_request(connection);
 		} else {
 			/* Does support streaming processing, sending the chunk */
 			cls->callback(upload_data,*upload_data_size,
