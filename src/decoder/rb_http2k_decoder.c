@@ -619,8 +619,9 @@ struct rb_session {
 	struct topic_s *topic_handler;
 
 	struct {
-		/// current kafka message key
-		const unsigned char *current_key;
+#define CURRENT_KEY_OFFSET_NOT_SETTED -1
+		/// current kafka message key offset
+		int current_key_offset;
 		size_t current_key_length;
 	} message;
 
@@ -633,6 +634,12 @@ struct rb_session {
 	/// Skip next parsing value
 	int skip_value;
 };
+
+static void rb_session_reset_kafka_msg(struct rb_session *sess) {
+	sess->message.current_key_offset = CURRENT_KEY_OFFSET_NOT_SETTED;
+	sess->message.current_key_length = 0;
+
+}
 
 #define GEN_AND_RETURN(func)                         \
   {                                                  \
@@ -721,24 +728,27 @@ static int rb_parse_string(void * ctx, const unsigned char * stringVal,
 	yajl_gen g = sess->gen;
 
 	if(sess->in_partition_key) {
-		if(sess->message.current_key) {
-			rdlog(LOG_ERR,"Partition key already present (%s key twice?)",
-				sess->kafka_partitioner_key);
+		const unsigned char *buffer = NULL;
+		size_t buffer_len = 0;
+
+		if(sess->message.current_key_offset !=
+					CURRENT_KEY_OFFSET_NOT_SETTED) {
+			rdlog(LOG_ERR,
+				"Partition key already present (%s key twice?)"
+				, sess->kafka_partitioner_key);
 			return 0;
 		}
 
-		size_t curr_gen_len = 0;
-		sess->message.current_key = NULL;
 		const int get_buf_rc = yajl_gen_get_buf(g,
-                                  &sess->message.current_key,
-                                  &curr_gen_len);
+                                  &buffer,
+                                  &buffer_len);
 
 		if(get_buf_rc != yajl_gen_status_ok) {
 			/// @TODO manage this
 		}
 
 		// Message key will be the next stuff printed.
-		sess->message.current_key += strlen(":\"") + curr_gen_len;
+		sess->message.current_key_offset = buffer_len + strlen(":\"");
 		sess->message.current_key_length = stringLen;
 		sess->in_partition_key = 0;
 	}
@@ -817,14 +827,14 @@ static int rb_parse_end_map(void * ctx)
 
 	--sess->object_array_parsing_stack;
 	if(0 == sess->object_array_parsing_stack) {
+		const int message_key_offset = sess->message.current_key_offset;
 		rd_kafka_message_t msg;
+		memset(&msg,0,sizeof(msg));
 
 		/* Ending message, we need to add enrichment values */
 		gen_jansson_object(g,sess->client_enrichment);
 
-		memset(&msg,0,sizeof(msg));
 		msg.partition = RD_KAFKA_PARTITION_UA;
-		msg.key_len = sess->message.current_key_length;
 
 		const unsigned char * buf;
 		yajl_gen_map_close(g);
@@ -837,13 +847,14 @@ static int rb_parse_end_map(void * ctx)
 			return 0;
 		}
 
-		if(sess->message.current_key) {
-			const long int message_key_offset = sess->message.current_key - buf;
+		if(message_key_offset !=  CURRENT_KEY_OFFSET_NOT_SETTED) {
 			msg.key = (char *)msg.payload + message_key_offset;
-			sess->message.current_key = NULL;
+			msg.key_len = sess->message.current_key_length;
 		}
 
 		rd_kafka_msg_q_add(&sess->msg_queue,&msg);
+		memset(&sess->message,0,sizeof(sess->message));
+		rb_session_reset_kafka_msg(sess);
 		
 		yajl_gen_clear(sess->gen);
 		return 1;
@@ -960,6 +971,8 @@ static struct rb_session *new_rb_session(struct rb_config *rb_config,
 
 	yajl_config(sess->handler, yajl_allow_multiple_values, 1);
 	yajl_config(sess->handler, yajl_allow_trailing_garbage, 1);
+
+	rb_session_reset_kafka_msg(sess);
 
 	return sess;
 
