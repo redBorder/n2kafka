@@ -65,5 +65,10 @@ typedef int32_t (*rb_rd_kafka_partitioner_t) (
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
     rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsiz);
 
+/** Default kafka topic name (if any)
+	@return Default kafka topic name (if any)
+	*/
+const char *default_topic_name();
+
 void flush_kafka();
 void stop_rdkafka();

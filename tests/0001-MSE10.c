@@ -1,6 +1,4 @@
-#include "../src/decoder/rb_mse.c"
 
-#include "rb_json_tests.c"
 #include "rb_mse_tests.h"
 
 #include <stdarg.h>

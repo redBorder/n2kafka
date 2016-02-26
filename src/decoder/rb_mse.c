@@ -95,54 +95,76 @@ void init_mse_database(struct mse_database *db) {
 	pthread_rwlock_init(&db->rwlock, 0);
 }
 
-#define MSE_OPAQUE_MAGIC 0xE0AEA1CE0AEA1CL
-struct mse_opaque {
-#ifdef MSE_OPAQUE_MAGIC
-	uint64_t magic;
-#endif
-
+struct mse_decoder_info {
 	pthread_rwlock_t per_listener_enrichment_rwlock;
 	json_t *per_listener_enrichment;
 	long max_time_offset;
 	long max_time_offset_warning_wait;
 	struct mse_config *mse_config;
+};
+
+#define MSE_OPAQUE_MAGIC 0xE0AEA1CE0AEA1CL
+struct mse_opaque {
+#ifdef MSE_OPAQUE_MAGIC
+	uint64_t magic;
+#endif
+	struct mse_decoder_info decoder_info;
 
 	rd_kafka_topic_t *rkt;
 };
+
+static int parse_decoder_info(struct mse_decoder_info *decoder_info,
+	json_t *config, const char **topic_name) {
+
+	json_error_t jerr;
+
+	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
+	json_int_t max_time_offset_warning_wait =
+		MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT;
+
+	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
+	                        "{s?O"
+	                        "s?I"
+	                        "s?I"
+	                        "s?s}",
+	                        MSE_ENRICHMENT_KEY,
+	                        &decoder_info->per_listener_enrichment,
+	                        MSE_MAX_TIME_OFFSET_WARNING_WAIT,
+	                        &max_time_offset_warning_wait,
+	                        MSE_MAX_TIME_OFFSET,
+	                        &max_time_offset,
+	                        MSE_TOPIC,topic_name);
+
+	if (0 != json_unpack_rc) {
+		rdlog(LOG_ERR, "Couldn't parse MSE listener config: %s",
+			jerr.text);
+		return json_unpack_rc;
+	}
+
+	decoder_info->max_time_offset = max_time_offset;
+	decoder_info->max_time_offset_warning_wait =
+		max_time_offset_warning_wait;
+
+	return json_unpack_rc;
+
+}
 
 static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
         json_t *config) {
 	assert(opaque);
 	assert(config);
-	json_error_t jerr;
-	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
-	json_int_t max_time_offset_warning_wait = MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT;
-	const char *topic_name = NULL;
 	char err[BUFSIZ];
+	const char *topic_name = NULL;
 
-	int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
-	                                    "{s?O"
-	                                    "s?I"
-	                                    "s?I"
-	                                    "s?s}",
-	                                    MSE_ENRICHMENT_KEY,
-	                                    &opaque->per_listener_enrichment,
-	                                    MSE_MAX_TIME_OFFSET_WARNING_WAIT,
-	                                    &max_time_offset_warning_wait,
-	                                    MSE_MAX_TIME_OFFSET,
-	                                    &max_time_offset,
-	                                    MSE_TOPIC,&topic_name);
+	const int rc = parse_decoder_info(&opaque->decoder_info,
+	config, &topic_name);
 
-	opaque->max_time_offset = max_time_offset;
-	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
-
-	if (0 != json_unpack_rc) {
-		rdlog(LOG_ERR, "Couldn't parse MSE listener config: %s", jerr.text);
-		return json_unpack_rc;
+	if (rc != 0) {
+		return rc;
 	}
 
 	if(!topic_name) {
-		topic_name = global_config.topic;
+		topic_name = default_topic_name();
 	}
 
 	opaque->rkt = new_rkt_global_config(topic_name,
@@ -154,6 +176,13 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 	}
 
 	return 0;
+}
+
+static void mse_decoder_info_destroy(struct mse_decoder_info *decoder_info) {
+	pthread_rwlock_destroy(&decoder_info->per_listener_enrichment_rwlock);
+	if (decoder_info->per_listener_enrichment) {
+		json_decref(decoder_info->per_listener_enrichment);
+	}
 }
 
 int mse_opaque_creator(json_t *config, void **_opaque) {
@@ -171,7 +200,7 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 #endif
 
 	const int rwlock_init_rc = pthread_rwlock_init(
-	                               &opaque->per_listener_enrichment_rwlock, NULL);
+	        &opaque->decoder_info.per_listener_enrichment_rwlock, NULL);
 	if (rwlock_init_rc != 0) {
 		strerror_r(errno, errbuf, sizeof(errbuf));
 		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
@@ -185,12 +214,13 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 	}
 
 	/// @TODO move global_config to static allocated buffer
-	opaque->mse_config = &global_config.mse;
+	opaque->decoder_info.mse_config = &global_config.mse;
 
 	return 0;
 
 err_rwlock:
-	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
+	pthread_rwlock_destroy(
+		&opaque->decoder_info.per_listener_enrichment_rwlock);
 _err:
 	free(opaque);
 	*_opaque = NULL;
@@ -198,17 +228,19 @@ _err:
 }
 
 static void mse_warn_timestamp(struct mse_data *data,
-                               struct mse_opaque *opaque,
+                               struct mse_decoder_info *decoder_info,
                                time_t now) {
 	json_t *value = NULL;
 	json_t *new_value = NULL;
 	json_int_t last_time_warned = 0;
-	struct mse_database *db = &opaque->mse_config->database;
+	struct mse_database *db = &decoder_info->mse_config->database;
 
 	pthread_mutex_lock(&db->warning_ht_lock);
-	if ((value = json_object_get(db->warning_ht, data->subscriptionName)) != NULL) {
+	if ((value = json_object_get(db->warning_ht, data->subscriptionName))
+								!= NULL) {
 		last_time_warned = json_integer_value(value);
-		if (now - last_time_warned >= opaque->max_time_offset_warning_wait) {
+		if (now - last_time_warned
+				>= decoder_info->max_time_offset_warning_wait) {
 			rdlog(LOG_WARNING, "Timestamp out of date");
 			data->timestamp_warnings++;
 			new_value = json_integer(now);
@@ -239,6 +271,7 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 	rd_kafka_topic_t *rkt_aux = NULL;
 	json_int_t max_time_offset_warning_wait = MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT;
 	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
+	struct mse_decoder_info *decoder_info = &opaque->decoder_info;
 
 	int unpack_rc = json_unpack_ex(config, &jerr, 0,
 	                                "{s?O"
@@ -270,12 +303,12 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		goto rkt_err;
 	}
 
-	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
-	swap_ptrs(opaque->per_listener_enrichment,enrichment_aux);
+	pthread_rwlock_wrlock(&decoder_info->per_listener_enrichment_rwlock);
+	swap_ptrs(decoder_info->per_listener_enrichment,enrichment_aux);
 	swap_ptrs(opaque->rkt,rkt_aux);
-	opaque->max_time_offset_warning_wait = max_time_offset_warning_wait;
-	opaque->max_time_offset = max_time_offset;
-	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+	decoder_info->max_time_offset_warning_wait = max_time_offset_warning_wait;
+	decoder_info->max_time_offset = max_time_offset;
+	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
 
 rkt_err:
 enrichment_err:
@@ -297,10 +330,7 @@ void mse_opaque_done(void *_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
-	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
-	if (opaque->per_listener_enrichment) {
-		json_decref(opaque->per_listener_enrichment);
-	}
+	mse_decoder_info_destroy(&opaque->decoder_info);
 	if (opaque->rkt) {
 		rd_kafka_topic_destroy(opaque->rkt);
 	}
@@ -563,8 +593,8 @@ static void enrich_mse_json(json_t *json, const json_t
 }
 
 static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
-        const char *client, struct mse_opaque *opaque, time_t now) {
-	struct mse_database *db = &opaque->mse_config->database;
+        const char *client, struct mse_decoder_info *decoder_info, time_t now) {
+	struct mse_database *db = &decoder_info->mse_config->database;
 	struct mse_array *notifications = NULL;
 	size_t i;
 	assert(bsize);
@@ -587,7 +617,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 	}
 
 	pthread_rwlock_rdlock(&db->rwlock);
-	pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
+	pthread_rwlock_rdlock(&decoder_info->per_listener_enrichment_rwlock);
 
 	for (i = 0; i < notifications->size; ++i) {
 		struct mse_data *to = &notifications->data[i];
@@ -617,16 +647,16 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 			}
 		}
 
-		if (db && opaque->per_listener_enrichment) {
-			enrich_mse_json(to->json, opaque->per_listener_enrichment);
+		if (db && decoder_info->per_listener_enrichment) {
+			enrich_mse_json(to->json, decoder_info->per_listener_enrichment);
 		}
 
 		if (db && enrichment) {
 			enrich_mse_json(to->json, enrichment);
 		}
 
-		if (abs(to->timestamp - now) > opaque->max_time_offset) {
-			mse_warn_timestamp(to, opaque, now);
+		if (abs(to->timestamp - now) > decoder_info->max_time_offset) {
+			mse_warn_timestamp(to, decoder_info, now);
 		}
 
 		if (notifications->size > 1) {
@@ -653,7 +683,7 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		to->string_size = strlen(to->string);
 	}
 
-	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
 	pthread_rwlock_unlock(&db->rwlock);
 
 err:
@@ -677,8 +707,8 @@ void mse_decode(char *buffer, size_t buf_size,
 	}
 
 	time_t now = time(NULL);
-	struct mse_array *notifications = process_mse_buffer(buffer, buf_size, client,
-	                                  mse_opaque, now);
+	struct mse_array *notifications = process_mse_buffer(buffer, buf_size,
+					client, &mse_opaque->decoder_info, now);
 	free(buffer);
 
 	if (NULL == notifications)

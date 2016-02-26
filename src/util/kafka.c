@@ -59,6 +59,10 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	return ret;
 }
 
+const char *default_topic_name() {
+	return global_config.topic;
+}
+
 /**
 * Message delivery report callback.
 * Called once for each message.
