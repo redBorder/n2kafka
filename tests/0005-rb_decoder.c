@@ -1,7 +1,4 @@
-#include "rb_mse.c"
-
 #include "rb_json_tests.c"
-#include "rb_mse_tests.h"
 
 #include "../src/decoder/rb_http2k_decoder.c"
 #include "../src/listener/http.c"
