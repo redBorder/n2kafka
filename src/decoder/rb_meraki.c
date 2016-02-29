@@ -119,16 +119,19 @@ void meraki_database_done(struct meraki_database *db) {
     ENRICHMENT
 */
 
+struct meraki_decoder_info {
+	pthread_rwlock_t per_listener_enrichment_rwlock;
+	struct meraki_config *meraki_config;
+	json_t *per_listener_enrichment;
+};
+
 #define MERAKI_OPAQUE_MAGIC 0x3A10AEA1C
 struct meraki_opaque{
 #ifdef MERAKI_OPAQUE_MAGIC
 	uint64_t magic;
 #endif
 
-	pthread_rwlock_t per_listener_enrichment_rwlock;
-	struct meraki_config *meraki_config;
-	json_t *per_listener_enrichment;
-
+	struct meraki_decoder_info decoder_info;
 	rd_kafka_topic_t *rkt;
 };
 
@@ -140,39 +143,67 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 	return opaque;
 }
 
-static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t *config) {
-	assert(opaque);
-	assert(config);
+static int parse_meraki_decoder_info(
+			struct meraki_decoder_info *decoder_info,
+			const char **topic_name, json_t *config) {
 	json_error_t jerr;
-	const char *topic_name = NULL;
-	char err[BUFSIZ];
+	char errbuf[BUFSIZ];
 
-	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s:s}",
-		MERAKI_ENRICHMENT_KEY,&opaque->per_listener_enrichment,
-		CONFIG_MERAKI_TOPIC_KEY,&topic_name);
+	/// @TODO move global_config to static allocated buffer
+	decoder_info->meraki_config = &global_config.meraki;
+
+	const int rwlock_init_rc = pthread_rwlock_init(
+		&decoder_info->per_listener_enrichment_rwlock,NULL);
+	if(rwlock_init_rc != 0) {
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
+		return -1;
+	}
+
+	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s?s}",
+		MERAKI_ENRICHMENT_KEY,&decoder_info->per_listener_enrichment,
+		CONFIG_MERAKI_TOPIC_KEY,topic_name);
 
 	if(0!=json_unpack_rc) {
 		rdlog(LOG_ERR,"Can't unpack meraki config: %s",jerr.text);
+		pthread_rwlock_destroy(&decoder_info->per_listener_enrichment_rwlock);
 		return json_unpack_rc;
 	}
 
-	if(topic_name) {
-		opaque->rkt = new_rkt_global_config(topic_name,
-			rb_client_mac_partitioner,err,sizeof(err));
+	return 0;
+}
+
+static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t *config) {
+	assert(opaque);
+	assert(config);
+	const char *topic_name = NULL;
+	char err[BUFSIZ];
+
+	const int rc = parse_meraki_decoder_info(&opaque->decoder_info,
+		&topic_name, config);
+
+	if (rc != 0) {
+		return rc;
 	}
+
+	if(NULL == topic_name) {
+		topic_name = default_topic_name();
+	}
+
+	opaque->rkt = new_rkt_global_config(topic_name,
+		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
 		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
 		return -1;
 	}
 
-	return json_unpack_rc;
+	return rc;
 }
 
 int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	assert(config);
 	assert(_opaque);
-	char errbuf[BUFSIZ];
 
 	struct meraki_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
@@ -184,29 +215,14 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	opaque->magic = MERAKI_OPAQUE_MAGIC;
 #endif
 
-	const int rwlock_init_rc = pthread_rwlock_init(&opaque->per_listener_enrichment_rwlock,NULL);
-	if(rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
-		goto _err;
-	}
-
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,config);
 	if(per_listener_enrichment_rc != 0){
-		goto err_rwlock;
+		free(opaque);
+		*_opaque = NULL;
+		return -1;
 	}
 
-	/// @TODO move global_config to static allocated buffer
-	opaque->meraki_config = &global_config.meraki;
-
 	return 0;
-
-err_rwlock:
-	pthread_rwlock_destroy(&opaque->per_listener_enrichment_rwlock);
-_err:
-	free(opaque);
-	*_opaque = NULL;
-	return -1;
 }
 
 /// @TODO Join with meraki_opaque_creator
@@ -219,7 +235,7 @@ int meraki_opaque_reload(json_t *config,void *vopaque) {
 	const char *topic_name = NULL;
 	char err[BUFSIZ];
 
-	json_t *enrichment_aux = opaque->per_listener_enrichment;
+	json_t *enrichment_aux = opaque->decoder_info.per_listener_enrichment;
 	rd_kafka_topic_t *rkt_aux = NULL;
 
 	json_error_t jerr;
@@ -246,10 +262,10 @@ int meraki_opaque_reload(json_t *config,void *vopaque) {
 		goto rkt_err;
 	}
 
-	pthread_rwlock_wrlock(&opaque->per_listener_enrichment_rwlock);
-	swap_ptrs(opaque->per_listener_enrichment,enrichment_aux);
+	pthread_rwlock_wrlock(&opaque->decoder_info.per_listener_enrichment_rwlock);
+	swap_ptrs(opaque->decoder_info.per_listener_enrichment,enrichment_aux);
 	swap_ptrs(rkt_aux,opaque->rkt);
-	pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+	pthread_rwlock_unlock(&opaque->decoder_info.per_listener_enrichment_rwlock);
 
 	if(rkt_aux) {
 		rd_kafka_topic_destroy(rkt_aux);
@@ -262,14 +278,20 @@ enrichment_err:
 	return rc;
 }
 
+static void meraki_decoder_info_destructor(struct meraki_decoder_info *decoder_info) {
+	if(decoder_info->per_listener_enrichment) {
+		json_decref(decoder_info->per_listener_enrichment);
+	}
+}
+
 void meraki_opaque_destructor(void *_opaque) {
 	struct meraki_opaque *opaque = _opaque;
+
 #ifdef MERAKI_OPAQUE_MAGIC
 	assert(MERAKI_OPAQUE_MAGIC == opaque->magic);
 #endif
-	if(opaque->per_listener_enrichment) {
-		json_decref(opaque->per_listener_enrichment);
-	}
+
+	meraki_decoder_info_destructor(&opaque->decoder_info);
 
 	if (opaque->rkt) {
 		rd_kafka_topic_destroy(opaque->rkt);
@@ -417,11 +439,11 @@ static void extract_meraki_observation(struct kafka_message_array *msgs,size_t i
 	save_kafka_msg_in_array(msgs,buf,strlen(buf),NULL);
 }
 
-static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_opaque *opaque) {
+static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_decoder_info *decoder_info) {
 	assert(json);
-	assert(opaque);
+	assert(decoder_info);
 
-	struct meraki_database *db = &opaque->meraki_config->database;
+	struct meraki_database *db = &decoder_info->meraki_config->database;
 	size_t i;
 	json_error_t jerr;
 	struct meraki_transversal_data meraki_transversal = {NULL,NULL};
@@ -462,10 +484,10 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 	}
 
 	if(enrichment_tmp){
-		pthread_rwlock_rdlock(&opaque->per_listener_enrichment_rwlock);
-		if(opaque->per_listener_enrichment)
-			meraki_transversal.enrichment = json_deep_copy(opaque->per_listener_enrichment);
-		pthread_rwlock_unlock(&opaque->per_listener_enrichment_rwlock);
+		pthread_rwlock_rdlock(&decoder_info->per_listener_enrichment_rwlock);
+		if(decoder_info->per_listener_enrichment)
+			meraki_transversal.enrichment = json_deep_copy(decoder_info->per_listener_enrichment);
+		pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
 		if(meraki_transversal.enrichment)
 			json_object_update_missing_copy(meraki_transversal.enrichment,enrichment_tmp);
 		else
@@ -479,7 +501,7 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 		return NULL;
 	}
 
-	json_object_update_missing_copy(meraki_transversal.enrichment,opaque->per_listener_enrichment);
+	json_object_update_missing_copy(meraki_transversal.enrichment,decoder_info->per_listener_enrichment);
 
 	const size_t msgs_size = json_array_size(observations);
 	struct kafka_message_array *msgs = new_kafka_message_array(msgs_size);
@@ -493,7 +515,7 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 }
 
 static struct kafka_message_array *process_meraki_buffer(const char *buffer,size_t bsize,
-        const char *client,struct meraki_opaque *opaque) {
+        const char *client, struct meraki_decoder_info *decoder_info) {
 	struct kafka_message_array *notifications = NULL;
 	assert(bsize);
 
@@ -505,7 +527,7 @@ static struct kafka_message_array *process_meraki_buffer(const char *buffer,size
 		goto err;
 	}
 
-	notifications = extract_meraki_data(json,opaque);
+	notifications = extract_meraki_data(json,decoder_info);
 	if(!notifications || notifications->size == 0) {
 		/* Nothing to do here */
 		free(notifications);
@@ -533,7 +555,9 @@ void meraki_decode(char *buffer,size_t buf_size,
 		client = "(unknown)";
 	}
 
-	struct kafka_message_array *notifications = process_meraki_buffer(buffer,buf_size,client,meraki_opaque);
+	struct kafka_message_array *notifications = process_meraki_buffer(buffer,
+		buf_size,client,&meraki_opaque->decoder_info);
+
 
 	if(notifications){
 		send_array_to_kafka(meraki_opaque->rkt,notifications);

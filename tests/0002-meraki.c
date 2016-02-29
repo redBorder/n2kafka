@@ -220,10 +220,10 @@ static void MerakiDecoder_valid_enrich() {
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque meraki_opaque;
-	memset(&meraki_opaque, 0, sizeof(meraki_opaque));
-	meraki_opaque.meraki_config = &meraki_config;
-	meraki_opaque.per_listener_enrichment = NULL;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info, 0, sizeof(decoder_info));
+	decoder_info.meraki_config = &meraki_config;
+	decoder_info.per_listener_enrichment = NULL;
 
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,
 	                               strlen(MERAKI_SECRETS_IN), 0, &jerr);
@@ -235,7 +235,7 @@ static void MerakiDecoder_valid_enrich() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", &meraki_opaque);
+	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -263,10 +263,10 @@ static void MerakiDecoder_novalid_enrich() {
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque meraki_opaque;
-	memset(&meraki_opaque, 0, sizeof(meraki_opaque));
-	meraki_opaque.meraki_config = &meraki_config;
-	meraki_opaque.per_listener_enrichment = NULL;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info, 0, sizeof(decoder_info));
+	decoder_info.meraki_config = &meraki_config;
+	decoder_info.per_listener_enrichment = NULL;
 
 	json_t *meraki_secrets = json_loadb(MERAKI_SECRETS_OUT, strlen(MERAKI_SECRETS_OUT), 0, &jerr);
 	assert(meraki_secrets);
@@ -276,7 +276,7 @@ static void MerakiDecoder_novalid_enrich() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	                        strlen(MERAKI_MSG), "127.0.0.1", &meraki_opaque);
+	                        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	assert(0==notifications_array);
@@ -291,10 +291,10 @@ static void MerakiDecoder_empty_observations() {
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque meraki_opaque;
-	memset(&meraki_opaque, 0, sizeof(meraki_opaque));
-	meraki_opaque.meraki_config = &meraki_config;
-	meraki_opaque.per_listener_enrichment = NULL;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info, 0, sizeof(decoder_info));
+	decoder_info.meraki_config = &meraki_config;
+	decoder_info.per_listener_enrichment = NULL;
 
 	json_t *meraki_secrets = json_loadb(MERAKI_SECRETS_IN, strlen(MERAKI_SECRETS_IN), 0, &jerr);
 	assert(meraki_secrets);
@@ -304,7 +304,7 @@ static void MerakiDecoder_empty_observations() {
 
 	char *aux = strdup(MERAKI_EMPTY_OBSERVATIONS_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	                        strlen(MERAKI_EMPTY_OBSERVATIONS_MSG), "127.0.0.1", &meraki_opaque);
+	                        strlen(MERAKI_EMPTY_OBSERVATIONS_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	assert(0==notifications_array);
@@ -375,20 +375,22 @@ static const struct checkdata check3_listener_enrich = {
 
 static void MerakiDecoder_valid_enrich_per_listener() {
 	size_t i;
+	const char *topic_name = NULL;
 	json_error_t jerr;
 
 	struct meraki_config meraki_config;
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque *meraki_opaque;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info,0,sizeof(decoder_info));
 	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
 	                                NULL);
 	assert(config_str);
-	meraki_opaque_creator(config_str, (void **)&meraki_opaque);
-	assert(meraki_opaque->per_listener_enrichment);
+	parse_meraki_decoder_info(&decoder_info, &topic_name, config_str);
+	assert(decoder_info.per_listener_enrichment);
 	// Workaround
-	meraki_opaque->meraki_config = &meraki_config;
+	decoder_info.meraki_config = &meraki_config;
 
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,
 	                               strlen(MERAKI_SECRETS_IN), 0, &jerr);
@@ -400,7 +402,7 @@ static void MerakiDecoder_valid_enrich_per_listener() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", meraki_opaque);
+	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -419,7 +421,7 @@ static void MerakiDecoder_valid_enrich_per_listener() {
 		free(notifications_array->msgs[i].payload);
 	free(notifications_array);
 
-	meraki_opaque_destructor(meraki_opaque);
+	meraki_decoder_info_destructor(&decoder_info);
 	json_decref(config_str);
 	meraki_database_done(&meraki_config.database);
 }
@@ -479,6 +481,7 @@ static const struct checkdata check_default3 = {
 };
 
 static void MerakiDecoder_default_secret_hit() {
+	const char *topic_name = NULL;
 	size_t i;
 	json_error_t jerr;
 
@@ -486,14 +489,15 @@ static void MerakiDecoder_default_secret_hit() {
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque *meraki_opaque;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info, 0, sizeof(decoder_info));
 	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
 	                                NULL);
 	assert(config_str);
-	meraki_opaque_creator(config_str, (void **)&meraki_opaque);
-	assert(meraki_opaque->per_listener_enrichment);
+	parse_meraki_decoder_info(&decoder_info,&topic_name,config_str);
+	assert(decoder_info.per_listener_enrichment);
 	// Workaround
-	meraki_opaque->meraki_config = &meraki_config;
+	decoder_info.meraki_config = &meraki_config;
 
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_DEFAULT_IN,
 	                               strlen(MERAKI_SECRETS_DEFAULT_IN), 0, &jerr);
@@ -505,7 +509,7 @@ static void MerakiDecoder_default_secret_hit() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", meraki_opaque);
+	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -524,12 +528,13 @@ static void MerakiDecoder_default_secret_hit() {
 		free(notifications_array->msgs[i].payload);
 	free(notifications_array);
 
-	meraki_opaque_destructor(meraki_opaque);
+	meraki_decoder_info_destructor(&decoder_info);
 	json_decref(config_str);
 	meraki_database_done(&meraki_config.database);
 }
 
 static void MerakiDecoder_default_secret_miss() {
+	const char *topic = NULL;
 	size_t i;
 	json_error_t jerr;
 
@@ -537,14 +542,15 @@ static void MerakiDecoder_default_secret_miss() {
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_opaque *meraki_opaque;
+	struct meraki_decoder_info decoder_info;
+	memset(&decoder_info, 0, sizeof(decoder_info));
 	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
 	                                NULL);
 	assert(config_str);
-	meraki_opaque_creator(config_str, (void **)&meraki_opaque);
-	assert(meraki_opaque->per_listener_enrichment);
+	parse_meraki_decoder_info(&decoder_info,&topic,config_str);
+	assert(decoder_info.per_listener_enrichment);
 	// Workaround
-	meraki_opaque->meraki_config = &meraki_config;
+	decoder_info.meraki_config = &meraki_config;
 
 	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_DEFAULT_OUT,
 	                               strlen(MERAKI_SECRETS_DEFAULT_OUT), 0, &jerr);
@@ -556,7 +562,7 @@ static void MerakiDecoder_default_secret_miss() {
 
 	char *aux = strdup(MERAKI_MSG);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", meraki_opaque);
+	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
 	free(aux);
 
 	static const struct checkdata *checkdata_array[] = {
@@ -575,7 +581,7 @@ static void MerakiDecoder_default_secret_miss() {
 		free(notifications_array->msgs[i].payload);
 	free(notifications_array);
 
-	meraki_opaque_destructor(meraki_opaque);
+	meraki_decoder_info_destructor(&decoder_info);
 	json_decref(config_str);
 	meraki_database_done(&meraki_config.database);
 }
