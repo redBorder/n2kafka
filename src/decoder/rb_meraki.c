@@ -73,6 +73,8 @@ static const char MERAKI_LOCATION_LNG_KEY[] = "lng";
 static const char MERAKI_CLIENT_LATLON_DESTINATION_KEY[] = "client_latlong";
 static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
 
+static const long LOCATION_WARNING_THRESHOLD_S = 600;
+
 /* 
     VALIDATING MERAKI SECRET
 */
@@ -332,14 +334,65 @@ static void enrich_meraki_observation(json_t *observation,
 	}
 }
 
+static int transform_meraki_observation_location(json_t *observation) {
+	double location_lat = 0,location_lon = 0;
+	json_error_t jerr;
+	char buf[BUFSIZ];
+	json_t *location = json_object_get(observation, MERAKI_LOCATION_KEY);
+	static pthread_mutex_t last_warning_timestamp_mutex =
+						PTHREAD_MUTEX_INITIALIZER;
+	static volatile double last_warning_timestamp = 0;
+
+	if (NULL == location) {
+		/* Nothing to do, there is no location information */
+		return 0;
+	}
+
+	const int unpack_rc = json_unpack_ex(location,&jerr,0,
+		"{"
+			"s?f,"  /* lat */
+			"s?f"   /* long */
+		"}",
+		MERAKI_LOCATION_LAT_KEY,&location_lat,
+		MERAKI_LOCATION_LNG_KEY,&location_lon
+	);
+
+	/* Whatever is right or not, we don't want it in output str */
+	json_object_del(observation, MERAKI_LOCATION_KEY);
+
+	if (unpack_rc != 0) {
+		time_t now = time(NULL);
+		pthread_mutex_lock(&last_warning_timestamp_mutex);
+		const double elapsed = difftime(now,last_warning_timestamp);
+		const int warn = elapsed > 600;
+		if (warn) {
+			last_warning_timestamp = now;
+		}
+		pthread_mutex_unlock(&last_warning_timestamp_mutex);
+
+		if (warn) {
+			rdlog(LOG_ERR, "Error extracting location: %s",
+				jerr.text);
+		}
+	}
+
+	if(0!=double_cmp(0,location_lat) && 0!=double_cmp(0,location_lon)) {
+		snprintf(buf,sizeof(buf),"%.5f,%.5f",location_lat,location_lon);
+		json_t *client_latlon = json_string(buf);
+		json_object_set_new(observation,
+			MERAKI_CLIENT_LATLON_DESTINATION_KEY,client_latlon);
+	}
+
+	return 0;
+}
+
 /* transform meraki observation in our suitable keys/values */
 static void transform_meraki_observation(json_t *observation,
                            struct meraki_transversal_data *transversal_data) {
 	json_error_t jerr;
-	
-	json_t *src=NULL,*client_os = NULL,*client_mac=NULL,*client_mac_vendor=NULL,
-	       *timestamp=NULL,*client_rssi_num=NULL,*wireless_id=NULL;
-	double location_lat=0,location_lon=0;
+	json_t *src=NULL,*client_os = NULL,*client_mac=NULL,
+		*client_mac_vendor=NULL, *timestamp=NULL,*client_rssi_num=NULL,
+		*wireless_id=NULL;
 
 	/* Unused */
 	json_object_del(observation,MERAKI_SEEN_TIME_KEY);
@@ -360,10 +413,6 @@ static void transform_meraki_observation(json_t *observation,
 	 		"s:o," /* timestamp */
 	 		"s?o," /* client_rssi_num */
 	 		"s?o," /* ssid */
-	 		"s?{"  /* location */
-	 			"s?f,"  /* lat */
-	 			"s?f"   /* long */
-	 		"}"
 	 	"}",
 	 	MERAKI_SRC_ORIGINAL_KEY,&src,
 	 	MERAKI_CLIENT_OS_ORIGINAL_KEY,&client_os,
@@ -371,10 +420,7 @@ static void transform_meraki_observation(json_t *observation,
 		MERAKI_CLIENT_MAC_VENDOR_ORIGINAL_KEY,&client_mac_vendor,
 		MERAKI_TIMESTAMP_ORIGINAL_KEY,&timestamp,
 		MERAKI_CLIENT_RSSI_NUM_ORIGINAL_KEY,&client_rssi_num,
-		MERAKI_WIRELESS_ID_ORIGINAL_KEY,&wireless_id,
-		MERAKI_LOCATION_KEY,
-			MERAKI_LOCATION_LAT_KEY,&location_lat,
-			MERAKI_LOCATION_LNG_KEY,&location_lon
+		MERAKI_WIRELESS_ID_ORIGINAL_KEY,&wireless_id
 	 );
 
 	if(unpack_rc != 0) {
@@ -397,14 +443,7 @@ static void transform_meraki_observation(json_t *observation,
 		json_object_del(observation,MERAKI_SRCv6_ORIGINAL_KEY);
 	}
 
-	if(0!=double_cmp(0,location_lat) && 0!=double_cmp(0,location_lon)) {
-		char buf[BUFSIZ];
-		snprintf(buf,sizeof(buf),"%.5f,%.5f",location_lat,location_lon);
-		json_t *client_latlon = json_string(buf);
-		json_object_set_new(observation,MERAKI_CLIENT_LATLON_DESTINATION_KEY,client_latlon);
-	}
-
-	json_object_del(observation,MERAKI_LOCATION_KEY);
+	transform_meraki_observation_location(observation);
 
 	rename_key_if_exists(observation,client_os,
 	        MERAKI_CLIENT_OS_ORIGINAL_KEY,MERAKI_CLIENT_OS_DESTINATION_KEY);
