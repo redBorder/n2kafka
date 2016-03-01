@@ -1,8 +1,4 @@
-#include <microhttpd.h>
-
-#include "../src/decoder/rb_meraki.c"
-
-#include "rb_json_tests.c"
+#include "rb_meraki_tests.h"
 
 static const char MERAKI_MSG[] =
   // *INDENT-OFF*
@@ -210,64 +206,6 @@ static const struct checkdata check2 = {
 static const struct checkdata check3 = {
 	.size = sizeof(checks3) / sizeof(checks3[0]), .checks = checks3
 };
-
-
-static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
-		const char *msg, const struct checkdata_array *checkdata) {
-	size_t i;
-	const char *topic_name = NULL;
-	json_error_t jerr;
-	struct meraki_config meraki_config;
-	struct meraki_decoder_info decoder_info;
-	json_t *config = NULL;
-
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	memset(&decoder_info,0,sizeof(decoder_info));
-
-	if (config_str) {
-		config = json_loads(config_str, 0, NULL);
-		assert(config);
-		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
-		assert(decoder_info.per_listener_enrichment);
-	}
-
-	// Workaround
-	decoder_info.meraki_config = &meraki_config;
-
-	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
-									&jerr);
-	assert(meraki_secrets_array);
-
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets_array);
-
-	assert(parse_rc == 0);
-	json_decref(meraki_secrets_array);
-
-	char *aux = strdup(msg);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(
-		aux, strlen(msg), "127.0.0.1", &decoder_info);
-	free(aux);
-
-	if (checkdata) {
-		rb_assert_json_array(notifications_array->msgs,
-		                     notifications_array->count, checkdata);
-
-		for (i = 0; i < notifications_array->count; ++i)
-			free(notifications_array->msgs[i].payload);
-		free(notifications_array);
-	} else {
-		assert(0==notifications_array);
-	}
-
-	meraki_decoder_info_destructor(&decoder_info);
-	if (config) {
-		json_decref(config);
-	}
-	meraki_database_done(&meraki_config.database);
-}
 
 static void MerakiDecoder_valid_enrich() {
 	static const struct checkdata *checkdata_array[] = {
