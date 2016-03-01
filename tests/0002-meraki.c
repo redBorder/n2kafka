@@ -156,7 +156,7 @@ static const char MERAKI_SECRETS_DEFAULT_OUT[] = \
 	"}";
   // *INDENT-ON*
 
-static const struct checkdata_value checks1[] = {
+CHECKDATA(check1,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.38"},
@@ -167,9 +167,9 @@ static const struct checkdata_value checks1[] = {
 	{.key = "client_rssi_num", .value = "0"},
 	{.key = "client_latlong", .value = "37.42205,-122.20766"},
 	{.key = "wireless_id", .value = "Trinity"}
-};
+);
 
-static const struct checkdata_value checks2[] = {
+CHECKDATA(check2,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = NULL},
@@ -180,9 +180,9 @@ static const struct checkdata_value checks2[] = {
 	{.key = "client_rssi_num", .value = "13"},
 	{.key = "client_latlong", .value = "37.42201,-122.20751"},
 	{.key = "wireless_id", .value = NULL}
-};
+);
 
-static const struct checkdata_value checks3[] = {
+CHECKDATA(check3,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.41"},
@@ -193,30 +193,10 @@ static const struct checkdata_value checks3[] = {
 	{.key = "client_rssi_num", .value = "0"},
 	{.key = "client_latlong", .value = "37.42206,-122.20763"},
 	{.key = "wireless_id", .value = "Trinity"}
-};
-
-static const struct checkdata check1 = {
-	.size = sizeof(checks1) / sizeof(checks1[0]), .checks = checks1
-};
-
-static const struct checkdata check2 = {
-	.size = sizeof(checks2) / sizeof(checks2[0]), .checks = checks2
-};
-
-static const struct checkdata check3 = {
-	.size = sizeof(checks3) / sizeof(checks3[0]), .checks = checks3
-};
+);
 
 static void MerakiDecoder_valid_enrich() {
-	static const struct checkdata *checkdata_array[] = {
-		&check1, &check2, &check3
-	};
-
-	static const struct checkdata_array checkdata = {
-		.checks = checkdata_array,
-		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
-	};
-
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG, &checkdata);
 }
@@ -233,7 +213,7 @@ static void MerakiDecoder_empty_observations() {
 		MERAKI_EMPTY_OBSERVATIONS_MSG, checkdata);
 }
 
-static const struct checkdata_value checks1_listener_enrich[] = {
+CHECKDATA(check1_listener_enrich,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.38"},
@@ -246,9 +226,9 @@ static const struct checkdata_value checks1_listener_enrich[] = {
 	{.key = "wireless_id", .value = "Trinity"},
 	{.key = "a", .value = "1"},
 	{.key = "b", .value = "c"}
-};
+);
 
-static const struct checkdata_value checks2_listener_enrich[] = {
+CHECKDATA(check2_listener_enrich,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = NULL},
@@ -261,9 +241,9 @@ static const struct checkdata_value checks2_listener_enrich[] = {
 	{.key = "wireless_id", .value = NULL},
 	{.key = "a", .value = "1"},
 	{.key = "b", .value = "c"}
-};
+);
 
-static const struct checkdata_value checks3_listener_enrich[] = {
+CHECKDATA(check3_listener_enrich,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.41"},
@@ -276,39 +256,17 @@ static const struct checkdata_value checks3_listener_enrich[] = {
 	{.key = "wireless_id", .value = "Trinity"},
 	{.key = "a", .value = "1"},
 	{.key = "b", .value = "c"}
-};
-
-static const struct checkdata check1_listener_enrich = {
-	.size = sizeof(checks1_listener_enrich) / sizeof(checks1_listener_enrich[0]),
-	.checks = checks1_listener_enrich
-};
-
-static const struct checkdata check2_listener_enrich = {
-	.size = sizeof(checks2_listener_enrich) / sizeof(checks2_listener_enrich[0]),
-	.checks = checks2_listener_enrich
-};
-
-static const struct checkdata check3_listener_enrich = {
-	.size = sizeof(checks3_listener_enrich) / sizeof(checks3_listener_enrich[0]),
-	.checks = checks3_listener_enrich
-};
+);
 
 static void MerakiDecoder_valid_enrich_per_listener() {
-	static const struct checkdata *checkdata_array[] = {
-		&check1_listener_enrich, &check2_listener_enrich,
-		&check3_listener_enrich
-	};
-
-	static const struct checkdata_array checkdata = {
-		.checks = checkdata_array,
-		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
-	};
+	CHECKDATA_ARRAY(checkdata, &check1_listener_enrich,
+		&check2_listener_enrich, &check3_listener_enrich);
 
 	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
 		MERAKI_SECRETS_IN, MERAKI_MSG, &checkdata);
 }
 
-static const struct checkdata_value default1[] = {
+CHECKDATA(check_default1,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.38"},
@@ -320,9 +278,9 @@ static const struct checkdata_value default1[] = {
 	{.key = "client_latlong", .value = "37.42205,-122.20766"},
 	{.key = "wireless_id", .value = "Trinity"},
 	{.key = "sensor_name", .value = "default"}
-};
+);
 
-static const struct checkdata_value default2[] = {
+CHECKDATA(check_default2,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = NULL},
@@ -334,9 +292,9 @@ static const struct checkdata_value default2[] = {
 	{.key = "client_latlong", .value = "37.42201,-122.20751"},
 	{.key = "wireless_id", .value = NULL},
 	{.key = "sensor_name", .value = "default"}
-};
+);
 
-static const struct checkdata_value default3[] = {
+CHECKDATA(check_default3,
 	{.key = "type", .value = "meraki"},
 	{.key = "wireless_station", .value = "55:55:55:55:55:55"},
 	{.key = "src", .value = "10.1.3.41"},
@@ -348,43 +306,19 @@ static const struct checkdata_value default3[] = {
 	{.key = "client_latlong", .value = "37.42206,-122.20763"},
 	{.key = "wireless_id", .value = "Trinity"},
 	{.key = "sensor_name", .value = "default"}
-};
-
-static const struct checkdata check_default1 = {
-	.size = sizeof(default1) / sizeof(default1[0]), .checks = default1
-};
-
-static const struct checkdata check_default2 = {
-	.size = sizeof(default2) / sizeof(default2[0]), .checks = default2
-};
-
-static const struct checkdata check_default3 = {
-	.size = sizeof(default3) / sizeof(default3[0]), .checks = default3
-};
+);
 
 static void MerakiDecoder_default_secret_hit() {
-	static const struct checkdata *checkdata_array[] = {
-		&check1_listener_enrich, &check2_listener_enrich, &check3_listener_enrich
-	};
-
-	static const struct checkdata_array checkdata = {
-		.checks = checkdata_array,
-		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
-	};
+	CHECKDATA_ARRAY(checkdata, &check1_listener_enrich,
+		&check2_listener_enrich, &check3_listener_enrich);
 
 	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
 		MERAKI_SECRETS_DEFAULT_IN, MERAKI_MSG, &checkdata);
 }
 
 static void MerakiDecoder_default_secret_miss() {
-	static const struct checkdata *checkdata_array[] = {
-		&check_default1, &check_default2, &check_default3
-	};
-
-	static const struct checkdata_array checkdata = {
-		.checks = checkdata_array,
-		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
-	};
+	CHECKDATA_ARRAY(checkdata,
+		&check_default1, &check_default2, &check_default3);
 
 	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
 		MERAKI_SECRETS_DEFAULT_OUT, MERAKI_MSG, &checkdata);

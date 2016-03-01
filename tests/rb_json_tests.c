@@ -60,10 +60,28 @@ struct checkdata {
 	const struct checkdata_value *checks;
 };
 
+#define CHECKDATA(name,...) \
+	static const struct checkdata_value name##checks[] = { \
+		__VA_ARGS__ \
+	}; \
+	static const struct checkdata name = { \
+		.size = sizeof(name##checks) / sizeof(name##checks[0]), \
+		.checks = name##checks \
+	}
+
 struct checkdata_array {
 	size_t size;
 	const struct checkdata **checks;
 };
+
+#define CHECKDATA_ARRAY(name,...) \
+	static const struct checkdata *name##elms[] = { \
+		__VA_ARGS__ \
+	}; \
+	static const struct checkdata_array name = { \
+		.checks = name##elms, \
+		.size = sizeof(name##elms) / sizeof(name##elms[0]), \
+	}
 
 static void assertEqual(const int64_t a, const int64_t b, const char *key,
                         const char *src) __attribute__((unused));

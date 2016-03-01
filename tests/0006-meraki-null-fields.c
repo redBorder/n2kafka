@@ -116,7 +116,7 @@ static const char MERAKI_SECRETS[] = \
 	"}";
   // *INDENT-ON*
 
-static const struct checkdata_value checks1[] = {
+CHECKDATA(check1,
     {.key = "type", .value = "meraki"},
     {.key = "client_mac", .value="00:00:5f:f1:cd:8d"},
     {.key = "client_mac_vendor", .value = "SamsungE"},
@@ -125,9 +125,9 @@ static const struct checkdata_value checks1[] = {
     {.key = "client_rssi_num", .value ="34"},
     {.key = "os", .value = NULL},
     {.key = "location", .value = NULL},
-};
+);
 
-static const struct checkdata_value checks2[] = {
+CHECKDATA(check2,
     {.key = "type", .value = "meraki"},
     {.key = "client_mac", .value="00:00:c5:46:53:10"},
     {.key = "client_mac_vendor", .value = "HonHaiPr"},
@@ -136,9 +136,9 @@ static const struct checkdata_value checks2[] = {
     {.key = "client_rssi_num", .value ="14"},
     {.key = "os", .value = NULL},
     {.key = "location", .value = NULL},
-};
+);
 
-static const struct checkdata_value checks3[] = {
+CHECKDATA(check3,
     {.key = "type", .value = "meraki"},
     {.key = "client_mac", .value="00:00:51:1f:53:b0"},
     {.key = "client_mac_vendor", .value = "LiteonTe"},
@@ -147,19 +147,7 @@ static const struct checkdata_value checks3[] = {
     {.key = "client_rssi_num", .value ="14"},
     {.key = "os", .value = NULL},
     {.key = "location", .value = NULL},
-};
-
-static const struct checkdata check1 = {
-	.size = sizeof(checks1) / sizeof(checks1[0]), .checks = checks1
-};
-
-static const struct checkdata check2 = {
-	.size = sizeof(checks2) / sizeof(checks2[0]), .checks = checks2
-};
-
-static const struct checkdata check3 = {
-	.size = sizeof(checks3) / sizeof(checks3[0]), .checks = checks3
-};
+);
 
 static void MerakiDecoder_nulls() {
 	static const struct checkdata *checkdata_array[] = {
