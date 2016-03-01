@@ -49,8 +49,6 @@ static int str_equal(const char *str1, const char *str2) {
 	return 0 == strcmp(str1, str2);
 }
 
-#ifndef USE_DEPRECATED_STRUCTS
-
 struct checkdata_value {
 	const char *key;
 	json_type type;
@@ -164,5 +162,3 @@ static void rb_assert_json_array(const rd_kafka_message_t *msgs,
 		rb_assert_json_n(msgs[i].payload, payload_size, checkdata_array->checks[i]);
 	}
 }
-
-#endif
