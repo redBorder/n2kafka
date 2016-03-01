@@ -211,33 +211,65 @@ static const struct checkdata check3 = {
 	.size = sizeof(checks3) / sizeof(checks3[0]), .checks = checks3
 };
 
-/// @TODO join with others tests functions
-static void MerakiDecoder_valid_enrich() {
-	size_t i;
-	json_error_t jerr;
 
+static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
+		const char *msg, const struct checkdata_array *checkdata) {
+	size_t i;
+	const char *topic_name = NULL;
+	json_error_t jerr;
 	struct meraki_config meraki_config;
+	struct meraki_decoder_info decoder_info;
+	json_t *config = NULL;
+
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info, 0, sizeof(decoder_info));
-	decoder_info.meraki_config = &meraki_config;
-	decoder_info.per_listener_enrichment = NULL;
+	memset(&decoder_info,0,sizeof(decoder_info));
 
-	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,
-	                               strlen(MERAKI_SECRETS_IN), 0, &jerr);
+	if (config_str) {
+		config = json_loads(config_str, 0, NULL);
+		assert(config);
+		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
+		assert(decoder_info.per_listener_enrichment);
+	}
+
+	// Workaround
+	decoder_info.meraki_config = &meraki_config;
+
+	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
+									&jerr);
 	assert(meraki_secrets_array);
+
 	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
 	                     meraki_secrets_array);
+
 	assert(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
-	char *aux = strdup(MERAKI_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
+	char *aux = strdup(msg);
+	struct kafka_message_array *notifications_array = process_meraki_buffer(
+		aux, strlen(msg), "127.0.0.1", &decoder_info);
 	free(aux);
 
+	if (checkdata) {
+		rb_assert_json_array(notifications_array->msgs,
+		                     notifications_array->count, checkdata);
+
+		for (i = 0; i < notifications_array->count; ++i)
+			free(notifications_array->msgs[i].payload);
+		free(notifications_array);
+	} else {
+		assert(0==notifications_array);
+	}
+
+	meraki_decoder_info_destructor(&decoder_info);
+	if (config) {
+		json_decref(config);
+	}
+	meraki_database_done(&meraki_config.database);
+}
+
+static void MerakiDecoder_valid_enrich() {
 	static const struct checkdata *checkdata_array[] = {
 		&check1, &check2, &check3
 	};
@@ -247,70 +279,20 @@ static void MerakiDecoder_valid_enrich() {
 		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
 	};
 
-	rb_assert_json_array(notifications_array->msgs,
-	                     notifications_array->count, &checkdata);
-
-	for (i = 0; i < notifications_array->count; ++i)
-		free(notifications_array->msgs[i].payload);
-	free(notifications_array);
-
-	meraki_database_done(&meraki_config.database);
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG, &checkdata);
 }
 
 static void MerakiDecoder_novalid_enrich() {
-	json_error_t jerr;
-	struct meraki_config meraki_config;
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info, 0, sizeof(decoder_info));
-	decoder_info.meraki_config = &meraki_config;
-	decoder_info.per_listener_enrichment = NULL;
-
-	json_t *meraki_secrets = json_loadb(MERAKI_SECRETS_OUT, strlen(MERAKI_SECRETS_OUT), 0, &jerr);
-	assert(meraki_secrets);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets);
-	assert(parse_rc == 0);
-
-	char *aux = strdup(MERAKI_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	                        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
-	free(aux);
-
-	assert(0==notifications_array);
-
-	json_decref(meraki_secrets);
-	meraki_database_done(&meraki_config.database);
+	struct checkdata_array *checkdata = NULL;
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_OUT, MERAKI_MSG,
+								checkdata);
 }
 
 static void MerakiDecoder_empty_observations() {
-	json_error_t jerr;
-	struct meraki_config meraki_config;
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info, 0, sizeof(decoder_info));
-	decoder_info.meraki_config = &meraki_config;
-	decoder_info.per_listener_enrichment = NULL;
-
-	json_t *meraki_secrets = json_loadb(MERAKI_SECRETS_IN, strlen(MERAKI_SECRETS_IN), 0, &jerr);
-	assert(meraki_secrets);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets);
-	assert(parse_rc == 0);
-
-	char *aux = strdup(MERAKI_EMPTY_OBSERVATIONS_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	                        strlen(MERAKI_EMPTY_OBSERVATIONS_MSG), "127.0.0.1", &decoder_info);
-	free(aux);
-
-	assert(0==notifications_array);
-
-	json_decref(meraki_secrets);
-	meraki_database_done(&meraki_config.database);
+	struct checkdata_array *checkdata = NULL;
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_EMPTY_OBSERVATIONS_MSG, checkdata);
 }
 
 static const struct checkdata_value checks1_listener_enrich[] = {
@@ -374,39 +356,9 @@ static const struct checkdata check3_listener_enrich = {
 };
 
 static void MerakiDecoder_valid_enrich_per_listener() {
-	size_t i;
-	const char *topic_name = NULL;
-	json_error_t jerr;
-
-	struct meraki_config meraki_config;
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info,0,sizeof(decoder_info));
-	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
-	                                NULL);
-	assert(config_str);
-	parse_meraki_decoder_info(&decoder_info, &topic_name, config_str);
-	assert(decoder_info.per_listener_enrichment);
-	// Workaround
-	decoder_info.meraki_config = &meraki_config;
-
-	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_IN,
-	                               strlen(MERAKI_SECRETS_IN), 0, &jerr);
-	assert(meraki_secrets_array);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets_array);
-	assert(parse_rc == 0);
-	json_decref(meraki_secrets_array);
-
-	char *aux = strdup(MERAKI_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
-	free(aux);
-
 	static const struct checkdata *checkdata_array[] = {
-		&check1_listener_enrich, &check2_listener_enrich, &check3_listener_enrich
+		&check1_listener_enrich, &check2_listener_enrich,
+		&check3_listener_enrich
 	};
 
 	static const struct checkdata_array checkdata = {
@@ -414,16 +366,8 @@ static void MerakiDecoder_valid_enrich_per_listener() {
 		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
 	};
 
-	rb_assert_json_array(notifications_array->msgs,
-	                     notifications_array->count, &checkdata);
-
-	for (i = 0; i < notifications_array->count; ++i)
-		free(notifications_array->msgs[i].payload);
-	free(notifications_array);
-
-	meraki_decoder_info_destructor(&decoder_info);
-	json_decref(config_str);
-	meraki_database_done(&meraki_config.database);
+	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
+		MERAKI_SECRETS_IN, MERAKI_MSG, &checkdata);
 }
 
 static const struct checkdata_value default1[] = {
@@ -481,37 +425,6 @@ static const struct checkdata check_default3 = {
 };
 
 static void MerakiDecoder_default_secret_hit() {
-	const char *topic_name = NULL;
-	size_t i;
-	json_error_t jerr;
-
-	struct meraki_config meraki_config;
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info, 0, sizeof(decoder_info));
-	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
-	                                NULL);
-	assert(config_str);
-	parse_meraki_decoder_info(&decoder_info,&topic_name,config_str);
-	assert(decoder_info.per_listener_enrichment);
-	// Workaround
-	decoder_info.meraki_config = &meraki_config;
-
-	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_DEFAULT_IN,
-	                               strlen(MERAKI_SECRETS_DEFAULT_IN), 0, &jerr);
-	assert(meraki_secrets_array);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets_array);
-	assert(parse_rc == 0);
-	json_decref(meraki_secrets_array);
-
-	char *aux = strdup(MERAKI_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
-	free(aux);
-
 	static const struct checkdata *checkdata_array[] = {
 		&check1_listener_enrich, &check2_listener_enrich, &check3_listener_enrich
 	};
@@ -521,50 +434,11 @@ static void MerakiDecoder_default_secret_hit() {
 		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
 	};
 
-	rb_assert_json_array(notifications_array->msgs,
-	                     notifications_array->count, &checkdata);
-
-	for (i = 0; i < notifications_array->count; ++i)
-		free(notifications_array->msgs[i].payload);
-	free(notifications_array);
-
-	meraki_decoder_info_destructor(&decoder_info);
-	json_decref(config_str);
-	meraki_database_done(&meraki_config.database);
+	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
+		MERAKI_SECRETS_DEFAULT_IN, MERAKI_MSG, &checkdata);
 }
 
 static void MerakiDecoder_default_secret_miss() {
-	const char *topic = NULL;
-	size_t i;
-	json_error_t jerr;
-
-	struct meraki_config meraki_config;
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
-
-	struct meraki_decoder_info decoder_info;
-	memset(&decoder_info, 0, sizeof(decoder_info));
-	json_t *config_str = json_loads("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}", 0,
-	                                NULL);
-	assert(config_str);
-	parse_meraki_decoder_info(&decoder_info,&topic,config_str);
-	assert(decoder_info.per_listener_enrichment);
-	// Workaround
-	decoder_info.meraki_config = &meraki_config;
-
-	json_t *meraki_secrets_array = json_loadb(MERAKI_SECRETS_DEFAULT_OUT,
-	                               strlen(MERAKI_SECRETS_DEFAULT_OUT), 0, &jerr);
-	assert(meraki_secrets_array);
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-	                     meraki_secrets_array);
-	assert(parse_rc == 0);
-	json_decref(meraki_secrets_array);
-
-	char *aux = strdup(MERAKI_MSG);
-	struct kafka_message_array *notifications_array = process_meraki_buffer(aux,
-	        strlen(MERAKI_MSG), "127.0.0.1", &decoder_info);
-	free(aux);
-
 	static const struct checkdata *checkdata_array[] = {
 		&check_default1, &check_default2, &check_default3
 	};
@@ -574,16 +448,8 @@ static void MerakiDecoder_default_secret_miss() {
 		.size = sizeof(checkdata_array) / sizeof(checkdata_array[0]),
 	};
 
-	rb_assert_json_array(notifications_array->msgs,
-	                     notifications_array->count, &checkdata);
-
-	for (i = 0; i < notifications_array->count; ++i)
-		free(notifications_array->msgs[i].payload);
-	free(notifications_array);
-
-	meraki_decoder_info_destructor(&decoder_info);
-	json_decref(config_str);
-	meraki_database_done(&meraki_config.database);
+	MerakiDecoder_test_base("{\"enrichment\":{\"a\":1,\"b\":\"c\"}}",
+		MERAKI_SECRETS_DEFAULT_OUT, MERAKI_MSG, &checkdata);
 }
 
 int main() {
