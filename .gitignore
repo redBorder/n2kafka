@@ -25,6 +25,10 @@
 # Dependendes
 *.d
 
+# Coverage
+*.gcda
+*.gcno
+
 # mklove
 Makefile.config
 config.cache
@@ -34,7 +38,10 @@ config.log.old
 version.c
 
 # Tests
-tests/*.test
+/tests/*.test
+/tests/*.xml
+/tests/coverage.info
+/tests/out
 
 # Binary
 n2kafka

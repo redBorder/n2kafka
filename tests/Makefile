@@ -1,6 +1,6 @@
 # Makefile wrapper for expanding 0*.c glob.
 
-all test clean:
+all test clean coverage:
 	@echo "=================== SELFTESTS ======================="
 	@(export TEST_SRCS="`echo 0*.c`"; make -B -f Makefile.tests $@)
 

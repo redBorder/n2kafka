@@ -18,12 +18,21 @@ CFLAGS+=-I. -I./src/decoder -I./src/engine -I./src/util -I./src/listener
 
 include mklove/Makefile.base
 
-.PHONY: version.c tests
+.PHONY: version.c tests coverage
 
 version.c: 
 	@rm -f $@
 	@echo "const char *n2kafka_revision=\"`git describe --abbrev=6 --dirty --tags --always`\";" >> $@
 	@echo 'const char *n2kafka_version="1.0.0";' >> $@
+
+coverage: Makefile_config_bak := $(shell mktemp)
+coverage:
+	# Need to disable optimizations
+	@cp Makefile.config ${Makefile_config_bak}
+	@sed -i 's%\-O[1-9s]%\-O0%g' Makefile.config
+	-(CPPFLAGS='--coverage' LDFLAGS='--coverage' make && cd tests && make coverage)
+	@cp ${Makefile_config_bak} Makefile.config
+	@-rm ${Makefile_config_bak}
 
 install: bin-install
 
