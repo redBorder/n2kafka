@@ -627,6 +627,7 @@ struct rb_session {
 		/// current kafka message key offset
 		int current_key_offset;
 		size_t current_key_length;
+		int valid;
 	} message;
 
 	/// Message list in this call to decode()
@@ -642,7 +643,7 @@ struct rb_session {
 static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 	sess->message.current_key_offset = CURRENT_KEY_OFFSET_NOT_SETTED;
 	sess->message.current_key_length = 0;
-
+	sess->message.valid = 1;
 }
 
 #define GEN_AND_RETURN(func)                         \
@@ -696,11 +697,17 @@ static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 		return 0;                                 \
 	}
 
+#define SKIP_IF_MESSAGE_NOT_VALID(sess) \
+	if(!(sess)->message.valid) { \
+		return 1;               \
+	}
+
 static int rb_parse_null(void * ctx)
 {
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%s as partition key","null");
 	GEN_OR_SKIP(sess,yajl_gen_null(g));
 }
@@ -710,6 +717,7 @@ static int rb_parse_boolean(void * ctx, int boolean)
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%s as partition key",
 		boolean?"true":"false");
 	GEN_OR_SKIP(sess,yajl_gen_bool(g, boolean));
@@ -720,6 +728,7 @@ static int rb_parse_number(void * ctx, const char * s, size_t l)
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"%.*s as partition key",
 		(int)l,s);
 	GEN_OR_SKIP(sess,yajl_gen_number(g, s, l));
@@ -731,6 +740,8 @@ static int rb_parse_string(void * ctx, const unsigned char * stringVal,
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
+
 	if(sess->in_partition_key) {
 		const unsigned char *buffer = NULL;
 		size_t buffer_len = 0;
@@ -740,7 +751,7 @@ static int rb_parse_string(void * ctx, const unsigned char * stringVal,
 			rdlog(LOG_ERR,
 				"Partition key already present (%s key twice?)"
 				, sess->kafka_partitioner_key);
-			return 0;
+			sess->message.valid = 0;
 		}
 
 		const int get_buf_rc = yajl_gen_get_buf(g,
@@ -766,6 +777,8 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 	char buf[stringLen+1];
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
+
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,
 		"Searching for kafka partition key while scanning json key %.*s",
@@ -812,11 +825,38 @@ static int rb_parse_start_map(void * ctx)
 {
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
+
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object as partitioner key");
 
 	++sess->object_array_parsing_stack;
+	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
 	GEN_OR_SKIP(sess,yajl_gen_map_open(g));
+}
+
+static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
+						rd_kafka_message_t *msg) {
+	const int message_key_offset = sess->message.current_key_offset;
+	memset(msg,0,sizeof(*msg));
+
+	msg->partition = RD_KAFKA_PARTITION_UA;
+
+	const unsigned char * buf;
+	yajl_gen_get_buf(sess->gen, &buf, &msg->len);
+
+	/// @TODO do not copy, steal the buffer!
+	msg->payload = strdup((const char *)buf);
+	if(NULL == msg->payload) {
+		rdlog(LOG_ERR,"Unable to duplicate buffer");
+		return 0;
+	}
+
+	if(message_key_offset !=  CURRENT_KEY_OFFSET_NOT_SETTED) {
+		msg->key = (char *)msg->payload + message_key_offset;
+		msg->key_len = sess->message.current_key_length;
+	}
+
+	return 1;
 }
 
 static int rb_parse_end_map(void * ctx)
@@ -831,38 +871,23 @@ static int rb_parse_end_map(void * ctx)
 
 	--sess->object_array_parsing_stack;
 	if(0 == sess->object_array_parsing_stack) {
-		const int message_key_offset = sess->message.current_key_offset;
-		rd_kafka_message_t msg;
-		memset(&msg,0,sizeof(msg));
-
-		/* Ending message, we need to add enrichment values */
-		gen_jansson_object(g,sess->client_enrichment);
-
-		msg.partition = RD_KAFKA_PARTITION_UA;
-
-		const unsigned char * buf;
-		yajl_gen_map_close(g);
-		yajl_gen_get_buf(sess->gen, &buf, &msg.len);
-
-		/// @TODO do not copy, steal the buffer!
-		msg.payload = strdup((const char *)buf);
-		if(NULL == msg.payload) {
-			rdlog(LOG_ERR,"Unable to duplicate buffer");
-			return 0;
+		if (sess->message.valid) {
+			rd_kafka_message_t msg;
+			/* Ending message, we need to add enrichment values */
+			gen_jansson_object(g,sess->client_enrichment);
+			yajl_gen_map_close(g);
+			rb_parse_generate_rdkafka_message(sess,&msg);
+			rd_kafka_msg_q_add(&sess->msg_queue,&msg);
 		}
 
-		if(message_key_offset !=  CURRENT_KEY_OFFSET_NOT_SETTED) {
-			msg.key = (char *)msg.payload + message_key_offset;
-			msg.key_len = sess->message.current_key_length;
-		}
-
-		rd_kafka_msg_q_add(&sess->msg_queue,&msg);
 		memset(&sess->message,0,sizeof(sess->message));
 		rb_session_reset_kafka_msg(sess);
-		
+
+		yajl_gen_reset(sess->gen,NULL);
 		yajl_gen_clear(sess->gen);
 		return 1;
 	} else {
+		SKIP_IF_MESSAGE_NOT_VALID(sess)
 		GEN_OR_SKIP(sess,yajl_gen_map_close(g));
 	}
 }
