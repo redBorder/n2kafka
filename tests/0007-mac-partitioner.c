@@ -11,7 +11,7 @@
 static const int32_t default_partition_cnt = 4;
 
 struct test_mac {
-	const char *mac;
+	const char mac[sizeof("00:00:00:00:00:00")];
 	int32_t idx;
 };
 
@@ -82,11 +82,12 @@ static void samples_test() {
 	}
 }
 
+/// Tests all mac lengths between 0 and mac_length+1
 static void invalid_mac_len_test() {
 	size_t i;
 	const rd_kafka_topic_t *rkt = NULL;
 	void *rkt_opaque = NULL, *msg_opaque = NULL;
-	char mac[sizeof(test_mac[0].mac) + 1];
+	char aux_mac[sizeof(test_mac[0].mac) + 1];
 	const size_t mac_len = strlen(test_mac[0].mac);
 
 	/// Test all sizes under right size
@@ -95,16 +96,16 @@ static void invalid_mac_len_test() {
 			continue;
 		}
 
-		mac[0] = '\0';
-		strncat(mac,test_mac[0].mac,i);
+		aux_mac[0] = '\0';
+		strncat(aux_mac,test_mac[0].mac,i);
 
 		if (i > mac_len) {
-			mac[mac_len] = '0';
-			mac[i] = '\0';
+			aux_mac[mac_len] = '0';
+			aux_mac[i] = '\0';
 		}
 
 		const int32_t result = mac_partitioner(rkt,
-		                mac, strlen(mac),
+		                aux_mac, strlen(aux_mac),
 		                default_partition_cnt,
 		                rkt_opaque, msg_opaque);
 
@@ -112,10 +113,43 @@ static void invalid_mac_len_test() {
 	}
 }
 
+/// Test introducing weird characters in all position of the mac
+static void invalid_mac_character() {
+	size_t i,c;
+	const rd_kafka_topic_t *rkt = NULL;
+	void *rkt_opaque = NULL, *msg_opaque = NULL;
+	char aux_mac[sizeof(test_mac[0].mac)];
+	aux_mac[0] = '\0';
+	strncat(aux_mac,test_mac[0].mac,sizeof(aux_mac));
+
+	const char buggy_chars[] = {'g', '?', '\0', ':'};
+
+	for (c = 0; c < sizeof(buggy_chars)/sizeof(buggy_chars[0]); ++c) {
+		for (i=0; i<strlen(aux_mac); ++i) {
+			if (aux_mac[i] == buggy_chars[c]) {
+				/* Already the same, this will not raise error*/
+				continue;
+			}
+			char aux = aux_mac[i];
+			aux_mac[i] = buggy_chars[c];
+
+			const int32_t result = mac_partitioner(rkt,
+			                aux_mac, strlen(aux_mac),
+			                default_partition_cnt,
+			                rkt_opaque, msg_opaque);
+
+			aux_mac[i] = aux;
+
+			assert(100 == result);
+		}
+	}
+}
+
 int main() {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(samples_test),
 		cmocka_unit_test(invalid_mac_len_test),
+		cmocka_unit_test(invalid_mac_character),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
