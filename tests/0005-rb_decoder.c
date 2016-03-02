@@ -3,6 +3,8 @@
 #include "../src/decoder/rb_http2k_decoder.c"
 #include "../src/listener/http.c"
 
+#include <setjmp.h>
+#include <cmocka.h>
 #include <assert.h>
 
 static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
@@ -24,7 +26,8 @@ static const char CONFIG_TEST[] =
                             "\"f\":1,"
                             "\"g\":\"w\","
                             "\"h\":false,"
-                            "\"i\":null"
+                            "\"i\":null,"
+                            "\"j\":2.5"
                     "},"
                     "\"ghi\" : {"
                         "\"o\": {"
@@ -734,16 +737,21 @@ int main() {
 
 	parse_config(temp_filename);
 	unlink(temp_filename);
-	test_validate_uri();
-	test_rb_decoder_simple();
-	test_rb_decoder_simple_def();
-	test_rb_decoder_double();
-	test_rb_decoder_half();
-	test_rb_decoder_half_string();
-	test_rb_decoder_half_key();
-	test_rb_decoder_objects();
-	test_rb_object_enrich();
-	test_rb_array_enrich();
+
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_validate_uri),
+		cmocka_unit_test(test_rb_decoder_simple),
+		cmocka_unit_test(test_rb_decoder_simple_def),
+		cmocka_unit_test(test_rb_decoder_double),
+		cmocka_unit_test(test_rb_decoder_half),
+		cmocka_unit_test(test_rb_decoder_half_string),
+		cmocka_unit_test(test_rb_decoder_half_key),
+		cmocka_unit_test(test_rb_decoder_objects),
+		cmocka_unit_test(test_rb_object_enrich),
+		cmocka_unit_test(test_rb_array_enrich),
+	};
+
+	return cmocka_run_group_tests(tests, NULL, NULL);
 
 	free_global_config();
 
