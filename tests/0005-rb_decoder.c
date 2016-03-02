@@ -173,6 +173,44 @@ static void check_rb_decoder_double(struct rb_session **sess,void *opaque) {
 	check_rb_decoder_double0(sess,opaque,2);
 }
 
+static void check_rb_decoder_simple_def(struct rb_session **sess,
+                void *unused __attribute__((unused))) {
+	rd_kafka_message_t rkm[2];
+	json_error_t jerr;
+	const char *client_mac,*application_name,*sensor_uuid,*g;
+	json_int_t f;
+	int h;
+
+	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	json_t *root = json_loadb(rkm[0].payload, rkm[0].len, 0, &jerr);
+	if(NULL == root) {
+		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		assert(0);
+	}
+
+	const int rc = json_unpack_ex(root, &jerr, 0,
+		"{s:s,s:s,s:s,s:I,s:s,s:b,s:n}",
+		"client_mac",&client_mac,"application_name",&application_name,
+		"sensor_uuid",&sensor_uuid,"f",&f,"g",&g,"h",&h,"i");
+
+	if(rc != 0) {
+		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+		assert(0);
+	}
+
+	assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
+	assert(0==strcmp(application_name,"wwww"));
+	assert(0==strcmp(sensor_uuid, "def"));
+	assert(1==f);
+	assert(0==strcmp(g, "w"));
+
+	json_decref(root);
+	free(rkm[0].payload);
+}
+
 static void check_rb_decoder_object(struct rb_session **sess,
                 void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
@@ -392,6 +430,39 @@ static void test_rb_decoder_simple() {
 		"\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}",  \
 		check_rb_decoder_simple)                                              \
 	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
+		NULL);
+
+#undef MESSAGES
+}
+
+/// Simple decoding with another enrichment
+static void test_rb_decoder_simple_def() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","def","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:db:88:02\", "                          \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "   \
+		"\"a\":5}",                                                   \
+		check_rb_decoder_simple_def)                                  \
+	/* Free & Check that session has been freed */                        \
 	X(NULL,check_null_session)
 
 	struct message_in msgs[] = {
@@ -665,6 +736,7 @@ int main() {
 	unlink(temp_filename);
 	test_validate_uri();
 	test_rb_decoder_simple();
+	test_rb_decoder_simple_def();
 	test_rb_decoder_double();
 	test_rb_decoder_half();
 	test_rb_decoder_half_string();
@@ -676,6 +748,6 @@ int main() {
 	free_global_config();
 
 	close(temp_fd);
-	
+
 	return 0;
 }
