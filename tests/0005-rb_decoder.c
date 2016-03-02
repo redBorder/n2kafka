@@ -182,7 +182,7 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid,*g;
 	json_int_t f;
-	int h;
+	int h,u;
 
 	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,rkm);
@@ -195,9 +195,9 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
-		"{s:s,s:s,s:s,s:I,s:s,s:b,s:n}",
+		"{s:s,s:s,s:s,s:I,s:s,s:b,s:n,s:b}",
 		"client_mac",&client_mac,"application_name",&application_name,
-		"sensor_uuid",&sensor_uuid,"f",&f,"g",&g,"h",&h,"i");
+		"sensor_uuid",&sensor_uuid,"f",&f,"g",&g,"h",&h,"i","u",&u);
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
@@ -209,6 +209,8 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 	assert(0==strcmp(sensor_uuid, "def"));
 	assert(1==f);
 	assert(0==strcmp(g, "w"));
+	assert(0==h);
+	assert(0!=u);
 
 	json_decref(root);
 	free(rkm[0].payload);
@@ -463,7 +465,7 @@ static void test_rb_decoder_simple_def() {
 #define MESSAGES                                                              \
 	X("{\"client_mac\": \"54:26:96:db:88:02\", "                          \
 		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "   \
-		"\"a\":5}",                                                   \
+		"\"a\":5, \"u\":true}",                                       \
 		check_rb_decoder_simple_def)                                  \
 	/* Free & Check that session has been freed */                        \
 	X(NULL,check_null_session)
