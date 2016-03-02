@@ -1,6 +1,6 @@
 #include "rb_json_tests.c"
+#include "rb_http2k_tests.c"
 
-#include "../src/decoder/rb_http2k_decoder.c"
 #include "../src/listener/http.c"
 
 #include <setjmp.h>
@@ -366,64 +366,6 @@ static void check_rb_decoder_array_enrich(struct rb_session **sess,
 	free(rkm.payload);
 }
 
-struct message_in {
-	const char *msg;
-	size_t size;
-};
-
-typedef void (*check_callback_fn)(struct rb_session **,void *opaque);
-
-/** Template for rb_decoder test
-	@param args Arguments like client_ip, topic, etc
-	@param msgs Input messages
-	@param msgs_len Length of msgs
-	@param check_callback Array of functions that will be called with each
-	session status. It is suppose to be the same length as msgs array.
-	@param check_callback_opaque Opaque used in the second parameter of
-	check_callback[iteration] call
-	*/
-static void test_rb_decoder0(keyval_list_t *args, struct message_in *msgs,
-            check_callback_fn *check_callback, size_t msgs_len,
-            void *check_callback_opaque) {
-	json_error_t jerr;
-	size_t i;
-	json_t *config = json_loads(CONFIG_TEST, 0, &jerr);
-	if(NULL == config) {
-		rdlog(LOG_CRIT,"Couldn't unpack JSON config: %s",jerr.text);
-		assert(0);
-	}
-
-	const json_t *decoder_config = NULL;
-	const int unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}",
-		"rb_http2k_config",&decoder_config);
-	if(0 != unpack_rc) {
-		rdlog(LOG_CRIT,"Can't unpack config: %s",jerr.text);
-		assert(0);
-	}
-
-	struct rb_database rb_db;
-	init_rb_database(&rb_db);
-	parse_rb_config(&rb_db,decoder_config);
-
-	struct rb_opaque rb_opaque = {
-#ifdef RB_OPAQUE_MAGIC
-		.magic = RB_OPAQUE_MAGIC,
-#endif
-		.rb_config = &global_config.rb,
-	};
-
-	struct rb_session *my_session = NULL;
-
-	for(i=0;i<msgs_len;++i) {
-		process_rb_buffer(msgs[i].msg, msgs[i].msg ? msgs[i].size : 0, args,
-			&rb_opaque, &my_session);
-		check_callback[i](&my_session,check_callback_opaque);
-	}
-
-	free_valid_rb_database(&rb_db);
-	json_decref(config);
-}
-
 static void test_rb_decoder_simple() {
 	struct pair mem[3];
 	keyval_list_t args;
@@ -449,8 +391,8 @@ static void test_rb_decoder_simple() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -482,8 +424,8 @@ static void test_rb_decoder_simple_def() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -516,8 +458,8 @@ static void test_rb_decoder_double() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -547,8 +489,8 @@ static void test_rb_decoder_half() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -584,8 +526,8 @@ static void test_rb_decoder_half_string() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -621,8 +563,8 @@ static void test_rb_decoder_half_key() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -654,8 +596,8 @@ static void test_rb_decoder_objects() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -687,8 +629,8 @@ static void test_rb_object_enrich() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
@@ -720,8 +662,8 @@ static void test_rb_array_enrich() {
 #undef X
 	};
 
-	test_rb_decoder0(&args, msgs, callbacks_functions, RD_ARRAYSIZE(msgs),
-		NULL);
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
 
 #undef MESSAGES
 }
