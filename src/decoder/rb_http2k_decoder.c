@@ -421,13 +421,17 @@ int parse_rb_config(void *void_db, const struct json_t *config) {
 }
 
 void free_valid_rb_database(struct rb_database *db) {
-	if (db && db->uuid_enrichment) {
-		json_decref(db->uuid_enrichment);
+	if (db) {
+		if (db->uuid_enrichment) {
+			json_decref(db->uuid_enrichment);
+		}
+
+		if (db->topics_db) {
+			topics_db_done(db->topics_db);
+		}
+
+		pthread_rwlock_destroy(&db->rwlock);
 	}
-
-	topics_db_done(db->topics_db);
-
-	pthread_rwlock_destroy(&db->rwlock);
 }
 
 /*
