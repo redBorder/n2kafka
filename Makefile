@@ -26,7 +26,7 @@ version.c:
 	@echo 'const char *n2kafka_version="1.0.0";' >> $@
 
 coverage: Makefile_config_bak := $(shell mktemp)
-coverage:
+coverage: version.o
 	# Need to disable optimizations
 	@cp Makefile.config ${Makefile_config_bak}
 	@sed -i 's%\-O[1-9s]%\-O0%g' Makefile.config
