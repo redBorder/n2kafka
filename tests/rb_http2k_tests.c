@@ -57,3 +57,17 @@ static void test_rb_decoder0(const char *config_str, keyval_list_t *args,
 	free_valid_rb_database(&rb_db);
 	json_decref(config);
 }
+
+/** Function that check that session has no messages
+	@param sess Session pointer
+	@param unused context information
+*/
+static void check_zero_messages(struct rb_session **sess,
+            void *unused __attribute__((unused))) __attribute__((unused));
+static void check_zero_messages(struct rb_session **sess,
+                    void *unused __attribute__((unused))) {
+
+	assert(NULL != sess);
+	assert(NULL != *sess);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+}
