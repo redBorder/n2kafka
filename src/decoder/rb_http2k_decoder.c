@@ -787,7 +787,7 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 	if(sess->object_array_parsing_stack > 1) {
 		/// We are not in root object. Should we print?
 		if(sess->skip_value) {
-			return 0;
+			return 1;
 		} else {
 			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
 		}

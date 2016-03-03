@@ -263,7 +263,7 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
 	const char *client_mac,*application_name,*sensor_uuid;
-	json_int_t a,a2;
+	json_int_t a,a2,u_a;
 
 	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
@@ -276,10 +276,11 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
-		"{s:s,s:s,s:s,s:I,s:{s:I}}",
+		"{s:s,s:s,s:s,s:I,s:{s:I},s:{s:I}}",
 		"client_mac",&client_mac,"application_name",&application_name,
 		"sensor_uuid",&sensor_uuid,"a",&a,
-		"o","a",&a2
+		"o","a",&a2,
+		"u","a",&u_a
 		);
 
 	if(rc != 0) {
@@ -293,6 +294,7 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 	assert(a == 5);
 	/* Enrichment */
 	assert(a2 == 90);
+	assert(u_a == 1);
 
 	json_decref(root);
 	free(rkm.payload);
@@ -612,7 +614,19 @@ static void test_rb_object_enrich() {
 #define MESSAGES                                                              \
 	X("{\"client_",check_zero_messages)                                       \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
-		"\"sensor_uuid\":\"ghi\", \"a\":5}",                                  \
+		"\"sensor_uuid\":\"ghi\", \"a\":5, \"u\":{\"a\":1}}",                 \
+		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"a\":5, \"o\":5, \"u\":{\"a\":1}}",        \
+		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"a\":5, \"o\":{\"a\":5}, \"u\":{\"a\":1}}",\
+		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"o\":{\"a\":5}, \"u\":{\"a\":1}, \"a\":5}",\
 		check_rb_decoder_object_enrich)                                       \
 	/* Free & Check that session has been freed */                            \
 	X(NULL,check_null_session)
