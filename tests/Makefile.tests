@@ -31,8 +31,8 @@ all: test
 
 coverage:
 	LDFLAGS="${LDFLAGS} ${COVERAGE_LDFLAGS}" CPPFLAGS="${CPPFLAGS} ${COVERAGE_CPPFLAGS}" make
-	lcov --capture --directory ../ --output-file ${COVERAGE_INFO}
-	genhtml ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY}
+	lcov --rc lcov_branch_coverage=1 --capture --directory ../ --output-file ${COVERAGE_INFO}
+	genhtml --branch-coverage ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY}
 
 test: $(TEST_PROGS)
 
