@@ -123,7 +123,8 @@ static void test_rb_decoder_two_keys() {
 	X("{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 		"\"client_mac\": \"54:26:96:db:88:03\","                       \
 		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
-		"\"a\":5, \"u\":true}{\"client_mac\": \"54:26:96:db:88:02\", " \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
 		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
 		"\"a\":5, \"u\":true}",                                        \
 		check_rb_decoder_two_keys)                                     \
