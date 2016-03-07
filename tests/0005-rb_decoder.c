@@ -619,6 +619,18 @@ static void test_rb_object_enrich() {
 		"\"application_name\": \"wwww\", "                                    \
 		"\"sensor_uuid\":\"ghi\", \"o\":{\"a\":5}, \"u\":{\"a\":1}, \"a\":5}",\
 		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"o\":null, \"u\":{\"a\":1}, \"a\":5}",     \
+		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"o\":true, \"u\":{\"a\":1}, \"a\":5}",     \
+		check_rb_decoder_object_enrich)                                       \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"sensor_uuid\":\"ghi\", \"o\":false, \"u\":{\"a\":1}, \"a\":5}",    \
+		check_rb_decoder_object_enrich)                                       \
 	/* Free & Check that session has been freed */                            \
 	X(NULL,check_null_session)
 
