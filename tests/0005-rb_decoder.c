@@ -687,6 +687,9 @@ static void test_rb_array_enrich() {
 
 /** Test array behavior */
 
+/** @TODO test matrix enrichment: test that all types can be overriden by all
+    types
+    */
 int main() {
 	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
 	init_global_config();
