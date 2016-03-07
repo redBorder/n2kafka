@@ -190,6 +190,90 @@ static void test_rb_decoder_closing() {
 #undef MESSAGES
 }
 
+static void check_invalid_key_type(struct rb_session **sess,
+                void *opaque) {
+	check_rb_decoder_two_keys(sess,opaque);
+}
+
+/** Test that the system is able to skip non-string keys is we are partitioning
+    via client-mac */
+static void test_invalid_key_type() {
+	struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","def","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                               \
+	X("{\"client_mac\": null, "                                            \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": true, "                                            \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": false, "                                           \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": 3, "                                               \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": 3.5, "                                             \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": {\"Im\":\"an object\"}, "                          \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	X("{\"client_mac\": [\"I'm an array\"], "                              \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true, \"n\":null, \"o\":{}}"                   \
+		"{\"client_mac\": \"54:26:96:db:88:02\", "                     \
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "    \
+		"\"a\":5, \"u\":true}",                                        \
+		check_invalid_key_type)                                        \
+	/* Free & Check that session has been freed */                         \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
+
+#undef MESSAGES
+}
+
 int main() {
 	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
 	init_global_config();
@@ -205,6 +289,7 @@ int main() {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_rb_decoder_two_keys),
 		cmocka_unit_test(test_rb_decoder_closing),
+		cmocka_unit_test(test_invalid_key_type),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

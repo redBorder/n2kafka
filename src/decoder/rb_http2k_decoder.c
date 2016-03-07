@@ -668,15 +668,18 @@ static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 		}                                                      \
 	}
 
-#define CHECK_PARTITIONER_KEY_IS(sess,expected_val,...) \
-	if(expected_val != (sess)->in_partition_key) {          \
-		rdlog(LOG_ERR,__VA_ARGS__);                         \
-		/* Stop parsing */                                  \
-		return 0;                                           \
+#define CHECK_PARTITIONER_KEY_IS(sess,expected_val,...)   \
+	if(expected_val != (sess)->in_partition_key) {    \
+		rdlog(LOG_ERR,__VA_ARGS__);               \
+		/* Stop parsing this message */           \
+		(sess)->message.valid = 0;                \
+		/* We are not in partition key anymore */ \
+		(sess)->in_partition_key = 0;             \
+		return 1;                                 \
 	}
 
 #define CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,...) \
-	CHECK_PARTITIONER_KEY_IS(sess,0,__VA_ARGS__)
+	CHECK_PARTITIONER_KEY_IS(sess,0,__VA_ARGS__)  \
 
 #define CHECK_SESSION_IN_ROOT_OBJECT(sess,...)    \
 	if((sess)->object_array_parsing_stack != 1) { \
@@ -826,9 +829,8 @@ static int rb_parse_start_map(void * ctx)
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object as partitioner key");
-
 	++sess->object_array_parsing_stack;
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object as partitioner key");
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
 	GEN_OR_SKIP(sess,yajl_gen_map_open(g));
@@ -867,9 +869,10 @@ static int rb_parse_end_map(void * ctx)
 		rdlog(LOG_WARNING,"Discarding parsing because closing an unopen JSON");
 		return 0;
 	}
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object closing as partitioner key");
 
 	--sess->object_array_parsing_stack;
+	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object closing as partitioner key");
+
 	if(0 == sess->object_array_parsing_stack) {
 		if (sess->message.valid) {
 			rd_kafka_message_t msg;
@@ -897,9 +900,9 @@ static int rb_parse_start_array(void * ctx)
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
+	++sess->object_array_parsing_stack;
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array start as partition key");
 
-	++sess->object_array_parsing_stack;
 	GEN_OR_SKIP(sess,yajl_gen_array_open(g));
 }
 
@@ -909,9 +912,9 @@ static int rb_parse_end_array(void * ctx)
 	yajl_gen g = sess->gen;
 
 	CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,"Root object end with an array.");
+	--sess->object_array_parsing_stack;
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array en as partition key");
 
-	--sess->object_array_parsing_stack;
 	GEN_OR_SKIP(sess,yajl_gen_array_close(g));
 }
 
