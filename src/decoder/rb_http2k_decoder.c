@@ -646,14 +646,8 @@ static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 	sess->message.valid = 1;
 }
 
-#define GEN_AND_RETURN(func)                         \
-  {                                                  \
-	yajl_gen_status __stat = func;                   \
-	if (__stat == yajl_gen_generation_complete) {    \
-		yajl_gen_reset(g, NULL);                     \
-		__stat = func;                               \
-	}                                                \
-	return __stat == yajl_gen_status_ok; }
+#define GEN_AND_RETURN(func) \
+	do { return yajl_gen_status_ok == func; } while(0);
 
 #define GEN_OR_SKIP(sess,func)                                 \
 	{                                                          \
