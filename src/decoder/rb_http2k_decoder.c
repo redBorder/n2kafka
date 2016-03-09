@@ -848,13 +848,8 @@ static int rb_parse_end_map(void * ctx)
 {
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
-	if(0 == sess->object_array_parsing_stack) {
-		rdlog(LOG_WARNING,"Discarding parsing because closing an unopen JSON");
-		return 0;
-	}
 
 	--sess->object_array_parsing_stack;
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object closing as partitioner key");
 
 	if(0 == sess->object_array_parsing_stack) {
 		if (sess->message.valid) {
@@ -894,9 +889,7 @@ static int rb_parse_end_array(void * ctx)
 	struct rb_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
-	CHECK_SESSION_NOT_IN_ROOT_OBJECT(sess,"Root object end with an array.");
 	--sess->object_array_parsing_stack;
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array en as partition key");
 
 	GEN_OR_SKIP(sess,yajl_gen_array_close(g));
 }
