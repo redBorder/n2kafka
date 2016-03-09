@@ -785,13 +785,6 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
 		}
 	} else {
-		/// We are in the root object
-		if (sess->skip_value) {
-			/* Just a check */
-			rdlog(LOG_ERR,"Received unexpected key when ignoring value");
-			return -1;
-		}
-
 		if (sess->kafka_partitioner_key &&
 			0 == strncmp(sess->kafka_partitioner_key,(const char *)stringVal,
 		                                                        stringLen)) {
