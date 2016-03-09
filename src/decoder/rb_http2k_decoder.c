@@ -777,10 +777,6 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,
-		"Searching for kafka partition key while scanning json key %.*s",
-		(int)stringLen,(const char *)stringVal);
-
 	if(sess->object_array_parsing_stack > 1) {
 		/// We are not in root object. Should we print?
 		if(sess->skip_value) {
