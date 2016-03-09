@@ -649,18 +649,33 @@ static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 #define GEN_AND_RETURN(func) \
 	do { return yajl_gen_status_ok == func; } while(0);
 
-#define GEN_OR_SKIP(sess,func)                                 \
-	{                                                          \
-		if(!(sess)->skip_value) {                              \
-			GEN_AND_RETURN(func);                              \
-		} else {                                               \
-			if(1 == (sess)->object_array_parsing_stack) {      \
-				/* We are in the root, so we end the skip */   \
-				(sess)->skip_value = 0;                        \
-			}                                                  \
-			return 1;                                          \
-		}                                                      \
+/** key/Value generating that checks if we are in an value that we have to skip
+	@param sess Current parser session
+	@param func Function used to generate object
+	@param check_root Check if we are in root object. If we are, we know
+	that we have to stop skipping next input values
+	*/
+#define GEN_OR_SKIP0(sess,func,check_root)                                    \
+	{                                                                     \
+		if(!(sess)->skip_value) {                                     \
+			GEN_AND_RETURN(func);                                 \
+		} else {                                                      \
+			if(check_root &&                                      \
+				1 == (sess)->object_array_parsing_stack) {    \
+				/* We are in the root, so we end the skip */  \
+				(sess)->skip_value = 0;                       \
+			}                                                     \
+			return 1;                                             \
+		}                                                             \
 	}
+
+/** Generates or skip a json value */
+#define GEN_OR_SKIP(sess,func) GEN_OR_SKIP0(sess,func,1)
+
+/** Generates or skip a json value if we know that we are not in the root
+	object. Using this macro instead of GEN_OR_SKIP we are saving 1 branch.
+	*/
+#define GEN_OR_SKIP_NO_ROOT(sess,func) GEN_OR_SKIP0(sess,func,0)
 
 #define CHECK_PARTITIONER_KEY_IS(sess,expected_val,...)   \
 	if(expected_val != (sess)->in_partition_key) {    \
@@ -816,7 +831,7 @@ static int rb_parse_start_map(void * ctx)
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"Object as partitioner key");
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
-	GEN_OR_SKIP(sess,yajl_gen_map_open(g));
+	GEN_OR_SKIP_NO_ROOT(sess,yajl_gen_map_open(g));
 }
 
 static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
@@ -881,7 +896,7 @@ static int rb_parse_start_array(void * ctx)
 	++sess->object_array_parsing_stack;
 	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,"array start as partition key");
 
-	GEN_OR_SKIP(sess,yajl_gen_array_open(g));
+	GEN_OR_SKIP_NO_ROOT(sess,yajl_gen_array_open(g));
 }
 
 static int rb_parse_end_array(void * ctx)
