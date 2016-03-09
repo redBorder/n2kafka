@@ -798,6 +798,40 @@ static void test_rb_array_enrich_v5() {
 	test_rb_array_enrich0("jkl",check_rb_decoder_array_enrich);
 }
 
+/** Test if we can enrich over an array */
+static void test_rb_array_enrich() {
+		struct pair mem[3];
+	keyval_list_t args;
+	keyval_list_init(&args);
+	prepare_args("rb_flow","ghi","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+
+#define MESSAGES                                                              \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                              \
+		"\"sensor_uuid\":\"ghi\", \"o\":[1,2,3,4,5,6],"                       \
+		"\"application_name\": \"wwww\", "                                    \
+		"\"u\":{\"a\":1}, \"a\":5}",                                          \
+		check_rb_decoder_object_enrich)                                       \
+	/* Free & Check that session has been freed */                            \
+	X(NULL,check_null_session)
+
+	struct message_in msgs[] = {
+#define X(a,fn) {a,sizeof(a)-1},
+		MESSAGES
+#undef X
+	};
+
+	check_callback_fn callbacks_functions[] = {
+#define X(a,fn) fn,
+		MESSAGES
+#undef X
+	};
+
+	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
+		RD_ARRAYSIZE(msgs), NULL);
+
+#undef MESSAGES
+}
+
 
 /** Test array behavior */
 
@@ -831,6 +865,7 @@ int main() {
 		cmocka_unit_test(test_rb_array_enrich_v2),
 		cmocka_unit_test(test_rb_array_enrich_v3),
 		cmocka_unit_test(test_rb_array_enrich_v5),
+		cmocka_unit_test(test_rb_array_enrich),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
