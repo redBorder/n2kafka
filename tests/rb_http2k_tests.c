@@ -71,3 +71,14 @@ static void check_zero_messages(struct rb_session **sess,
 	assert(NULL != *sess);
 	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 }
+
+/** This function just checks that session is NULL */
+static void check_null_session(struct rb_session **sess,
+		void *unused __attribute__((unused)))
+		__attribute__((unused));
+static void check_null_session(struct rb_session **sess,
+                    void *unused __attribute__((unused))) {
+
+	assert(NULL != sess);
+	assert(NULL == *sess);
+}

@@ -117,14 +117,6 @@ static void prepare_args(
 	add_key_value_pair(list,&mem[2]);
 }
 
-/** This function just checks that session is NULL */
-static void check_null_session(struct rb_session **sess,
-                    void *unused __attribute__((unused))) {
-
-	assert(NULL != sess);
-	assert(NULL == *sess);
-}
-
 static void check_rb_decoder_double0(struct rb_session **sess,
                 void *unused __attribute__((unused)),size_t expected_size) {
 	size_t i=0;
