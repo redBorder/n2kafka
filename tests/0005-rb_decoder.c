@@ -36,6 +36,18 @@ static const char CONFIG_TEST[] =
                     "},"
                     "\"jkl\" : {"
                         "\"v\":[1,2,3,4,5]"
+                    "},"
+                    "\"v0\" : {"
+                        "\"v\":[]"
+                    "},"
+                    "\"v1\" : {"
+                        "\"v\":[0]"
+                    "},"
+                    "\"v2\" : {"
+                        "\"v\":[0,1]"
+                    "},"
+                    "\"v3\" : {"
+                        "\"v\":[0,1,2]"
                     "}"
             "},"
             "\"topics\" : {"
@@ -290,6 +302,65 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 	json_decref(root);
 	free(rkm.payload);
 }
+
+static void check_rb_decoder_array_enrich_v00(struct rb_session **sess,
+                size_t v_size) {
+	size_t i;
+	char buf[BUFSIZ];
+	rd_kafka_message_t rkm;
+	json_error_t jerr;
+	const char *client_mac,*application_name,*sensor_uuid;
+	json_t *v=NULL;
+
+	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
+	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+
+	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	if(NULL == root) {
+		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		assert(0);
+	}
+
+	const int rc = json_unpack_ex(root, &jerr, 0,
+		"{s:s,s:s,s:s,s:o}",
+		"client_mac",&client_mac,"application_name",&application_name,
+		"sensor_uuid",&sensor_uuid,"v",&v);
+
+	if(rc != 0) {
+		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
+		assert(0);
+	}
+
+	snprintf(buf,sizeof(buf),"v%zu",v_size);
+
+	assert(0==strcmp(sensor_uuid,buf));
+	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert(0==strcmp(application_name,"wwww"));
+
+	/* Enrichment vector */
+	assert(json_is_array(v));
+	assert(v_size==json_array_size(v));
+	for (i=0; i<v_size; ++i) {
+		json_t *v_i = json_array_get(v,i);
+		assert(json_is_integer(v_i));
+		assert((int)i == json_integer_value(v_i));
+	}
+
+	json_decref(root);
+	free(rkm.payload);
+}
+
+#define CHECK_RB_DECODER_ARRAY_FN(N) \
+static void check_rb_decoder_array_enrich_v##N(struct rb_session **sess, \
+		void *unused __attribute__((unused))) { \
+	check_rb_decoder_array_enrich_v00(sess,N);  \
+}
+
+CHECK_RB_DECODER_ARRAY_FN(0)
+CHECK_RB_DECODER_ARRAY_FN(1)
+CHECK_RB_DECODER_ARRAY_FN(2)
+CHECK_RB_DECODER_ARRAY_FN(3)
 
 static void check_rb_decoder_array_enrich(struct rb_session **sess,
                 void *unused __attribute__((unused))) {
@@ -673,38 +744,60 @@ static void test_rb_object_enrich() {
 #undef MESSAGES
 }
 
-/** Test if we can enrich by an object*/
-static void test_rb_array_enrich() {
+static void test_rb_array_enrich0(const char *sensor_uuid,
+					check_callback_fn check_callback) {
+	char msg_buf[BUFSIZ];
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow","jkl","127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+	prepare_args("rb_flow",sensor_uuid,"127.0.0.1",mem,RD_ARRAYSIZE(mem),&args);
+	const int snprintf_rc = snprintf(msg_buf,sizeof(msg_buf),
+		"{\"client_mac\": \"54:26:96:db:88:01\", "
+		"\"application_name\": \"wwww\", \"sensor_uuid\":\"%s\", "
+		"\"v\":5, \"g\":[\"a\",5,null]}",sensor_uuid);
 
-#define MESSAGES                                                              \
-	X("{\"client_",check_zero_messages)                                       \
-	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
-		"\"sensor_uuid\":\"jkl\", \"v\":5, \"g\":[\"a\",5,null]}",            \
-		check_rb_decoder_array_enrich)                                        \
-	/* Free & Check that session has been freed */                            \
-	X(NULL,check_null_session)
+	assert(snprintf_rc > 0);
+	assert(snprintf_rc < BUFSIZ);
 
 	struct message_in msgs[] = {
-#define X(a,fn) {a,sizeof(a)-1},
-		MESSAGES
-#undef X
+		{msg_buf,(size_t)snprintf_rc},
+		{NULL, 0}
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a,fn) fn,
-		MESSAGES
-#undef X
+		check_callback,
+		check_null_session
 	};
 
 	test_rb_decoder0(CONFIG_TEST, &args, msgs, callbacks_functions,
 		RD_ARRAYSIZE(msgs), NULL);
-
-#undef MESSAGES
 }
+
+/** Test if we can enrich with a 0-length array */
+static void test_rb_array_enrich_v0() {
+	test_rb_array_enrich0("v0",check_rb_decoder_array_enrich_v0);
+}
+
+/** Test if we can enrich with a 1-length array */
+static void test_rb_array_enrich_v1() {
+	test_rb_array_enrich0("v1",check_rb_decoder_array_enrich_v1);
+}
+
+/** Test if we can enrich with a 2-length array */
+static void test_rb_array_enrich_v2() {
+	test_rb_array_enrich0("v2",check_rb_decoder_array_enrich_v2);
+}
+
+/** Test if we can enrich with a 3-length array */
+static void test_rb_array_enrich_v3() {
+	test_rb_array_enrich0("v3",check_rb_decoder_array_enrich_v3);
+}
+
+/** Test if we can enrich with a 5-length array */
+static void test_rb_array_enrich_v5() {
+	test_rb_array_enrich0("jkl",check_rb_decoder_array_enrich);
+}
+
 
 /** Test array behavior */
 
@@ -733,7 +826,11 @@ int main() {
 		cmocka_unit_test(test_rb_decoder_half_key),
 		cmocka_unit_test(test_rb_decoder_objects),
 		cmocka_unit_test(test_rb_object_enrich),
-		cmocka_unit_test(test_rb_array_enrich),
+		cmocka_unit_test(test_rb_array_enrich_v0),
+		cmocka_unit_test(test_rb_array_enrich_v1),
+		cmocka_unit_test(test_rb_array_enrich_v2),
+		cmocka_unit_test(test_rb_array_enrich_v3),
+		cmocka_unit_test(test_rb_array_enrich_v5),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
