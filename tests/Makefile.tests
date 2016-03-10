@@ -5,11 +5,10 @@ TEST_PROGS := ${TEST_SRCS:%.c=%.test}
 XML_FILES  := ${TEST_SRCS:%.c=%.test.xml}
 COV_FILES  := ${TEST_SRCS:%.c=%.gcda} ${TEST_SRCS:%.c=%.gcno}
 CFLAGS += -g
-CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat \
-       -DFORTIFY_SOURCE=2
+CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat
 CFLAGS += -Wall -Wfloat-equal -Wpointer-arith -O0 -I ../src/decoder/ \
 	-I ../src/engine -I ../ -I ../src/listener/ -I ../src/util/ \-I/opt/rb/include
-LDFLAGS += -lpthread -lrt -lz -lrd -lcmocka
+LIBS += -lcmocka
 
 COVERAGE_CPPFLAGS = --coverage
 COVERAGE_LDFLAGS = --coverage
