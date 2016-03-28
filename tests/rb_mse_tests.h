@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rb_mse_tests.h"
-#include "../src/decoder/rb_mse.c"
+#include "../src/decoder/mse/rb_mse.c"
 
 /// @TODO keep in sync with testMSE10Decoder
 static void testMSE10Decoder(const char *mse_array_str,

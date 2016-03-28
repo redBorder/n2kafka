@@ -1,4 +1,4 @@
-#include "../src/decoder/rb_http2k_decoder.c"
+#include "../src/decoder/rb_http2k/rb_http2k_decoder.c"
 
 struct message_in {
 	const char *msg;

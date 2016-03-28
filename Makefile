@@ -1,7 +1,7 @@
 BIN=	n2kafka
 
-SRCS=	src/decoder/rb_http2k_decoder.c src/decoder/rb_meraki.c \
-	src/decoder/rb_mse.c src/engine/engine.c \
+SRCS=	src/decoder/rb_http2k/rb_http2k_decoder.c src/decoder/meraki/rb_meraki.c \
+	src/decoder/mse/rb_mse.c src/engine/engine.c \
 	src/engine/global_config.c src/engine/n2kafka.c \
 	src/util/pair.c \
 	src/engine/rb_addr.c src/listener/http.c \

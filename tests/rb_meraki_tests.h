@@ -1,4 +1,4 @@
-#include "../src/decoder/rb_meraki.c"
+#include "../src/decoder/meraki/rb_meraki.c"
 #include "rb_json_tests.c"
 
 #define RB_UNUSED __attribute__((unused))

@@ -20,9 +20,9 @@
 
 #include "config.h"
 
-#include "rb_mse.h"
-#include "rb_meraki.h"
-#include "rb_http2k_decoder.h"
+#include "mse/rb_mse.h"
+#include "meraki/rb_meraki.h"
+#include "rb_http2k/rb_http2k_decoder.h"
 #include "kafka.h"
 #include "in_addr_list.h"
 #include "pair.h"

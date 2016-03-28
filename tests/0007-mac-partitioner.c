@@ -1,7 +1,7 @@
 #include "rb_json_tests.c"
 #include <librdkafka/rdkafka.h>
 
-#include "../src/decoder/rb_http2k_decoder.c"
+#include "../src/decoder/rb_http2k/rb_http2k_decoder.c"
 #include "../src/listener/http.c"
 
 #include <assert.h>
