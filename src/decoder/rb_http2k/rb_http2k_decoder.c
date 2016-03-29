@@ -72,11 +72,6 @@ struct {
 	{mac, "mac", mac_partitioner},
 };
 
-void init_rb_database(struct rb_database *db) {
-	memset(db, 0, sizeof(*db));
-	pthread_rwlock_init(&db->rwlock, 0);
-}
-
 #ifndef NDEBUG
 #define RB_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
 #endif
@@ -419,41 +414,6 @@ int parse_rb_config(void *void_db, const struct json_t *config) {
 
 	return 0;
 }
-
-void free_valid_rb_database(struct rb_database *db) {
-	if (db) {
-		if (db->uuid_enrichment) {
-			json_decref(db->uuid_enrichment);
-		}
-
-		if (db->topics_db) {
-			topics_db_done(db->topics_db);
-		}
-
-		pthread_rwlock_destroy(&db->rwlock);
-	}
-}
-
-/*
-	PRE-PROCESSING VALIDATIONS
-*/
-
-int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid) {
-	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = NULL != json_object_get(db->uuid_enrichment, uuid);
-	pthread_rwlock_unlock(&db->rwlock);
-
-	return ret;
-}
-
-int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
-       pthread_rwlock_rdlock(&db->rwlock);
-       const int ret = topics_db_topic_exists(db->topics_db,topic);
-       pthread_rwlock_unlock(&db->rwlock);
-
-       return ret;
-}
-
 
 /*
     PARSING & ENRICHMENT

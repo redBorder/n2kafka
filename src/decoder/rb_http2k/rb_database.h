@@ -20,28 +20,23 @@
 
 #pragma once
 
-#include "rb_database.h"
-
-#include "pair.h"
-
-#include <librdkafka/rdkafka.h>
-#include <librd/rdavl.h>
-#include <librd/rdsysqueue.h>
-
-#include <stdint.h>
-#include <string.h>
 #include <pthread.h>
 
-/* All functions are thread-safe here, excepting free_valid_mse_database */
-struct json_t;
-struct rb_config {
-	struct rb_database database;
+struct rb_database {
+	/* UUID enrichment read-only database */
+	pthread_rwlock_t rwlock;
+	/* UUID enrichment refcnt */
+	pthread_mutex_t uuid_enrichment_mutex;
+	struct json_t *uuid_enrichment;
+	/// @TODO this should be another kind to save "unknown values"
+	struct json_t *dangerous_values;
+	struct topics_db *topics_db;
+
+	void *topics_memory;
 };
 
-int parse_rb_config(void *_db,const struct json_t *rb_config);
+void init_rb_database(struct rb_database *db);
+void free_valid_rb_database(struct rb_database *db);
 
-int rb_opaque_creator(struct json_t *config,void **opaque);
-int rb_opaque_reload(struct json_t *config,void *opaque);
-void rb_opaque_done(void *opaque);
-void rb_decode(char *buffer,size_t buf_size,const keyval_list_t *props,
-                void *listener_callback_opaque,void **decoder_sessionp);
+int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid);
+int rb_http2k_validate_topic(struct rb_database *db,const char *topic);
