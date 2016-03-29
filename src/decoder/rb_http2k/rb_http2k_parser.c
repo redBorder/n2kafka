@@ -429,20 +429,8 @@ struct rb_session *new_rb_session(struct rb_config *rb_config,
 	struct topic_s *topic_handler = NULL;
 	json_t *client_enrichment = NULL;
 
-	pthread_rwlock_rdlock(&rb_config->database.rwlock);
-	topic_handler = topics_db_get_topic(rb_config->database.topics_db,topic);
-
-	if(topic_handler) {
-		client_enrichment = json_object_get(
-		        rb_config->database.uuid_enrichment,sensor_uuid);
-
-		if (NULL != client_enrichment) {
-			pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
-			json_incref(client_enrichment);
-			pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
-		}
-	}
-	pthread_rwlock_unlock(&rb_config->database.rwlock);
+	rb_http2k_database_get_topic_client(&rb_config->database, topic,
+		sensor_uuid, &topic_handler, &client_enrichment);
 
 	if (NULL == topic_handler) {
 		rdlog(LOG_ERR,"Invalid topic %s received from client %s",
@@ -503,9 +491,7 @@ err_sess:
 	free(sess);
 
 client_enrichment_err:
-	pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
-	json_decref(client_enrichment);
-	pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+	rb_http2k_database_client_decref(&rb_config->database, client_enrichment);
 
 	return NULL;
 }
@@ -514,9 +500,8 @@ void free_rb_session(struct rb_config *rb_config,struct rb_session *sess) {
 	yajl_free(sess->handler);
 	yajl_gen_free(sess->gen);
 
-	pthread_mutex_lock(&rb_config->database.uuid_enrichment_mutex);
-	json_decref(sess->client_enrichment);
-	pthread_mutex_unlock(&rb_config->database.uuid_enrichment_mutex);
+	rb_http2k_database_client_decref(&rb_config->database,
+		sess->client_enrichment);
 
 	topic_decref(sess->topic_handler);
 
