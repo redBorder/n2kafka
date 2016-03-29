@@ -27,6 +27,7 @@
 #include <librdkafka/rdkafka.h>
 #include <librd/rdavl.h>
 #include <librd/rdsysqueue.h>
+#include <jansson.h>
 
 #include <stdint.h>
 #include <string.h>
