@@ -1,0 +1,35 @@
+image: resources.redborder.lan:5000/rb-cbuilds-n2kafka:1.0
+
+stages:
+  - build
+  - test
+
+services:
+  - spotify/kafka:latest
+
+compile-gcc-4.8:
+  stage: build
+  script:
+    - scl enable devtoolset-2 bash
+    - source /opt/rh/devtoolset-2/enable
+    - ./configure
+    - make
+  tags:
+    - c
+
+compile:
+  stage: build
+  script:
+    - ./configure  --disable-optimization
+    - make
+  artifacts:
+    untracked: true
+  tags:
+    - c
+
+test:
+  stage: test
+  script:
+    - CFLAGS=-w make -s coverage
+  tags:
+    - c
