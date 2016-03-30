@@ -47,8 +47,8 @@ int init_rb_database(struct rb_database *db) {
 
 void free_valid_rb_database(struct rb_database *db) {
 	if (db) {
-		if (db->uuid_enrichment) {
-			json_decref(db->uuid_enrichment);
+		if (db->sensors_db) {
+			sensors_db_destroy(db->sensors_db);
 		}
 
 		if (db->topics_db) {
@@ -61,7 +61,8 @@ void free_valid_rb_database(struct rb_database *db) {
 
 int rb_http2k_database_get_topic_client(struct rb_database *db,
 		const char *topic, const char *sensor_uuid,
-		struct topic_s **topic_handler, json_t **client_enrichment) {
+		struct topic_s **topic_handler,
+		sensor_db_entry_t **client_enrichment) {
 	assert(db);
 	assert(topic_handler);
 	assert(client_enrichment);
@@ -70,27 +71,16 @@ int rb_http2k_database_get_topic_client(struct rb_database *db,
 	*topic_handler = topics_db_get_topic(db->topics_db, topic);
 
 	if(*topic_handler) {
-		*client_enrichment = json_object_get(db->uuid_enrichment,
-		                                                 sensor_uuid);
-
-		if (NULL != *client_enrichment) {
-			pthread_mutex_lock(&db->uuid_enrichment_mutex);
-			json_incref(*client_enrichment);
-			pthread_mutex_unlock(&db->uuid_enrichment_mutex);
-		} else {
-			/// @TODO
-			/// topic_decref(*topic_handler);
-			/// *topic_handler = NULL;
-		}
+		*client_enrichment = sensors_db_get(db->sensors_db, sensor_uuid);
 	}
 	pthread_rwlock_unlock(&db->rwlock);
 
 	return NULL != *topic_handler && NULL != *client_enrichment;
 }
 
-int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid) {
+int rb_http2k_validate_uuid(struct rb_database *db, const char *sensor_uuid) {
 	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = NULL != json_object_get(db->uuid_enrichment, uuid);
+	const int ret = sensors_db_exists(db->sensors_db, sensor_uuid);
 	pthread_rwlock_unlock(&db->rwlock);
 
 	return ret;

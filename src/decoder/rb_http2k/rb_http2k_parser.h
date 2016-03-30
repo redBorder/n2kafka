@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include "rb_http2k_sensors_database.h"
+
 #include <yajl/yajl_parse.h>
 #include <yajl/yajl_gen.h>
 #include <util/kafka_message_list.h>
@@ -37,8 +39,8 @@ struct rb_session {
 	/// JSON handler
 	yajl_handle handler;
 
-	/// json_uuid with this flow client.
-	json_t *client_enrichment;
+	/// Sensor information.
+	sensor_db_entry_t *sensor;
 
 	/// Bookmark if we are skipping an object or array
 	size_t object_array_parsing_stack;

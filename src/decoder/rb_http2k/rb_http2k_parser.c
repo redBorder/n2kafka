@@ -296,16 +296,20 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
 		}
 	} else {
+		const json_t *sensor_enrichment
+			= sensor_db_entry_json_enrichment(sess->sensor);
 		if (sess->kafka_partitioner_key &&
-			0 == strncmp(sess->kafka_partitioner_key,(const char *)stringVal,
-		                                                        stringLen)) {
-			/* We are in kafka partitioner key, need to watch for it */
+			0 == strncmp(sess->kafka_partitioner_key,
+					(const char *)stringVal, stringLen)) {
+			/* We are in kafka partitioner key, need to watch for
+									it */
 			sess->in_partition_key = 1;
 		}
 
 		buf[stringLen] = '\0';
 		memcpy(buf,stringVal,stringLen);
-		json_t *uuid_enrichment = json_object_get(sess->client_enrichment,buf);
+		const json_t *uuid_enrichment = json_object_get(
+						sensor_enrichment, buf);
 		if(NULL == uuid_enrichment) {
 			/* Nothing to worry, go ahead */
 			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
@@ -364,9 +368,11 @@ static int rb_parse_end_map(void * ctx)
 
 	if(0 == sess->object_array_parsing_stack) {
 		if (sess->message.valid) {
+			json_t *client_enrichment =
+				sensor_db_entry_json_enrichment(sess->sensor);
 			rd_kafka_message_t msg;
 			/* Ending message, we need to add enrichment values */
-			gen_jansson_object(g,sess->client_enrichment);
+			gen_jansson_object(g,client_enrichment);
 			yajl_gen_map_close(g);
 			rb_parse_generate_rdkafka_message(sess,&msg);
 			rd_kafka_msg_q_add(&sess->msg_queue,&msg);
@@ -427,16 +433,16 @@ struct rb_session *new_rb_session(struct rb_config *rb_config,
 	const char *sensor_uuid = valueof(msg_vars, "sensor_uuid");
 	const char *topic = valueof(msg_vars, "topic");
 	struct topic_s *topic_handler = NULL;
-	json_t *client_enrichment = NULL;
+	sensor_db_entry_t *sensor = NULL;
 
 	rb_http2k_database_get_topic_client(&rb_config->database, topic,
-		sensor_uuid, &topic_handler, &client_enrichment);
+		sensor_uuid, &topic_handler, &sensor);
 
 	if (NULL == topic_handler) {
 		rdlog(LOG_ERR,"Invalid topic %s received from client %s",
 			topic,client_ip);
 		return NULL;
-	} else if (NULL == client_enrichment) {
+	} else if (NULL == sensor) {
 		rdlog(LOG_ERR,"Invalid sensor UUID %s from client %s",
 			sensor_uuid,client_ip);
 		return NULL;
@@ -454,11 +460,11 @@ struct rb_session *new_rb_session(struct rb_config *rb_config,
 
 	if(NULL == sess) {
 		rdlog(LOG_CRIT, "Couldn't allocate sess pointer");
-		goto client_enrichment_err;
+		goto sensor_err;
 	}
 
 	rd_kafka_msg_q_init(&sess->msg_queue);
-	sess->client_enrichment = client_enrichment;
+	sess->sensor = sensor;
 	sess->topic_handler = topic_handler;
 
 	if(NULL == kafka_partitioner_key) {
@@ -490,8 +496,8 @@ err_yajl_gen:
 err_sess:
 	free(sess);
 
-client_enrichment_err:
-	rb_http2k_database_client_decref(&rb_config->database, client_enrichment);
+sensor_err:
+	sensor_db_entry_decref(sensor);
 
 	return NULL;
 }
@@ -500,8 +506,7 @@ void free_rb_session(struct rb_config *rb_config,struct rb_session *sess) {
 	yajl_free(sess->handler);
 	yajl_gen_free(sess->gen);
 
-	rb_http2k_database_client_decref(&rb_config->database,
-		sess->client_enrichment);
+	sensor_db_entry_decref(sess->sensor);
 
 	topic_decref(sess->topic_handler);
 

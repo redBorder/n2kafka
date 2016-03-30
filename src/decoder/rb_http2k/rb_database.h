@@ -21,6 +21,7 @@
 #pragma once
 
 #include "util/topic_database.h"
+#include "rb_http2k_sensors_database.h"
 
 #include <pthread.h>
 #include <jansson.h>
@@ -28,9 +29,8 @@
 struct rb_database {
 	/* UUID enrichment read-only database */
 	pthread_rwlock_t rwlock;
-	/* UUID enrichment refcnt */
-	pthread_mutex_t uuid_enrichment_mutex;
-	json_t *uuid_enrichment;
+	/// sensors UUID database.
+	sensors_db_t *sensors_db;
 	struct topics_db *topics_db;
 
 	void *topics_memory;
@@ -44,29 +44,20 @@ int init_rb_database(struct rb_database *db);
 void free_valid_rb_database(struct rb_database *db);
 
 /**
-	Get client enrichment and topic of an specific database.
+	Get sensor enrichment and topic of an specific database.
 
-	@param db Database to extract client and topic handler from
+	@param db Database to extract sensor and topic handler from
 	@param topic Topic to search for
 	@param sensor_uuid Sensor uuid to search for
 	@param topic_handler Returned topic handler. Need to be freed with
 	topic_decref
-	@param client_enrichment Returned client enrichment. Need to be freed
-	with rb_http2k_database_client_decref
+	@param sensor_info Returned sensor information. Need to be freed
+	with sensor_db_entry_decref
 	@return 0 if OK, !=0 in other case
 	*/
 int rb_http2k_database_get_topic_client(struct rb_database *db,
 	const char *topic, const char *sensor_uuid,
-	struct topic_s **topic_handler, json_t **client_enrichment);
-
-static void rb_http2k_database_client_decref(struct rb_database *db,
-	                        json_t *client) __attribute__((unused));
-static void rb_http2k_database_client_decref(struct rb_database *db,
-	                        json_t *client) {
-	pthread_mutex_lock(&db->uuid_enrichment_mutex);
-	json_decref(client);
-	pthread_mutex_unlock(&db->uuid_enrichment_mutex);
-}
+	struct topic_s **topic_handler, sensor_db_entry_t **sensor_info);
 
 int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid);
 int rb_http2k_validate_topic(struct rb_database *db,const char *topic);

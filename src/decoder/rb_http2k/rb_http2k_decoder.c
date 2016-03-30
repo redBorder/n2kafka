@@ -41,7 +41,7 @@
 #include <librdkafka/rdkafka.h>
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
-static const char RB_SENSOR_UUID_ENRICHMENT_KEY[] = "uuids";
+static const char RB_SENSORS_UUID_KEY[] = "sensors_uuids";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
 
@@ -165,27 +165,21 @@ fallback_behavior:
 }
 
 /** Parsing of per uuid enrichment.
-	@param config original config with
-	RB_SENSOR_UUID_ENRICHMENT_KEY to extract it.
-	@param uuid_enrichment per-uuid enrichment object.
-	@return 0 if ok. Any other value should be checked against jerr.
+	@param config original config with RB_SENSORS_UUID_KEY to extract it.
+	@return new uuid database
 	*/
-static int parse_per_uuid_opaque_config(json_t *config,
-	                json_t **uuid_enrichment) {
-	json_error_t jerr;
-
+static sensors_db_t *parse_per_uuid_opaque_config(json_t *config) {
 	assert(config);
-	assert(uuid_enrichment);
 
-	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:O}",
-	                           RB_SENSOR_UUID_ENRICHMENT_KEY, uuid_enrichment);
+	json_t *sensors_config = json_object_get(config, RB_SENSORS_UUID_KEY);
 
-	if (0 != json_unpack_rc) {
-		rdlog(LOG_ERR,"Couldn't unpack %s key: %s",
-			RB_SENSOR_UUID_ENRICHMENT_KEY,jerr.text);
+	if (NULL == sensors_config) {
+		rdlog(LOG_ERR,"Couldn't unpack %s key: Object not found",
+			RB_SENSORS_UUID_KEY);
+		return NULL;
 	}
 
-	return json_unpack_rc;
+	return sensors_db_new(sensors_config);
 }
 
 static partitioner_cb partitioner_of_name(const char *name) {
@@ -323,7 +317,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	int rc = 0;
 	struct rb_config *rb_config = vrb_config;
 	struct topics_db *topics_db = NULL;
-	json_t *uuid_enrichment = NULL;
+	sensors_db_t *sensors_db = NULL;
 
 	assert(rb_config);
 	assert_rb_config(rb_config);
@@ -331,9 +325,8 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	json_t *my_config = json_deep_copy(config);
 
-	const int per_sensor_enrichment_rc
-		= parse_per_uuid_opaque_config(my_config, &uuid_enrichment);
-	if (per_sensor_enrichment_rc != 0 || NULL == uuid_enrichment) {
+	sensors_db = parse_per_uuid_opaque_config(my_config);
+	if (NULL == sensors_db) {
 		rc = -1;
 		goto err;
 	}
@@ -348,7 +341,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	}
 
 	pthread_rwlock_wrlock(&rb_config->database.rwlock);
-	swap_ptrs(uuid_enrichment,rb_config->database.uuid_enrichment);
+	swap_ptrs(sensors_db,rb_config->database.sensors_db);
 	swap_ptrs(topics_db,rb_config->database.topics_db);
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
@@ -357,8 +350,8 @@ err:
 		topics_db_done(topics_db);
 	}
 
-	if (uuid_enrichment) {
-		json_decref(uuid_enrichment);
+	if (sensors_db) {
+		sensors_db_destroy(sensors_db);
 	}
 
 	json_decref(my_config);
