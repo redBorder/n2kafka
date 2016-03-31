@@ -17,8 +17,8 @@
 */
 
 #pragma once
-#include "parse.h"
-#include "pair.h"
+#include "engine/parse.h"
+#include "util/pair.h"
 #include <librdkafka/rdkafka.h>
 
 #include <string.h>

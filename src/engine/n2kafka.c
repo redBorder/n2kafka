@@ -18,7 +18,7 @@
 
 #include "version.h"
 #include "engine.h"
-#include "kafka.h"
+#include "util/kafka.h"
 #include "global_config.h"
 
 #include <signal.h>

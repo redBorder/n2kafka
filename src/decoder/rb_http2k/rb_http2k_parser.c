@@ -24,7 +24,7 @@
 /// @TODO this include is only for config. Separate config in another file,
 /// since we have crossed includes
 #include "rb_http2k_decoder.h"
-#include "topic_database.h"
+#include "util/topic_database.h"
 
 #include <yajl/yajl_parse.h>
 #include <yajl/yajl_gen.h>

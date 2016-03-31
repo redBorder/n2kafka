@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include "topic_database.h"
+#include "util/topic_database.h"
 
 #include <pthread.h>
 #include <jansson.h>

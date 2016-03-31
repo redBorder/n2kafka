@@ -21,12 +21,12 @@
 
 #include "rb_http2k_decoder.h"
 #include "rb_http2k_parser.h"
-#include "rb_mac.h"
-#include "kafka.h"
-#include "global_config.h"
-#include "rb_json.h"
-#include "topic_database.h"
-#include "kafka_message_list.h"
+#include "util/rb_mac.h"
+#include "util/kafka.h"
+#include "engine/global_config.h"
+#include "util/rb_json.h"
+#include "util/topic_database.h"
+#include "util/kafka_message_list.h"
 
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>

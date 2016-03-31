@@ -22,7 +22,7 @@
 
 #include "rb_database.h"
 
-#include "pair.h"
+#include "util/pair.h"
 
 #include <librdkafka/rdkafka.h>
 #include <librd/rdavl.h>

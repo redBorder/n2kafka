@@ -23,7 +23,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
-#include "pair.h"
+#include "util/pair.h"
 
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 

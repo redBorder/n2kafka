@@ -16,15 +16,16 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "util.h"
+#include "util/util.h"
 #include "global_config.h"
-#include "librd/rdfile.h"
-#include "librd/rdsysqueue.h"
-
 #ifdef HAVE_LIBMICROHTTPD
-#include "http.h"
+#include "listener/http.h"
 #endif
-#include "socket.h"
+#include "listener/socket.h"
+
+
+#include <librd/rdfile.h>
+#include <librd/rdsysqueue.h>
 
 #include <errno.h>
 #include <librd/rdlog.h>

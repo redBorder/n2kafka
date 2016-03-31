@@ -18,8 +18,9 @@
 */
 
 #include "util.h"
-#include "parse.h"
-#include "global_config.h"
+/// @TODO this should not have engine/ dependences
+#include "engine/parse.h"
+#include "engine/global_config.h"
 
 #include <pthread.h>
 

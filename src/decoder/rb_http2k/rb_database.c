@@ -20,7 +20,7 @@
 */
 
 #include "rb_database.h"
-#include "topic_database.h"
+#include "util/topic_database.h"
 
 #include <string.h>
 #include <assert.h>

@@ -29,10 +29,10 @@
 #define MODE_EPOLL "epoll"
 
 #include "http.h"
-#include "rb_addr.h"
-#include "topic_database.h"
+#include "engine/rb_addr.h"
+#include "util/topic_database.h"
 
-#include "global_config.h"
+#include "engine/global_config.h"
 
 #include <arpa/inet.h>
 #include <assert.h>

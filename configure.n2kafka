@@ -17,6 +17,9 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wcast-align -Wdisabled-optimization -Winit-
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default" 
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization" 
 
+# This will make the life easier
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
+
 mkl_toggle_option "Standard" WITH_HTTP "--enable-http" "HTTP support using libmicrohttpd" "y"
 
 function checks_libmicrohttpd {

@@ -23,9 +23,9 @@
 
 #include <yajl/yajl_parse.h>
 #include <yajl/yajl_gen.h>
-#include <kafka_message_list.h>
+#include <util/kafka_message_list.h>
 #include <jansson.h>
-#include <pair.h>
+#include <util/pair.h>
 
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields

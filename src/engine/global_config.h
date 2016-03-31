@@ -20,12 +20,12 @@
 
 #include "config.h"
 
-#include "mse/rb_mse.h"
-#include "meraki/rb_meraki.h"
-#include "rb_http2k/rb_http2k_decoder.h"
-#include "kafka.h"
-#include "in_addr_list.h"
-#include "pair.h"
+#include "decoder/mse/rb_mse.h"
+#include "decoder/meraki/rb_meraki.h"
+#include "decoder/rb_http2k/rb_http2k_decoder.h"
+#include "util/kafka.h"
+#include "util/in_addr_list.h"
+#include "util/pair.h"
 
 #include <stdint.h>
 #include <stdbool.h>

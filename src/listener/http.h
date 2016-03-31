@@ -19,7 +19,7 @@
 #pragma once
 
 #ifdef HAVE_LIBMICROHTTPD
-#include "global_config.h"
+#include "engine/global_config.h"
 struct http_handler;
 struct json_t;
 struct listener *create_http_listener(struct json_t *config,

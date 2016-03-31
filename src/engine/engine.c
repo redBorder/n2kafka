@@ -17,15 +17,15 @@
 */
 
 #include "config.h"
-#include "util.h"
+#include "util/util.h"
 
 #include "engine.h"
 #include "parse.h"
-#include "kafka.h"
+#include "util/kafka.h"
 #include "global_config.h"
 
 #ifdef HAVE_LIBMICROHTTPD
-#include "http.h"
+#include "listener/http.h"
 #endif
 
 int do_shutdown = 0;

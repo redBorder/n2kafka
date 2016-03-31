@@ -17,10 +17,10 @@
 */
 
 #include "socket.h"
-#include "global_config.h"
-#include "util.h"
-#include "rb_mac.h"
-#include "rb_addr.h"
+#include "engine/global_config.h"
+#include "util/util.h"
+#include "util/rb_mac.h"
+#include "engine/rb_addr.h"
 
 #include <librd/rdthread.h>
 #include <librd/rdqueue.h>

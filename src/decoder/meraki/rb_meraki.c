@@ -20,12 +20,12 @@
 */
 
 #include "rb_meraki.h"
-#include "rb_mac.h"
-#include "rb_json.h"
-#include "kafka.h"
-#include "global_config.h"
+#include "util/rb_mac.h"
+#include "util/rb_json.h"
+#include "util/kafka.h"
+#include "engine/global_config.h"
 
-#include "util.h"
+#include "util/util.h"
 
 #include <librd/rdlog.h>
 #include <assert.h>
