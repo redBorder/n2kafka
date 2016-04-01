@@ -23,21 +23,28 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
 mkl_toggle_option "Standard" WITH_HTTP "--enable-http" "HTTP support using libmicrohttpd" "y"
 
 function checks_libmicrohttpd {
-  mkl_meta_set "libmicrohttpd" "desc" "library embedding HTTP server functionality"
-  mkl_meta_set "libmicrohttpd" "deb" "libmicrohttpd-dev"
-  mkl_lib_check "libmicrohttpd" "" fail CC "-lmicrohttpd" "#include <microhttpd.h>"
-  mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
+    # quick hack to avoid bad formatted libmicrohttpd header. With this macro
+    # defined, the header will know that we are using GCC at libmicrohttp
+    # 0.9.44
+    mkl_mkvar_append CPPFLAGS CPPFLAGS "-D__clang_major__"
+    mkl_meta_set "libmicrohttpd" "desc" \
+        "library embedding HTTP server functionality"
+    mkl_meta_set "libmicrohttpd" "deb" "libmicrohttpd-dev"
+    mkl_lib_check "libmicrohttpd" "" fail CC "-lmicrohttpd" \
+        "#include <microhttpd.h>"
+    mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
 }
 
 function checks {
+    mkl_meta_set "librd" "desc" "Magnus Edenhill's librd is available at http://github.com/edenhill/librd"
+    mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
+       "#include <librd/rd.h>"
+
     # Check that librdkafka is available, and allow to link it statically.
     mkl_meta_set "librdkafka" "desc" "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
     mkl_meta_set "librdkafka" "deb" "librdkafka-dev"
     mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
        "#include <librdkafka/rdkafka.h>"
-
-    # -lrt required on linux
-    mkl_lib_check "librt" "" fail CC "-lrt" 
 
     mkl_meta_set "libev" "desc" "A high performance full-featured event loop written in C"
     mkl_meta_set "libev" "deb" "libev-dev"
@@ -47,10 +54,6 @@ function checks {
     if [[ "x$WITH_HTTP" == "xy" ]]; then
         checks_libmicrohttpd
     fi
-
-    mkl_meta_set "librd" "desc" "Magnus Edenhill's librd is available at http://github.com/edenhill/librd"
-    mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
-       "#include <librd/rd.h>"
 
     mkl_meta_set "libjansson" "desc" "C library for encoding, decoding and manipulating JSON data"
     mkl_meta_set "libjansson" "deb" "libjansson-dev"
