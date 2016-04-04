@@ -14,16 +14,23 @@
   "rb_http2k_config": {
     "uuids": {
       "abc": {
-        "a": 1,
-        "b": "c",
-        "d": true,
-        "e": null
+	"enrichment": {
+          "a": 1,
+          "b": "c",
+          "d": true,
+          "e": null
+        },
+        "limits": {
+          "bytes":100
+        }
       },
       "def": {
-        "f": 1,
-        "g": "w",
-        "h": false,
-        "i": null
+	"enrichment": {
+          "f": 1,
+          "g": "w",
+          "h": false,
+          "i": null
+        }
       }
     },
     "topics": {
