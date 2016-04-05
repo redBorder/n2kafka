@@ -31,8 +31,6 @@ struct rb_database {
 	/* UUID enrichment refcnt */
 	pthread_mutex_t uuid_enrichment_mutex;
 	json_t *uuid_enrichment;
-	/// @TODO this should be another kind to save "unknown values"
-	json_t *dangerous_values;
 	struct topics_db *topics_db;
 
 	void *topics_memory;

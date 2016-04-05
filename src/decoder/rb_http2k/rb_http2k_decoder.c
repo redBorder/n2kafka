@@ -167,8 +167,6 @@ fallback_behavior:
 	@param config original config with
 	RB_SENSOR_UUID_ENRICHMENT_KEY to extract it.
 	@param uuid_enrichment per-uuid enrichment object.
-	@param dangerous_values Json hsahtable with values that could could belong
-	to any client
 	@return 0 if ok. Any other value should be checked against jerr.
 	*/
 static int parse_per_uuid_opaque_config(json_t *config,
