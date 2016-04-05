@@ -33,6 +33,7 @@
 #include <jansson.h>
 #include <arpa/inet.h>
 #include <assert.h>
+#include <signal.h>
 
 #ifndef LIST_FOREACH_SAFE
 #define	LIST_FOREACH_SAFE(var, head, field, tvar)			\
@@ -106,12 +107,23 @@ static const struct registered_listener{
 };
 
 void init_global_config(){
+	static const struct sigaction timers_sa = {
+		.sa_sigaction = rb_timer_sigaction,
+		.sa_flags = SA_SIGINFO,
+	};
+
 	memset(&global_config,0,sizeof(global_config));
 	global_config.kafka_conf = rd_kafka_conf_new();
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
 	global_config.blacklist = in_addr_list_new();
 	rd_log_set_severity(LOG_INFO);
 	LIST_INIT(&global_config.listeners);
+
+	const int sa_rc = sigaction(SIGALRM, &timers_sa, NULL);
+	if (0 != sa_rc) {
+		rdlog(LOG_ERR, "Couldn't set sigaction!");
+		abort();
+	}
 
 	init_mse_database(&global_config.mse.database);
 }
@@ -608,6 +620,42 @@ void reload_config(struct n2kafka_config *config) {
 	reload_listeners(new_config_file,config);
 	reload_decoders(config);
 	json_decref(new_config_file);
+}
+
+rb_timer_t *decoder_register_timer(const struct timespec *interval,
+					void (*cb)(void *), void *cb_ctx) {
+	char err[BUFSIZ];
+
+	rb_timer_t *ret = rb_timer_create(&global_config.timers, interval, cb,
+						cb_ctx, err, sizeof(err));
+
+	if (NULL == ret) {
+		rdlog(LOG_ERR, "Couldn't create timer: %s", err);
+	}
+
+	return ret;
+}
+
+void decoder_deregister_timer(rb_timer_t *timer) {
+	rb_timer_done(&global_config.timers, timer);
+}
+
+int decoder_timer_set_interval(struct rb_timer *timer,
+                        const struct timespec *ts) {
+	char err[BUFSIZ];
+
+	const int rc = rb_timer_set_interval(&global_config.timers, timer,
+                        ts, err, sizeof(err));
+	if (0 != rc) {
+		rdlog(LOG_ERR, "Couldn't set timer %p interva: %s", timer,
+			err);
+	}
+
+	return rc;
+}
+
+void execute_global_timers() {
+	rb_timers_run(&global_config.timers);
 }
 
 void free_global_config(){
