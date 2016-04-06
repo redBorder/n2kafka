@@ -79,14 +79,13 @@ static void test_validate_uri() {
 		assert(0);
 	}
 
-	struct rb_database rb_db;
-	init_rb_database(&rb_db);
-	parse_rb_config(&rb_db,decoder_config);
+	struct rb_config rb_config;
+	parse_rb_config(&rb_config,decoder_config);
 
 	int allok = 1;
 	char *topic=NULL,*uuid=NULL;
 	int validation_rc = rb_http2k_validation(NULL /* @TODO this should change */,VALID_URL,
-							&rb_db, &allok,&topic,&uuid,"test_ip");
+							&rb_config.database, &allok,&topic,&uuid,"test_ip");
 
 	assert(MHD_YES == validation_rc);
 	assert(0==strcmp(topic,"rb_flow"));
@@ -95,7 +94,7 @@ static void test_validate_uri() {
 	free(topic);
 	free(uuid);
 
-	free_valid_rb_database(&rb_db);
+	free_valid_rb_database(&rb_config.database);
 	json_decref(config);
 }
 

@@ -33,13 +33,34 @@
 #include <string.h>
 #include <pthread.h>
 
+#ifndef NDEBUG
+/// MAGIC to check rb_config between void * conversions
+#define RB_CONFIG_MAGIC 0xbc01a1cbc01a1cL
+#endif
+
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 struct json_t;
 struct rb_config {
+#ifdef RB_CONFIG_MAGIC
+	/// This value always have to be RB_CONFIG_MAGIC
+	uint64_t magic;
+#endif
 	struct rb_database database;
 };
 
+#ifdef RB_CONFIG_MAGIC
+/// Checks that rb_config magic field has the right value
+#define assert_rb_config(cfg) do{ \
+	assert(RB_CONFIG_MAGIC==(cfg)->magic);} while(0)
+#else
+#define assert_rb_config(cfg)
+#endif
+
 int parse_rb_config(void *_db,const struct json_t *rb_config);
+/** Does nothing, since this decoder does not save anything related to 
+    listener
+    */
+int rb_decoder_reload(void *_db, const struct json_t *rb_config);
 
 int rb_opaque_creator(struct json_t *config,void **opaque);
 int rb_opaque_reload(struct json_t *config,void *opaque);

@@ -22,15 +22,27 @@
 #include "rb_database.h"
 #include "util/topic_database.h"
 
+#include <librd/rdlog.h>
+
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <jansson.h>
+#include <errno.h>
 
-void init_rb_database(struct rb_database *db) {
+int init_rb_database(struct rb_database *db) {
+	char errbuf[BUFSIZ];
+
 	memset(db, 0, sizeof(*db));
-	pthread_rwlock_init(&db->rwlock, 0);
+	const int rc = pthread_rwlock_init(&db->rwlock, 0);
+
+	if (rc != 0) {
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
+	}
+
+	return rc;
 }
 
 void free_valid_rb_database(struct rb_database *db) {

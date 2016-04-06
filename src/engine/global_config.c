@@ -387,7 +387,7 @@ static void parse_config0(json_t *root){
 		}
 	}
 	if(rb_http2k) {
-		const int parse_rc = parse_rb_config(&global_config.rb.database, rb_http2k);
+		const int parse_rc = parse_rb_config(&global_config.rb, rb_http2k);
 		if(0 != parse_rc) {
 			rdlog(LOG_ERR,"Can't parse rb_http2k config: %s",err);
 			exit(-1);
@@ -580,7 +580,7 @@ static void reload_meraki_config(struct n2kafka_config *config) {
 
 static void reload_rbhttp2k_config(struct n2kafka_config *config) {
 	rblog(LOG_INFO,"Reloading rbhttp2k uuids");
-	reload_decoder(config,CONFIG_RBHTTP2K_CONFIG,&config->rb.database,parse_rb_config);
+	reload_decoder(config,CONFIG_RBHTTP2K_CONFIG,&config->rb,rb_decoder_reload);
 }
 
 /// @TODO reload every decoder using new config 

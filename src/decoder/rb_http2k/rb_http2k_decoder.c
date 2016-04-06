@@ -310,44 +310,54 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	return 0;
 }
 
-int rb_opaque_reload(json_t *config, void *_opaque) {
+int rb_opaque_reload(json_t *config, void *opaque) {
+	/* Do nothing, since this decoder does not save anything per-listener
+	   information */
+	(void)config;
+	(void)opaque;
+	return 0;
+}
+
+int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	int rc = 0;
-	struct rb_opaque *opaque = _opaque;
+	struct rb_config *rb_config = vrb_config;
 	struct topics_db *old_topics_db = NULL, *my_new_topics_db = NULL;
 	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
 
-	assert(opaque);
+	assert(rb_config);
+	assert_rb_config(rb_config);
 	assert(config);
-#ifdef RB_OPAQUE_MAGIC
-	assert(RB_OPAQUE_MAGIC == opaque->magic);
-#endif
 
-	const int per_sensor_uuid_enrichment_rc = parse_per_uuid_opaque_config(config,
-	        &new_uuid_enrichment);
-	if (per_sensor_uuid_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
+	json_t *my_config = json_deep_copy(config);
+
+	const int per_client_enrichment_rc
+				= parse_per_uuid_opaque_config(my_config,
+							&new_uuid_enrichment);
+	if (per_client_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
 		rc = -1;
 		goto err;
 	}
 
 	my_new_topics_db = topics_db_new();
 
-	const int topic_list_rc = parse_topic_list_config(config,my_new_topics_db);
+	const int topic_list_rc = parse_topic_list_config(my_config,
+							    my_new_topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
 	}
 
-	pthread_rwlock_wrlock(&opaque->rb_config->database.rwlock);
+	pthread_rwlock_wrlock(&rb_config->database.rwlock);
 
-	old_uuid_enrichment = opaque->rb_config->database.uuid_enrichment;
-	opaque->rb_config->database.uuid_enrichment = new_uuid_enrichment;
+	old_uuid_enrichment = rb_config->database.uuid_enrichment;
+	rb_config->database.uuid_enrichment = new_uuid_enrichment;
 	new_uuid_enrichment = NULL;
 
-	old_topics_db = opaque->rb_config->database.topics_db;
-	opaque->rb_config->database.topics_db = my_new_topics_db;
+	old_topics_db = rb_config->database.topics_db;
+	rb_config->database.topics_db = my_new_topics_db;
 	my_new_topics_db = NULL;
 
-	pthread_rwlock_unlock(&opaque->rb_config->database.rwlock);
+	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
 err:
 	if (my_new_topics_db) {
@@ -366,6 +376,8 @@ err:
 		json_decref(new_uuid_enrichment);
 	}
 
+	json_decref(my_config);
+
 	return rc;
 }
 
@@ -380,36 +392,30 @@ void rb_opaque_done(void *_opaque) {
 	free(opaque);
 }
 
-int parse_rb_config(void *void_db, const struct json_t *config) {
-	assert(void_db);
-	char errbuf[BUFSIZ];
-	struct rb_config *rb_config = void_db;
+int parse_rb_config(void *vconfig, const struct json_t *config) {
+	struct rb_config *rb_config = vconfig;
 
-	struct rb_opaque dummy_opaque = {
-#ifdef RB_OPAQUE_MAGIC
-		.magic = RB_OPAQUE_MAGIC,
-#endif
-		/// @TODO quick hack, parse properly
-		.rb_config = rb_config
-	};
+	assert(vconfig);
+	assert(config);
 
 	if (only_stdout_output()) {
 		rdlog(LOG_ERR, "Can't use rb_http2k decoder if not kafka brokers configured.");
 		return -1;
 	}
 
-	const int rwlock_init_rc = pthread_rwlock_init(&rb_config->database.rwlock,
-	                           NULL);
-	if (rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
+#ifdef RB_CONFIG_MAGIC
+	rb_config->magic = RB_CONFIG_MAGIC;
+#endif // RB_CONFIG_MAGIC
+	const int rc = init_rb_database(&rb_config->database);
+
+	if (rc == 0) {
+		/// @TODO error treatment
+		json_t *aux = json_deep_copy(config);
+		rb_decoder_reload(rb_config, aux);
+		json_decref(aux);
 	}
 
-	json_t *aux = json_deep_copy(config);
-	rb_opaque_reload(aux, &dummy_opaque);
-	json_decref(aux);
-
-	return 0;
+	return rc;
 }
 
 /** Produce a batch of messages

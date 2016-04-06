@@ -35,9 +35,7 @@ static void test_rb_decoder0(const char *config_str, keyval_list_t *args,
 		assert(0);
 	}
 
-	struct rb_database rb_db;
-	init_rb_database(&rb_db);
-	parse_rb_config(&rb_db,decoder_config);
+	parse_rb_config(&global_config.rb,decoder_config);
 
 	struct rb_opaque rb_opaque = {
 #ifdef RB_OPAQUE_MAGIC
@@ -54,7 +52,7 @@ static void test_rb_decoder0(const char *config_str, keyval_list_t *args,
 		check_callback[i](&my_session,check_callback_opaque);
 	}
 
-	free_valid_rb_database(&rb_db);
+	free_valid_rb_database(&global_config.rb.database);
 	json_decref(config);
 }
 

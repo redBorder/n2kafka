@@ -36,7 +36,11 @@ struct rb_database {
 	void *topics_memory;
 };
 
-void init_rb_database(struct rb_database *db);
+/** Initialized a rb_database
+  @param db database to init
+  @return 0 if success, !0 in other case
+  */
+int init_rb_database(struct rb_database *db);
 void free_valid_rb_database(struct rb_database *db);
 
 /**
