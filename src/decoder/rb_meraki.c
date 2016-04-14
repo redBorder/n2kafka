@@ -386,6 +386,16 @@ static int transform_meraki_observation_location(json_t *observation) {
 	return 0;
 }
 
+/** Adjust real meraki RSSI
+  Meraki does not report RSSI in dBm. This function adjusts the measure.
+  @param client_rssi_num Obtained client RSSI number.
+  @see https://meraki.cisco.com/lib/pdf/meraki_whitepaper_cmx.pdf
+  */
+static void adjust_meraki_rssi(json_t *client_rssi_num) {
+	json_int_t val = json_integer_value(client_rssi_num);
+	json_integer_set(client_rssi_num, val - 95);
+}
+
 /* transform meraki observation in our suitable keys/values */
 static void transform_meraki_observation(json_t *observation,
                            struct meraki_transversal_data *transversal_data) {
@@ -444,6 +454,9 @@ static void transform_meraki_observation(json_t *observation,
 	}
 
 	transform_meraki_observation_location(observation);
+	if (client_rssi_num) {
+		adjust_meraki_rssi(client_rssi_num);
+	}
 
 	rename_key_if_exists(observation,client_os,
 	        MERAKI_CLIENT_OS_ORIGINAL_KEY,MERAKI_CLIENT_OS_DESTINATION_KEY);
