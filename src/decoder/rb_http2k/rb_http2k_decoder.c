@@ -27,6 +27,7 @@
 #include "util/rb_json.h"
 #include "util/topic_database.h"
 #include "util/kafka_message_list.h"
+#include "util/util.h"
 
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
@@ -321,8 +322,8 @@ int rb_opaque_reload(json_t *config, void *opaque) {
 int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	int rc = 0;
 	struct rb_config *rb_config = vrb_config;
-	struct topics_db *old_topics_db = NULL, *my_new_topics_db = NULL;
-	json_t *new_uuid_enrichment = NULL, *old_uuid_enrichment = NULL;
+	struct topics_db *topics_db = NULL;
+	json_t *uuid_enrichment = NULL;
 
 	assert(rb_config);
 	assert_rb_config(rb_config);
@@ -330,50 +331,34 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	json_t *my_config = json_deep_copy(config);
 
-	const int per_client_enrichment_rc
-				= parse_per_uuid_opaque_config(my_config,
-							&new_uuid_enrichment);
-	if (per_client_enrichment_rc != 0 || NULL == new_uuid_enrichment) {
+	const int per_sensor_enrichment_rc
+		= parse_per_uuid_opaque_config(my_config, &uuid_enrichment);
+	if (per_sensor_enrichment_rc != 0 || NULL == uuid_enrichment) {
 		rc = -1;
 		goto err;
 	}
 
-	my_new_topics_db = topics_db_new();
+	topics_db = topics_db_new();
 
 	const int topic_list_rc = parse_topic_list_config(my_config,
-							    my_new_topics_db);
+								topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
 	}
 
 	pthread_rwlock_wrlock(&rb_config->database.rwlock);
-
-	old_uuid_enrichment = rb_config->database.uuid_enrichment;
-	rb_config->database.uuid_enrichment = new_uuid_enrichment;
-	new_uuid_enrichment = NULL;
-
-	old_topics_db = rb_config->database.topics_db;
-	rb_config->database.topics_db = my_new_topics_db;
-	my_new_topics_db = NULL;
-
+	swap_ptrs(uuid_enrichment,rb_config->database.uuid_enrichment);
+	swap_ptrs(topics_db,rb_config->database.topics_db);
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
 err:
-	if (my_new_topics_db) {
-		topics_db_done(my_new_topics_db);
+	if (topics_db) {
+		topics_db_done(topics_db);
 	}
 
-	if (old_topics_db) {
-		topics_db_done(old_topics_db);
-	}
-
-	if (old_uuid_enrichment) {
-		json_decref(old_uuid_enrichment);
-	}
-
-	if (new_uuid_enrichment) {
-		json_decref(new_uuid_enrichment);
+	if (uuid_enrichment) {
+		json_decref(uuid_enrichment);
 	}
 
 	json_decref(my_config);
