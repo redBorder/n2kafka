@@ -21,10 +21,7 @@
 #pragma once
 
 #include <jansson.h>
-#include "tommyds/tommyhashtbl.h"
-
-#define sensors_hashtable tommy_hashtable
-#define sensors_hashtable_node tommy_hashtable_node
+#include "uuid_database.h"
 
 /// Sensors database entry
 typedef struct sensor_db_entry {
@@ -38,21 +35,18 @@ typedef struct sensor_db_entry {
 	uint64_t magic;
 #endif
 
-	/// Client uuid
-	const char *sensor_uuid;
+	/// Entry of uuid database
+	uuid_entry_t uuid_entry;
 
 	/// Enrichment data
 	json_t *enrichment;
-
-	/// hashtable node
-	sensors_hashtable_node node;
 
 	/// Reference counter
 	uint64_t refcnt;
 } sensor_db_entry_t;
 
 /** Obtains sensor uuid */
-#define sensor_db_entry_get_uuid(e) ((e)->sensor_uuid)
+#define sensor_db_entry_get_uuid(e) ((e)->entry.uuid)
 
 /** Obtains sensor_db_entry enrichment information */
 #define sensor_db_entry_json_enrichment(e) ((e)->enrichment)
@@ -61,11 +55,8 @@ typedef struct sensor_db_entry {
 void sensor_db_entry_decref(sensor_db_entry_t *entry);
 
 /** Sensors uuid database */
-typedef struct sensors_db_s {
-	/* Private data - do not access directly */
-	/// hashtable to search for uuids
-	sensors_hashtable hashtable;
-} sensors_db_t;
+struct sensors_db_s;
+typedef struct sensors_db_s sensors_db_t;
 
 /** Creates a new database
   @param uuids_config Configurations for each sensor

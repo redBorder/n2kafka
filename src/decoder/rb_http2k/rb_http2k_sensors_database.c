@@ -25,13 +25,11 @@
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
 
-/*
- * PURE HASHTABLE
- */
-
-/// Seed to feed hashtable hash
-/// @TODO make random!
-static const uint64_t hashtable_seed = 0;
+struct sensors_db_s {
+		/* Private data - do not access directly */
+		/// database to search for uuids
+		uuid_db_t uuid_db;
+};
 
 /** Assert that argument is a valid sensor */
 static void sensor_db_entry_assert(const sensor_db_entry_t *sensor_entry) {
@@ -39,62 +37,6 @@ static void sensor_db_entry_assert(const sensor_db_entry_t *sensor_entry) {
 	assert(SENSOR_DB_ENTRY_MAGIC == sensor_entry->magic);
 #endif
 }
-
-/** Hash to apply to string
-  @param key Key to hash
-  @return hash
-  */
-#define hash_str(key) tommy_hash_u32(hashtable_seed, key, strlen(key))
-
-/** Initialice a clients uuid hashtable
-  @param h hashtable.
-  @param num size of hashtable
-  */
-#define sensors_hashtable_init(h,num) tommy_hashtable_init(h,num)
-
-/** Inserts an element in uuid hashtable
-  @param h hashtable
-  @param n uuid_entry to insert
-  */
-#define sensors_hashtable_insert(h,n) \
-	tommy_hashtable_insert(h, &((n)->node), n, hash_str((n)->sensor_uuid))
-
-/** Calls a function foreach element in hashtable */
-#define sensors_hashtable_foreach tommy_hashtable_foreach
-
-#define sensors_hashtable_done tommy_hashtable_done
-
-/** Check if an uuid_entry has an uuid
-  @param arg uuid in const char * format
-  @param obj uuid_entry
-  @return 0 if equal, 1 ioc
-  */
-static int sensor_cmp(const void* arg, const void* obj) {
-	const char *uuid = arg;
-	const sensor_db_entry_t *sensor = obj;
-	sensor_db_entry_assert(sensor);
-
-	return strcmp(uuid,sensor->sensor_uuid);
-}
-
-/** Search an element in the hashtable
-  @param db database
-  @param uuid uuid to search
-  @return element if found, NULL in other case
-  */
-static sensor_db_entry_t *sensors_hashtable_search(sensors_db_t *db,
-							const char *uuid) {
-	sensor_db_entry_t *ret = tommy_hashtable_search(&db->hashtable,
-		sensor_cmp, uuid, hash_str(uuid));
-	if (ret) {
-		sensor_db_entry_assert(ret);
-	}
-	return ret;
-}
-
-/*
- * DATABASE
- */
 
 void sensor_db_entry_decref(sensor_db_entry_t *entry) {
 	if (0 == ATOMIC_OP(sub,fetch,&entry->refcnt,1)) {
@@ -120,7 +62,7 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 	json_error_t jerr;
 
 	rd_calloc_struct(&entry, sizeof(*entry),
-		-1, sensor_uuid, &entry->sensor_uuid,
+		-1, sensor_uuid, &entry->uuid_entry.uuid,
 		RD_MEM_END_TOKEN);
 
 	if (NULL == entry) {
@@ -133,8 +75,10 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 #ifdef SENSOR_DB_ENTRY_MAGIC
 	entry->magic = SENSOR_DB_ENTRY_MAGIC;
 #endif
+	uuid_entry_init(&entry->uuid_entry);
 
 	entry->refcnt = 1;
+	entry->uuid_entry.data = entry;
 	const int unpack_rc = json_unpack_ex(sensor_config, &jerr, JSON_STRICT,
 		"{s?O}",
 		"enrichment",&entry->enrichment);
@@ -158,7 +102,6 @@ err:
 sensors_db_t *sensors_db_new(json_t *sensors_config) {
 	const char *sensor_uuid;
 	json_t *client_config;
-	const size_t n_sensors = json_object_size(sensors_config);
 
 	sensors_db_t *ret = calloc(1,sizeof(*ret));
 	if (NULL == ret) {
@@ -166,13 +109,13 @@ sensors_db_t *sensors_db_new(json_t *sensors_config) {
 		goto err;
 	}
 
-	sensors_hashtable_init(&ret->hashtable, n_sensors*2);
+	uuid_db_init(&ret->uuid_db);
 
 	json_object_foreach(sensors_config, sensor_uuid, client_config) {
 		sensor_db_entry_t *entry = create_sensor_db_entry(
 			sensor_uuid, client_config);
 		if (NULL != entry) {
-			sensors_hashtable_insert(&ret->hashtable,entry);
+			uuid_db_insert(&ret->uuid_db, &entry->uuid_entry);
 		} else {
 			/* create_sensor_db_entry() has already log */
 			goto err_entry;
@@ -191,10 +134,17 @@ err:
 /** Obtains an entry from database, but does not increments reference counting
   @param db Database
   @param uuid UUID
-  @return uuid_entry
+  @return sensor from db
   */
 static sensor_db_entry_t *sensors_db_get0(sensors_db_t *db, const char *uuid) {
-	return sensors_hashtable_search(db,uuid);
+	uuid_entry_t *ret_entry = uuid_db_search(&db->uuid_db, uuid);
+	if (ret_entry) {
+		sensor_db_entry_t *ret = ret_entry->data;
+		assert(ret);
+		sensor_db_entry_assert(ret);
+		return ret;
+	}
+	return NULL;
 }
 
 sensor_db_entry_t *sensors_db_get(sensors_db_t *db, const char *uuid) {
@@ -212,14 +162,15 @@ int sensors_db_exists(sensors_db_t *db, const char *uuid) {
 /** Frees an element that is suppose to be an uuid_entry
   @param uuid_entry UUID entry
   */
-static void void_sensor_db_entry_decref(void *ventry) {
-	sensor_db_entry_t *entry = ventry;
+static void void_sensor_db_entry_decref(void *vuuid_entry) {
+	uuid_entry_t *uuid_entry = vuuid_entry;
+	sensor_db_entry_t *entry = uuid_entry->data;
 	sensor_db_entry_assert(entry);
 	sensor_db_entry_decref(entry);
 }
 
 void sensors_db_destroy(sensors_db_t *db) {
-	sensors_hashtable_foreach(&db->hashtable,void_sensor_db_entry_decref);
-	sensors_hashtable_done(&db->hashtable);
+	uuid_db_foreach(&db->uuid_db,void_sensor_db_entry_decref);
+	uuid_db_done(&db->uuid_db);
 	free(db);
 }

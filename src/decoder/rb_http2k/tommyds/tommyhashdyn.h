@@ -26,23 +26,32 @@
  */
 
 /** \file
- * Fixed size chained hashtable.
+ * Dynamic chained hashtable.
  *
- * This hashtable is a standard implementation of a chained hashtable with a fixed size.
+ * This hashtable resizes dynamically. It starts with the minimal size of 16 buckets, it doubles
+ * the size then it reaches a load factor greater than 0.5 and it halves the size with a load
+ * factor lower than 0.125.
  *
- * Note that performances starts to degenerate after reaching a load factor greater than 0.75.
- * The ::tommy_hashdyn and ::tommy_hashlin hashtables fix this problem growing dynamically.
+ * All the elements are reallocated in a single resize operation done inside
+ * tommy_hashdyn_insert() or tommy_hashdyn_remove().
  *
- * To initialize the hashtable you have to call tommy_hashtable_init() specifing
- * the fixed bucket size.
+ * Note that the resize operation takes approximatively 100 [ms] with 1 million of elements,
+ * and 1 [second] with 10 millions. This could be a problem in real-time applications.
+ *
+ * The resize also fragment the heap, as it involves allocating a double-sized table, copy elements,
+ * and deallocating the older table. Leaving a big hole in the heap.
+ *
+ * The ::tommy_hashlin hashtable fixes both problems.
+ *
+ * To initialize the hashtable you have to call tommy_hashdyn_init().
  *
  * \code
- * tommy_hashslin hashtable;
+ * tommy_hashslin hashdyn;
  *
- * tommy_hashtable_init(&hashtable, 1024);
+ * tommy_hashdyn_init(&hashdyn);
  * \endcode
  *
- * To insert elements in the hashtable you have to call tommy_hashtable_insert() for
+ * To insert elements in the hashtable you have to call tommy_hashdyn_insert() for
  * each element.
  * In the insertion call you have to specify the address of the node, the
  * address of the object, and the hash value of the key to use.
@@ -60,7 +69,7 @@
  *
  * obj->value = ...; // initializes the object
  *
- * tommy_hashtable_insert(&hashtable, &obj->node, obj, tommy_inthash_u32(obj->value)); // inserts the object
+ * tommy_hashdyn_insert(&hashdyn, &obj->node, obj, tommy_inthash_u32(obj->value)); // inserts the object
  * \endcode
  *
  * To find and element in the hashtable you have to call tommy_hashtable_search()
@@ -73,7 +82,7 @@
  * }
  *
  * int value_to_find = 1;
- * struct object* obj = tommy_hashtable_search(&hashtable, compare, &value_to_find, tommy_inthash_u32(value_to_find));
+ * struct object* obj = tommy_hashdyn_search(&hashdyn, compare, &value_to_find, tommy_inthash_u32(value_to_find));
  * if (!obj) {
  *     // not found
  * } else {
@@ -82,12 +91,13 @@
  * \endcode
  *
  * To iterate over all the elements in the hashtable with the same key, you have to
- * use tommy_hashtable_bucket() and follow the tommy_node::next pointer until NULL.
+ * use tommy_hashdyn_bucket() and follow the tommy_node::next pointer until NULL.
  * You have also to check explicitely for the key, as the bucket may contains
  * different keys.
  *
  * \code
- * tommy_node* i = tommy_hashtable_bucket(&hashtable, tommy_inthash_u32(value_to_find));
+ * int value_to_find = 1;
+ * tommy_node* i = tommy_hashdyn_bucket(&hashdyn, tommy_inthash_u32(value_to_find));
  * while (i) {
  *     struct object* obj = i->data; // gets the object pointer
  *
@@ -99,61 +109,67 @@
  * }
  * \endcode
  *
- * To remove an element from the hashtable you have to call tommy_hashtable_remove()
+ * To remove an element from the hashtable you have to call tommy_hashdyn_remove()
  * providing a comparison function, its argument, and the hash of the key to search
  * and remove.
  *
  * \code
- * struct object* obj = tommy_hashtable_remove(&hashtable, compare, &value_to_remove, tommy_inthash_u32(value_to_remove));
+ * struct object* obj = tommy_hashdyn_remove(&hashdyn, compare, &value_to_remove, tommy_inthash_u32(value_to_remove));
  * if (obj) {
  *     free(obj); // frees the object allocated memory
  * }
  * \endcode
  *
  * To destroy the hashtable you have to remove all the elements, and deinitialize
- * the hashtable calling tommy_hashtable_done().
+ * the hashtable calling tommy_hashdyn_done().
  *
  * \code
- * tommy_hashtable_done(&hashtable);
+ * tommy_hashdyn_done(&hashdyn);
  * \endcode
  *
  * If you need to iterate over all the elements in the hashtable, you can use
- * tommy_hashtable_foreach() or tommy_hashtable_foreach_arg().
+ * tommy_hashdyn_foreach() or tommy_hashdyn_foreach_arg().
  * If you need a more precise control with a real iteration, you have to insert
  * all the elements also in a ::tommy_list, and use the list to iterate.
  * See the \ref multiindex example for more detail.
  */
 
-#ifndef __TOMMYHASHTBL_H
-#define __TOMMYHASHTBL_H
+#ifndef __TOMMYHASHDYN_H
+#define __TOMMYHASHDYN_H
 
 #include "tommyhash.h"
 
 /******************************************************************************/
-/* hashtable */
+/* hashdyn */
+
+/** \internal
+ * Initial and minimal size of the hashtable expressed as a power of 2.
+ * The initial size is 2^TOMMY_HASHDYN_BIT.
+ */
+#define TOMMY_HASHDYN_BIT 4
 
 /**
  * Hashtable node.
  * This is the node that you have to include inside your objects.
  */
-typedef tommy_node tommy_hashtable_node;
+typedef tommy_node tommy_hashdyn_node;
 
 /**
  * Hashtable container type.
  * \note Don't use internal fields directly, but access the container only using functions.
  */
-typedef struct tommy_hashtable_struct {
-	tommy_hashtable_node** bucket; /**< Hash buckets. One list for each hash modulus. */
+typedef struct tommy_hashdyn_struct {
+	tommy_hashdyn_node** bucket; /**< Hash buckets. One list for each hash modulus. */
+	tommy_uint_t bucket_bit; /**< Bits used in the bit mask. */
 	tommy_count_t bucket_max; /**< Number of buckets. */
 	tommy_count_t bucket_mask; /**< Bit mask to access the buckets. */
 	tommy_count_t count; /**< Number of elements. */
-} tommy_hashtable;
+} tommy_hashdyn;
 
 /**
  * Initializes the hashtable.
- * \param buckets Minimum number of buckets to allocate. The effective number used is the next power of 2.
  */
-void tommy_hashtable_init(tommy_hashtable* hashtable, tommy_count_t bucket_max);
+void tommy_hashdyn_init(tommy_hashdyn* hashdyn);
 
 /**
  * Deinitializes the hashtable.
@@ -161,12 +177,12 @@ void tommy_hashtable_init(tommy_hashtable* hashtable, tommy_count_t bucket_max);
  * You can call this function with elements still contained,
  * but such elements are not going to be freed by this call.
  */
-void tommy_hashtable_done(tommy_hashtable* hashtable);
+void tommy_hashdyn_done(tommy_hashdyn* hashdyn);
 
 /**
  * Inserts an element in the hashtable.
  */
-void tommy_hashtable_insert(tommy_hashtable* hashtable, tommy_hashtable_node* node, void* data, tommy_hash_t hash);
+void tommy_hashdyn_insert(tommy_hashdyn* hashdyn, tommy_hashdyn_node* node, void* data, tommy_hash_t hash);
 
 /**
  * Searches and removes an element from the hashtable.
@@ -179,7 +195,7 @@ void tommy_hashtable_insert(tommy_hashtable* hashtable, tommy_hashtable_node* no
  * \param hash Hash of the element to find and remove.
  * \return The removed element, or 0 if not found.
  */
-void* tommy_hashtable_remove(tommy_hashtable* hashtable, tommy_search_func* cmp, const void* cmp_arg, tommy_hash_t hash);
+void* tommy_hashdyn_remove(tommy_hashdyn* hashdyn, tommy_search_func* cmp, const void* cmp_arg, tommy_hash_t hash);
 
 /**
  * Gets the bucket of the specified hash.
@@ -189,9 +205,9 @@ void* tommy_hashtable_remove(tommy_hashtable* hashtable, tommy_search_func* cmp,
  * \param hash Hash of the element to find.
  * \return The head of the bucket, or 0 if empty.
  */
-tommy_inline tommy_hashtable_node* tommy_hashtable_bucket(tommy_hashtable* hashtable, tommy_hash_t hash)
+tommy_inline tommy_hashdyn_node* tommy_hashdyn_bucket(tommy_hashdyn* hashdyn, tommy_hash_t hash)
 {
-	return hashtable->bucket[hash & hashtable->bucket_mask];
+	return hashdyn->bucket[hash & hashdyn->bucket_mask];
 }
 
 /**
@@ -204,9 +220,9 @@ tommy_inline tommy_hashtable_node* tommy_hashtable_bucket(tommy_hashtable* hasht
  * \param hash Hash of the element to find.
  * \return The first element found, or 0 if none.
  */
-tommy_inline void* tommy_hashtable_search(tommy_hashtable* hashtable, tommy_search_func* cmp, const void* cmp_arg, tommy_hash_t hash)
+tommy_inline void* tommy_hashdyn_search(tommy_hashdyn* hashdyn, tommy_search_func* cmp, const void* cmp_arg, tommy_hash_t hash)
 {
-	tommy_hashtable_node* i = tommy_hashtable_bucket(hashtable, hash);
+	tommy_hashdyn_node* i = tommy_hashdyn_bucket(hashdyn, hash);
 
 	while (i) {
 		/* we first check if the hash matches, as in the same bucket we may have multiples hash values */
@@ -222,7 +238,7 @@ tommy_inline void* tommy_hashtable_search(tommy_hashtable* hashtable, tommy_sear
  * You must already have the address of the element to remove.
  * \return The tommy_node::data field of the node removed.
  */
-void* tommy_hashtable_remove_existing(tommy_hashtable* hashtable, tommy_hashtable_node* node);
+void* tommy_hashdyn_remove_existing(tommy_hashdyn* hashdyn, tommy_hashdyn_node* node);
 
 /**
  * Calls the specified function for each element in the hashtable.
@@ -230,10 +246,10 @@ void* tommy_hashtable_remove_existing(tommy_hashtable* hashtable, tommy_hashtabl
  * You can use this function to deallocate all the elements inserted.
  *
  * \code
- * tommy_hashtable hashtable;
+ * tommy_hashdyn hashdyn;
  *
  * // initializes the hashtable
- * tommy_hashtable_init(&hashtable, ...);
+ * tommy_hashdyn_init(&hashdyn);
  *
  * ...
  *
@@ -243,37 +259,37 @@ void* tommy_hashtable_remove_existing(tommy_hashtable* hashtable, tommy_hashtabl
  * ...
  *
  * // insert it in the hashtable
- * tommy_hashdyn_insert(&hashtable, &obj->node, obj, tommy_inthash_u32(obj->value));
+ * tommy_hashdyn_insert(&hashdyn, &obj->node, obj, tommy_inthash_u32(obj->value));
  *
  * ...
  *
  * // deallocates all the objects iterating the hashtable
- * tommy_hashtable_foreach(&hashtable, free);
+ * tommy_hashdyn_foreach(&hashdyn, free);
  *
  * // deallocates the hashtable
- * tommy_hashdyn_done(&hashtable);
+ * tommy_hashdyn_done(&hashdyn);
  * \endcode
  */
-void tommy_hashtable_foreach(tommy_hashtable* hashtable, tommy_foreach_func* func);
+void tommy_hashdyn_foreach(tommy_hashdyn* hashdyn, tommy_foreach_func* func);
 
 /**
  * Calls the specified function with an argument for each element in the hashtable.
  */
-void tommy_hashtable_foreach_arg(tommy_hashtable* hashtable, tommy_foreach_arg_func* func, void* arg);
+void tommy_hashdyn_foreach_arg(tommy_hashdyn* hashdyn, tommy_foreach_arg_func* func, void* arg);
 
 /**
  * Gets the number of elements.
  */
-tommy_inline tommy_count_t tommy_hashtable_count(tommy_hashtable* hashtable)
+tommy_inline tommy_count_t tommy_hashdyn_count(tommy_hashdyn* hashdyn)
 {
-	return hashtable->count;
+	return hashdyn->count;
 }
 
 /**
  * Gets the size of allocated memory.
- * It includes the size of the ::tommy_hashtable_node of the stored elements.
+ * It includes the size of the ::tommy_hashdyn_node of the stored elements.
  */
-tommy_size_t tommy_hashtable_memory_usage(tommy_hashtable* hashtable);
+tommy_size_t tommy_hashdyn_memory_usage(tommy_hashdyn* hashdyn);
 
 #endif
 
