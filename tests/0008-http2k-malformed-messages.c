@@ -267,17 +267,6 @@ static void test_invalid_key_type() {
 }
 
 int main() {
-	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
-	init_global_config();
-	char temp_filename[sizeof(TEMP_TEMPLATE)];
-	strcpy(temp_filename,TEMP_TEMPLATE);
-	int temp_fd = mkstemp(temp_filename);
-	assert(temp_fd >= 0);
-	write(temp_fd, CONFIG_TEST, strlen(CONFIG_TEST));
-
-	parse_config(temp_filename);
-	unlink(temp_filename);
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_rb_decoder_two_keys),
 		cmocka_unit_test(test_rb_decoder_closing),
@@ -285,10 +274,4 @@ int main() {
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
-
-	free_global_config();
-
-	close(temp_fd);
-
-	return 0;
 }

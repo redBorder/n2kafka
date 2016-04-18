@@ -7,8 +7,6 @@
 #include <cmocka.h>
 #include <assert.h>
 
-static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
-
 static const char CONFIG_TEST[] =
     "{"
         "\"brokers\": \"localhost\","
@@ -64,28 +62,13 @@ static const char CONFIG_TEST[] =
 static const char *VALID_URL = "/rbdata/abc/rb_flow";
 
 static void test_validate_uri() {
-	json_error_t jerr;
-	json_t *config = json_loads(CONFIG_TEST, 0, &jerr);
-	if(NULL == config) {
-		rdlog(LOG_CRIT,"Couldn't unpack JSON config: %s",jerr.text);
-		assert(0);
-	}
-
-	const json_t *decoder_config = NULL;
-	const int unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}", 
-		"rb_http2k_config",&decoder_config);
-	if(0 != unpack_rc) {
-		rdlog(LOG_CRIT,"Can't unpack config: %s",jerr.text);
-		assert(0);
-	}
-
-	struct rb_config rb_config;
-	parse_rb_config(&rb_config,decoder_config);
+	test_rb_decoder_setup(CONFIG_TEST);
 
 	int allok = 1;
 	char *topic=NULL,*uuid=NULL;
-	int validation_rc = rb_http2k_validation(NULL /* @TODO this should change */,VALID_URL,
-							&rb_config.database, &allok,&topic,&uuid,"test_ip");
+	int validation_rc = rb_http2k_validation(
+		NULL /* @TODO this should change */,VALID_URL,
+		&global_config.rb.database, &allok,&topic,&uuid,"test_ip");
 
 	assert(MHD_YES == validation_rc);
 	assert(0==strcmp(topic,"rb_flow"));
@@ -94,8 +77,7 @@ static void test_validate_uri() {
 	free(topic);
 	free(uuid);
 
-	free_valid_rb_database(&rb_config.database);
-	json_decref(config);
+	test_rb_decoder_teardown();
 }
 
 static void prepare_args(
@@ -824,23 +806,10 @@ static void test_rb_array_enrich() {
 }
 
 
-/** Test array behavior */
-
 /** @TODO test matrix enrichment: test that all types can be overriden by all
     types
     */
 int main() {
-	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
-	init_global_config();
-	char temp_filename[sizeof(TEMP_TEMPLATE)];
-	strcpy(temp_filename,TEMP_TEMPLATE);
-	int temp_fd = mkstemp(temp_filename);
-	assert(temp_fd >= 0);
-	write(temp_fd, CONFIG_TEST, strlen(CONFIG_TEST));
-
-	parse_config(temp_filename);
-	unlink(temp_filename);
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_validate_uri),
 		cmocka_unit_test(test_rb_decoder_simple),
@@ -860,10 +829,4 @@ int main() {
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
-
-	free_global_config();
-
-	close(temp_fd);
-
-	return 0;
 }

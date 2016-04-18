@@ -122,8 +122,6 @@ int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
 
 
 int main() {
-	/// @TODO Need to have rdkafka inited. Maybe this plugin should have it owns rdkafka handler.
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(validate_uuid_test),
 		cmocka_unit_test(validate_topic_test),

@@ -13,6 +13,8 @@ CPPFLAGS := $(filter-out -I. -I./src,$(CPPFLAGS))
 
 LIBS += -lcmocka
 
+VALGRIND_SUP = --suppressions=valgrind.suppressions
+
 COVERAGE_CPPFLAGS = --coverage
 COVERAGE_LDFLAGS = --coverage
 COVERAGE_INFO = coverage.info

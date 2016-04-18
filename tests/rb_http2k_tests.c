@@ -1,4 +1,5 @@
-#include "../src/decoder/rb_http2k/rb_http2k_decoder.c"
+#include "decoder/rb_http2k/rb_http2k_decoder.c"
+#include "util/kafka.h"
 
 struct message_in {
 	const char *msg;
@@ -6,6 +7,23 @@ struct message_in {
 };
 
 typedef void (*check_callback_fn)(struct rb_session **,void *opaque);
+
+static void test_rb_decoder_setup(const char *config_txt) {
+	static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
+	init_global_config();
+	char temp_filename[sizeof(TEMP_TEMPLATE)];
+	strcpy(temp_filename,TEMP_TEMPLATE);
+	int temp_fd = mkstemp(temp_filename);
+	assert(temp_fd >= 0);
+	write(temp_fd, config_txt, strlen(config_txt));
+	parse_config(temp_filename);
+	unlink(temp_filename);
+	close(temp_fd);
+}
+
+static void test_rb_decoder_teardown() {
+	free_global_config();
+}
 
 /** Template for rb_decoder test
 	@param args Arguments like client_ip, topic, etc
@@ -19,23 +37,9 @@ typedef void (*check_callback_fn)(struct rb_session **,void *opaque);
 static void test_rb_decoder0(const char *config_str, keyval_list_t *args,
 		struct message_in *msgs, check_callback_fn *check_callback,
 		size_t msgs_len, void *check_callback_opaque) {
-	json_error_t jerr;
 	size_t i;
-	json_t *config = json_loads(config_str, 0, &jerr);
-	if(NULL == config) {
-		rdlog(LOG_CRIT,"Couldn't unpack JSON config: %s",jerr.text);
-		assert(0);
-	}
 
-	const json_t *decoder_config = NULL;
-	const int unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}",
-		"rb_http2k_config",&decoder_config);
-	if(0 != unpack_rc) {
-		rdlog(LOG_CRIT,"Can't unpack config: %s",jerr.text);
-		assert(0);
-	}
-
-	parse_rb_config(&global_config.rb,decoder_config);
+	test_rb_decoder_setup(config_str);
 
 	struct rb_opaque rb_opaque = {
 #ifdef RB_OPAQUE_MAGIC
@@ -52,8 +56,7 @@ static void test_rb_decoder0(const char *config_str, keyval_list_t *args,
 		check_callback[i](&my_session,check_callback_opaque);
 	}
 
-	free_valid_rb_database(&global_config.rb.database);
-	json_decref(config);
+	test_rb_decoder_teardown();
 }
 
 /** Function that check that session has no messages
