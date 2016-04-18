@@ -22,6 +22,7 @@
 
 #include "util/topic_database.h"
 #include "rb_http2k_sensors_database.h"
+#include "rb_http2k_organizations_database.h"
 
 #include <pthread.h>
 #include <jansson.h>
@@ -31,6 +32,8 @@ struct rb_database {
 	pthread_rwlock_t rwlock;
 	/// sensors UUID database.
 	sensors_db_t *sensors_db;
+	/// Organizations database
+	organizations_db_t organizations_db;
 	struct topics_db *topics_db;
 
 	void *topics_memory;

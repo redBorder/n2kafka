@@ -66,6 +66,15 @@ typedef struct uuid_entry_s {
   */
 void uuid_db_insert(uuid_db_t *db, uuid_entry_t *entry);
 
+/** Remove an existing entry from database
+  @param db database
+  @param entry Entry to remove
+  */
+#define uuid_db_remove(uuid_db, entry) \
+	tommy_hashdyn_remove_existing(uuid_db, &(entry)->node)
+
+
+
 /** Get an entry from uuid database.
   @note Obtained entry need to be freed with uuid_entry_decref
   @param db database

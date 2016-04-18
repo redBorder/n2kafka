@@ -42,6 +42,7 @@
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
 static const char RB_SENSORS_UUID_KEY[] = "sensors_uuids";
+static const char RB_ORGANIZATIONS_UUID_KEY[] = "organizations_uuids";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
 
@@ -168,7 +169,8 @@ fallback_behavior:
 	@param config original config with RB_SENSORS_UUID_KEY to extract it.
 	@return new uuid database
 	*/
-static sensors_db_t *parse_per_uuid_opaque_config(json_t *config) {
+static sensors_db_t *parse_per_uuid_opaque_config(json_t *config,
+					organizations_db_t *organizations_db) {
 	assert(config);
 
 	json_t *sensors_config = json_object_get(config, RB_SENSORS_UUID_KEY);
@@ -179,7 +181,7 @@ static sensors_db_t *parse_per_uuid_opaque_config(json_t *config) {
 		return NULL;
 	}
 
-	return sensors_db_new(sensors_config);
+	return sensors_db_new(sensors_config, organizations_db);
 }
 
 static partitioner_cb partitioner_of_name(const char *name) {
@@ -259,8 +261,8 @@ static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_
 			if (NULL != partitioner) {
 				rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
 			} else {
-				rdlog(LOG_ERR, 
-					"Can't found partitioner algorithm %s for topic %s", 
+				rdlog(LOG_ERR,
+					"Can't found partitioner algorithm %s for topic %s",
 					partition_algo,topic_name);
 			}
 		}
@@ -325,12 +327,6 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	json_t *my_config = json_deep_copy(config);
 
-	sensors_db = parse_per_uuid_opaque_config(my_config);
-	if (NULL == sensors_db) {
-		rc = -1;
-		goto err;
-	}
-
 	topics_db = topics_db_new();
 
 	const int topic_list_rc = parse_topic_list_config(my_config,
@@ -340,8 +336,21 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 		goto err;
 	}
 
+	json_t *organization_uuid = json_object_get(my_config,
+						RB_ORGANIZATIONS_UUID_KEY);
+
 	pthread_rwlock_wrlock(&rb_config->database.rwlock);
-	swap_ptrs(sensors_db,rb_config->database.sensors_db);
+	if (organization_uuid) {
+		organizations_db_reload(&rb_config->database.organizations_db,
+							organization_uuid);
+	}
+	sensors_db = parse_per_uuid_opaque_config(my_config,
+					&rb_config->database.organizations_db);
+	if (NULL != sensors_db) {
+		swap_ptrs(sensors_db,rb_config->database.sensors_db);
+	} else {
+		rc = -1;
+	}
 	swap_ptrs(topics_db,rb_config->database.topics_db);
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
@@ -475,13 +484,41 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 
 	session = *sessionp;
 
+	/* If the client has reached limit, it is not allowed to keep sending
+	   bytes
+	   */
+	organization_db_entry_t *organization = sensor_db_entry_organization(
+		session->sensor);
+	if (organization && organization_limit_reached(organization)) {
+		organization_add_consumed_bytes(organization,bsize);
+		return;
+	}
+
 	yajl_status stat = yajl_parse(session->handler, in_iterator, bsize);
 
 	if (stat != yajl_status_ok) {
-		/// @TODO improve this!
-		unsigned char * str = yajl_get_error(session->handler, 1, in_iterator, bsize);
-		fprintf(stderr, "%s", (const char *) str);
-		yajl_free_error(session->handler, str);
+		if (organization && organization_limit_reached(organization)) {
+			/* We have stop the parsing because quota, so no
+			   need to warn here again */
+			/* Adding the rest of message as if it has been
+			   consumed. This way, we can get a real account of
+			   client's sent bytes.
+
+			   This number will not be exactly the same as if we
+			   were consumed the enriched message, but if we want
+			   not to parse it, we can't do better */
+			const size_t rest_of_message =
+				bsize - yajl_get_bytes_consumed(
+							session->handler);
+			organization_add_consumed_bytes(organization,
+							rest_of_message);
+		} else {
+			/// @TODO improve this!
+			unsigned char * str = yajl_get_error(session->handler,
+							1, in_iterator, bsize);
+			fprintf(stderr, "%s", (const char *) str);
+			yajl_free_error(session->handler, str);
+		}
 	}
 }
 

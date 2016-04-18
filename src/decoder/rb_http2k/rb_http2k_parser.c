@@ -334,21 +334,45 @@ static int rb_parse_start_map(void * ctx)
 	GEN_OR_SKIP_NO_ROOT(sess,yajl_gen_map_open(g));
 }
 
+/** Adds organizations bytes, and emit a warning if this message has caused
+    that the organization's bytes quota has been reached. */
+static void add_organization_bytes(organization_db_entry_t *org,
+					uint64_t bytes, int *limit_reached) {
+	organization_add_consumed_bytes(org, bytes);
+	*limit_reached = organization_limit_reached(org);
+	if (*limit_reached && !organization_fetch_set_warning_given(org)) {
+		const char *org_uuid = organization_db_entry_get_uuid(org);
+		rdlog(LOG_INFO,
+			"Organzation %s has reached it's bytes quota",
+							org_uuid);
+	}
+}
+
 static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
 						rd_kafka_message_t *msg) {
 	const int message_key_offset = sess->message.current_key_offset;
+	const unsigned char * buf;
+	int limit_reached=0;
+	organization_db_entry_t *organization = sensor_db_entry_organization(
+								sess->sensor);
 	memset(msg,0,sizeof(*msg));
 
 	msg->partition = RD_KAFKA_PARTITION_UA;
 
-	const unsigned char * buf;
 	yajl_gen_get_buf(sess->gen, &buf, &msg->len);
+
+	if (organization) {
+		add_organization_bytes(organization, msg->len, &limit_reached);
+		if (limit_reached) {
+			return -1;
+		}
+	}
 
 	/// @TODO do not copy, steal the buffer!
 	msg->payload = strdup((const char *)buf);
 	if(NULL == msg->payload) {
 		rdlog(LOG_ERR,"Unable to duplicate buffer");
-		return 0;
+		return -1;
 	}
 
 	if(message_key_offset !=  CURRENT_KEY_OFFSET_NOT_SETTED) {
@@ -356,7 +380,7 @@ static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
 		msg->key_len = sess->message.current_key_length;
 	}
 
-	return 1;
+	return 0;
 }
 
 static int rb_parse_end_map(void * ctx)
@@ -374,8 +398,10 @@ static int rb_parse_end_map(void * ctx)
 			/* Ending message, we need to add enrichment values */
 			gen_jansson_object(g,client_enrichment);
 			yajl_gen_map_close(g);
-			rb_parse_generate_rdkafka_message(sess,&msg);
-			rd_kafka_msg_q_add(&sess->msg_queue,&msg);
+			if (0 == rb_parse_generate_rdkafka_message(sess,
+								&msg)) {
+				rd_kafka_msg_q_add(&sess->msg_queue,&msg);
+			}
 		}
 
 		memset(&sess->message,0,sizeof(sess->message));

@@ -35,14 +35,20 @@ int init_rb_database(struct rb_database *db) {
 	char errbuf[BUFSIZ];
 
 	memset(db, 0, sizeof(*db));
-	const int rc = pthread_rwlock_init(&db->rwlock, 0);
+	const int pthread_rc = pthread_rwlock_init(&db->rwlock, 0);
 
-	if (rc != 0) {
+	if (pthread_rc != 0) {
 		strerror_r(errno, errbuf, sizeof(errbuf));
 		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
+		return pthread_rc;
 	}
 
-	return rc;
+	const int odb_init = organizations_db_init(&db->organizations_db);
+	if (odb_init != 0) {
+		return odb_init;
+	}
+
+	return 0;
 }
 
 void free_valid_rb_database(struct rb_database *db) {
@@ -55,6 +61,7 @@ void free_valid_rb_database(struct rb_database *db) {
 			topics_db_done(db->topics_db);
 		}
 
+		organizations_db_done(&db->organizations_db);
 		pthread_rwlock_destroy(&db->rwlock);
 	}
 }

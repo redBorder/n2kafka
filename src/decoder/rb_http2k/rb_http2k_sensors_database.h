@@ -20,8 +20,10 @@
 
 #pragma once
 
-#include <jansson.h>
 #include "uuid_database.h"
+#include "rb_http2k_organizations_database.h"
+
+#include <jansson.h>
 
 /// Sensors database entry
 typedef struct sensor_db_entry {
@@ -41,15 +43,21 @@ typedef struct sensor_db_entry {
 	/// Enrichment data
 	json_t *enrichment;
 
+	/// Organization this sensor belongs to
+	organization_db_entry_t *organization;
+
 	/// Reference counter
 	uint64_t refcnt;
 } sensor_db_entry_t;
 
 /** Obtains sensor uuid */
-#define sensor_db_entry_get_uuid(e) ((e)->entry.uuid)
+#define sensor_db_entry_get_uuid(e) ((e)->uuid_entry.uuid)
 
 /** Obtains sensor_db_entry enrichment information */
 #define sensor_db_entry_json_enrichment(e) ((e)->enrichment)
+
+/** Obtains sensor organization */
+#define sensor_db_entry_organization(e) ((e)->organization);
 
 /** Decrements uuid entry, signaling that we are not going to use it anymore */
 void sensor_db_entry_decref(sensor_db_entry_t *entry);
@@ -60,9 +68,11 @@ typedef struct sensors_db_s sensors_db_t;
 
 /** Creates a new database
   @param uuids_config Configurations for each sensor
+  @param organizations_db Organizations db, each sensor belongs to one
   @returns new database
   */
-sensors_db_t *sensors_db_new(json_t *sensors_config);
+sensors_db_t *sensors_db_new(json_t *sensors_config,
+					organizations_db_t *organizations_db);
 
 /** Get an entry from sensor database.
   @note Obtained entry need to be freed with sensor_db_entry_decref

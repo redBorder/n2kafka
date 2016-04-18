@@ -20,6 +20,7 @@
 
 #include "config.h"
 
+#include "util/rb_json.h"
 #include "rb_http2k_sensors_database.h"
 
 #include <librd/rdlog.h>
@@ -40,6 +41,10 @@ static void sensor_db_entry_assert(const sensor_db_entry_t *sensor_entry) {
 
 void sensor_db_entry_decref(sensor_db_entry_t *entry) {
 	if (0 == ATOMIC_OP(sub,fetch,&entry->refcnt,1)) {
+		if (entry->organization) {
+			organizations_db_entry_decref(entry->organization);
+		}
+
 		if (entry->enrichment) {
 			json_decref(entry->enrichment);
 		}
@@ -48,16 +53,56 @@ void sensor_db_entry_decref(sensor_db_entry_t *entry) {
 	}
 }
 
+static int update_sensor_with_org(sensor_db_entry_t *sensor,
+					const char *organization_uuid,
+					organizations_db_t *organizations_db) {
+	const char *sensor_uuid = sensor_db_entry_get_uuid(sensor);
+
+	int rc = 0;
+	sensor->organization = organizations_db_get(organizations_db,
+						organization_uuid);
+
+	if (NULL == sensor->organization) {
+		rdlog(LOG_ERR,
+			"Couldn't find sensor %s organization %s",
+			sensor_uuid, organization_uuid);
+
+		return -1;
+	}
+
+	json_t *org_enrichment
+		= organization_get_enrichment(sensor->organization);
+	if (NULL != org_enrichment) {
+		if (NULL == sensor->enrichment) {
+			sensor->enrichment = json_deep_copy(org_enrichment);
+			rc = (NULL == sensor->enrichment);
+		} else {
+			rc = json_object_update_missing_copy(
+				sensor->enrichment, org_enrichment);
+		}
+
+		if (0 != rc) {
+			rdlog(LOG_ERR,
+				"Couldn't update sensor %s organization %s"
+				"enrichment (out of memory?)",
+				sensor_uuid, organization_uuid);
+		}
+	}
+
+	return rc;
+}
+
 /** Extracts client information in a uuid_entry
   @param sensor_uuid client UUID
   @param sensor_config Client config
   @return Generated uuid entry
   */
 static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
-		json_t *sensor_config) {
+		organizations_db_t *organizations_db, json_t *sensor_config) {
 	assert(sensor_uuid);
 	assert(sensor_config);
 
+	const char *organization_uuid = NULL;
 	sensor_db_entry_t *entry = NULL;
 	json_error_t jerr;
 
@@ -79,9 +124,11 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 
 	entry->refcnt = 1;
 	entry->uuid_entry.data = entry;
+	entry->enrichment = json_object_get(sensor_config,"enrichment");
 	const int unpack_rc = json_unpack_ex(sensor_config, &jerr, JSON_STRICT,
-		"{s?O}",
-		"enrichment",&entry->enrichment);
+		"{s?O,s?s}",
+		"enrichment",&entry->enrichment,
+		"organization_uuid", &organization_uuid);
 
 	if (0 != unpack_rc) {
 		rdlog(LOG_ERR,"Couldn't unpack client %s limits: %s",
@@ -89,7 +136,20 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 		goto err_unpack;
 	}
 
+	if (organization_uuid) {
+		const int rc = update_sensor_with_org(entry,
+					organization_uuid, organizations_db);
+		if (rc != 0) {
+			goto err_organization_db;
+		}
+	}
+
 	return entry;
+
+err_organization_db:
+	if (entry->enrichment) {
+		json_decref(entry->enrichment);
+	}
 
 err_unpack:
 	sensor_db_entry_decref(entry);
@@ -99,13 +159,15 @@ err:
 	return entry;
 }
 
-sensors_db_t *sensors_db_new(json_t *sensors_config) {
+sensors_db_t *sensors_db_new(json_t *sensors_config,
+					organizations_db_t *organizations_db) {
 	const char *sensor_uuid;
 	json_t *client_config;
 
 	sensors_db_t *ret = calloc(1,sizeof(*ret));
 	if (NULL == ret) {
-		rdlog(LOG_ERR, "Couldn't create uuid database (out of memory?");
+		rdlog(LOG_ERR,
+			"Couldn't create sensor uuid database (out of memory?");
 		goto err;
 	}
 
@@ -113,7 +175,7 @@ sensors_db_t *sensors_db_new(json_t *sensors_config) {
 
 	json_object_foreach(sensors_config, sensor_uuid, client_config) {
 		sensor_db_entry_t *entry = create_sensor_db_entry(
-			sensor_uuid, client_config);
+			sensor_uuid, organizations_db, client_config);
 		if (NULL != entry) {
 			uuid_db_insert(&ret->uuid_db, &entry->uuid_entry);
 		} else {
