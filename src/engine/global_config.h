@@ -26,6 +26,7 @@
 #include "util/kafka.h"
 #include "util/in_addr_list.h"
 #include "util/pair.h"
+#include "util/rb_timer.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -51,7 +52,7 @@ typedef void (*listener_reload)(struct json_t *new_config,
 struct listener{
     uint16_t port; // as listener ID
     void *private;
-    
+
     struct{
         void *cb_opaque;
         decoder_callback callback;
@@ -93,6 +94,9 @@ struct n2kafka_config{
 
     in_addr_list_t *blacklist;
 
+    /// List of global timers
+    rb_timers_list_t timers;
+
     /// @TODO this should belong to decoders, not here.
     struct mse_config mse;
     struct meraki_config meraki;
@@ -119,5 +123,30 @@ void init_global_config();
 void parse_config(const char *config_file_path);
 
 void reload_config(struct n2kafka_config *config);
+
+/** Register a new timer to call from this decoder
+  @param interval Interval to call callback
+  @param cb Callback
+  @param ctx Context to call callback
+  @note Callback will be called from another thread than decoder.
+  */
+rb_timer_t *decoder_register_timer(const struct timespec *interval,
+    void (*cb)(void *), void *ctx);
+
+/** Unregister a registered timer
+  @param timer timer to unregister
+  */
+void decoder_deregister_timer(rb_timer_t *timer);
+
+/** Change a timer interval
+  @param timer timer to change interval
+  @param ts New timer interval
+  @return 0 if success. !0 in other case.
+  */
+int decoder_timer_set_interval(struct rb_timer *timer,
+                        const struct timespec *ts);
+
+/// @TODO use SIGEV_THREAD and delete this function!!
+void execute_global_timers();
 
 void free_global_config();

@@ -95,6 +95,8 @@ int main(int argc,char *argv[]){
 			reload_config(&global_config);
 			do_reload = 0;
 		}
+		// @TODO this should be not neccesary with SIGEV_THREAD
+		execute_global_timers();
 	}
 
 	free_global_config();
