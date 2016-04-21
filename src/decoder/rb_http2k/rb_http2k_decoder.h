@@ -45,6 +45,17 @@ struct rb_config {
 	/// This value always have to be RB_CONFIG_MAGIC
 	uint64_t magic;
 #endif
+
+	struct {
+		/// Sync id to difference between others n2kafka and this one
+		char *n2kafka_id;
+		/// Timer to send organization stats to monitor
+		rb_timer_t *timer;
+		/// Timer to clean stats
+		rb_timer_t *clean_timer;
+		/// Topics to send organization stats.
+		struct rkt_array topics;
+	} organizations_sync;
 	struct rb_database database;
 };
 
@@ -59,7 +70,7 @@ struct rb_config {
 int parse_rb_config(void *_db,const struct json_t *rb_config);
 /** Release all resources used */
 void rb_decoder_done(void *rb_config);
-/** Does nothing, since this decoder does not save anything related to 
+/** Does nothing, since this decoder does not save anything related to
     listener
     */
 int rb_decoder_reload(void *_db, const struct json_t *rb_config);

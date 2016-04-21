@@ -73,4 +73,6 @@ struct rb_config;
 struct rb_session *new_rb_session(struct rb_config *rb_config,
 	                                const keyval_list_t *msg_vars);
 
+int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
+
 void free_rb_session(struct rb_config *rb_config, struct rb_session *sess);

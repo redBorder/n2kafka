@@ -57,8 +57,10 @@ typedef struct uuid_entry_s {
 
 /// Init an uuid database
 #define uuid_db_init tommy_hashdyn_init
+#define uuid_db_count tommy_hashdyn_count
 #define uuid_db_done tommy_hashdyn_done
 #define uuid_db_foreach tommy_hashdyn_foreach
+#define uuid_db_foreach_arg tommy_hashdyn_foreach_arg
 
 /** Inserts an uuid element in uuid database
   @param db database

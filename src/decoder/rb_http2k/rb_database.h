@@ -24,6 +24,8 @@
 #include "rb_http2k_sensors_database.h"
 #include "rb_http2k_organizations_database.h"
 
+#include "util/rb_timer.h"
+
 #include <pthread.h>
 #include <jansson.h>
 
@@ -34,6 +36,7 @@ struct rb_database {
 	sensors_db_t *sensors_db;
 	/// Organizations database
 	organizations_db_t organizations_db;
+	/// Timer to send stats via rb_monitor topic
 	struct topics_db *topics_db;
 
 	void *topics_memory;

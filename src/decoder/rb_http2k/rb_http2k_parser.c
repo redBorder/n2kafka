@@ -40,7 +40,6 @@
     PARSING & ENRICHMENT
 */
 
-static int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 static int gen_jansson_array(yajl_gen gen, json_t *enrichment_data);
 
 static int gen_jansson_value(yajl_gen gen, json_t *value) {
@@ -119,7 +118,7 @@ static int gen_jansson_array(yajl_gen gen, json_t *array) {
 }
 
 /// @TODO check gen_ return
-static int gen_jansson_object(yajl_gen gen, json_t *object) {
+int gen_jansson_object(yajl_gen gen, json_t *object) {
 	assert(gen);
 	assert(object);
 

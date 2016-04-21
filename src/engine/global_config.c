@@ -47,6 +47,7 @@
 #define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
+#define CONFIG_N2KAFKA_ID_KEY "n2kafka_id"
 #define CONFIG_PORT_KEY "port"
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
@@ -194,7 +195,7 @@ static void parse_rdkafka_keyval_config(const char *key,const char *value){
 }
 
 static void parse_rdkafka_config_json(const char *key,const json_t *jvalue){
-	// Extracted from Magnus Edenhill's kafkacat 
+	// Extracted from Magnus Edenhill's kafkacat
 	const char *value = assert_json_string(key,jvalue);
 	parse_rdkafka_keyval_config(key,value);
 }
@@ -217,7 +218,7 @@ static void parse_blacklist(const char *key,const json_t *value){
 
 static const listener_creator *protocol_creator(const char *proto){
 	size_t i;
-	const size_t listeners_length 
+	const size_t listeners_length
 	    = sizeof(registered_listeners)/sizeof(registered_listeners[0]);
 
 	for(i=0;i<listeners_length;++i) {
@@ -238,7 +239,7 @@ static const struct registered_decoder *locate_registered_decoder(const char *de
 	assert(decode_as);
 
 	size_t i;
-	const size_t decoders_length 
+	const size_t decoders_length
 	    = sizeof(registered_decoders)/sizeof(registered_decoders[0]);
 
 	for(i=0;i<decoders_length;++i) {
@@ -324,6 +325,8 @@ static void parse_config_keyval(const char *key,const json_t *value){
 		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_BROKERS_KEY)){
 		// Already parsed
+	} else if(!strcasecmp(key,CONFIG_N2KAFKA_ID_KEY)) {
+		// Already parsed
 	}else if(!strcasecmp(key,CONFIG_LISTENERS_ARRAY)){
 		parse_listeners_array(key,value);
 	}else if(!strcasecmp(key,CONFIG_DEBUG_KEY)){
@@ -351,6 +354,12 @@ static void parse_rdkafka_config_keyval(const char *key,const json_t *value) {
 		global_config.topic = strdup(assert_json_string(key,value));
 	} else if(!strcasecmp(key,CONFIG_BROKERS_KEY)) {
 		global_config.brokers = strdup(assert_json_string(key,value));
+		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
+							global_config.brokers);
+		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
+							global_config.brokers);
+	} else if(!strcasecmp(key,CONFIG_N2KAFKA_ID_KEY)) {
+		global_config.n2kafka_id = strdup(assert_json_string(key,value));
 	} else if(!strncasecmp(key,CONFIG_RDKAFKA_KEY,strlen(CONFIG_RDKAFKA_KEY))) {
 		// if starts with
 		parse_rdkafka_config_json(key,value);
@@ -524,7 +533,7 @@ static void reload_listeners_create_new_ones(json_t *new_listeners_array,
 
 static void reload_listeners(json_t *new_config,struct n2kafka_config *config){
 	json_error_t jerr;
-	
+
 	json_t *listeners_array = NULL;
 	const int json_unpack_rc = json_unpack_ex(new_config,&jerr,0,
 		"{s:o}","listeners",&listeners_array);
@@ -580,7 +589,7 @@ error_free_root:
 
 static void reload_mse_config(struct n2kafka_config *config){
 	/// @TODO merge with config parse
-	
+
 	rblog(LOG_INFO,"Reloading MSE sensors");
 	reload_decoder(config,CONFIG_MSE_SENSORS_KEY,&config->mse.database,parse_mse_array);
 }
@@ -595,7 +604,7 @@ static void reload_rbhttp2k_config(struct n2kafka_config *config) {
 	reload_decoder(config,CONFIG_RBHTTP2K_CONFIG,&config->rb,rb_decoder_reload);
 }
 
-/// @TODO reload every decoder using new config 
+/// @TODO reload every decoder using new config
 static void reload_decoders(struct n2kafka_config *config) {
 	reload_mse_config(config);
 	reload_meraki_config(config);
@@ -674,5 +683,6 @@ void free_global_config(){
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);
+	free(global_config.n2kafka_id);
 	free(global_config.response);
 }

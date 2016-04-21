@@ -126,7 +126,7 @@ void init_rdkafka(){
 	}
 
 	/* Security measure: If we start n2kafka while sending data, it will give a SIGSEGV */
-	sleep(1); 
+	sleep(1);
 }
 
 static void flush_kafka0(int timeout_ms){
@@ -177,14 +177,17 @@ struct kafka_message_array *new_kafka_message_array(size_t size){
 	return ret;
 }
 
-int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_t buf_size,
-                                                                               void *opaque) {
+int save_kafka_msg_key_in_array(struct kafka_message_array *array,
+				char *key, size_t key_len,
+				char *buffer, size_t buf_size, void *opaque) {
 	if(array->count == array->size) {
 		rdlog(LOG_ERR,"Can't save msg in array: Not enough space");
 		return -1;
 	}
 
 	const size_t i = array->count;
+	array->msgs[i].key = key;
+	array->msgs[i].key_len = key_len;
 	array->msgs[i].partition = RD_KAFKA_PARTITION_UA;
 	array->msgs[i].payload = buffer;
 	array->msgs[i].len = buf_size;
@@ -195,27 +198,55 @@ int save_kafka_msg_in_array(struct kafka_message_array *array,char *buffer,size_
 	return 0;
 }
 
-void send_array_to_kafka(rd_kafka_topic_t *rkt, 
-                                struct kafka_message_array *msgs) {
-	size_t i;
+static int send_array_to_rkt(rd_kafka_topic_t *rkt, int flags,
+		struct kafka_message_array *msgs) {
+	int produce_rc = 0;
+	int i;
 
-	if(rkt) {
-		rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,RD_KAFKA_MSG_F_FREE,
-			msgs->msgs,msgs->count);
+	if (rkt) {
+		produce_rc = rd_kafka_produce_batch(rkt,RD_KAFKA_PARTITION_UA,
+			flags, msgs->msgs, msgs->count);
 	}
 
-	for(i=0; i<msgs->count; ++i) {
-		if(msgs->msgs[i].err) {
+	for (i=0; produce_rc != (int)msgs->count && i<(int)msgs->count; ++i) {
+		// Print error
+		if (msgs->msgs[i].err) {
 			const char *payload = msgs->msgs[i].payload;
 			int payload_len = msgs->msgs[i].len;
-			const char *msg_error = rd_kafka_err2str(msgs->msgs[i].err);
-			rdlog(LOG_ERR,"Couldn't produce message [%.*s]: %s",payload_len,payload,msg_error);
+			const char *msg_error =
+				rd_kafka_err2str(msgs->msgs[i].err);
+			rdlog(LOG_ERR, "Couldn't produce message [%.*s]: %s",
+				payload_len,payload,msg_error);
 		}
 
-		if(!rkt || msgs->msgs[i].err) {
+		// Free the message if needed/requested
+		if (!rkt ||
+			((flags & RD_KAFKA_MSG_F_FREE) && msgs->msgs[i].err)) {
 			free(msgs->msgs[i].payload);
 		}
 	}
+
+	return produce_rc;
+}
+
+int send_array_to_kafka(rd_kafka_topic_t *rkt,
+                                struct kafka_message_array *msgs) {
+	return send_array_to_rkt(rkt, RD_KAFKA_MSG_F_FREE, msgs);
+}
+
+int send_array_to_kafka_topics(struct rkt_array *rkt_array,
+					struct kafka_message_array *msgs) {
+	int produce_rc = 0;
+	size_t rkt;
+
+	for (rkt = 0; rkt < rkt_array->count; ++rkt) {
+		const int flags = rkt == rkt_array->count - 1 ?
+			RD_KAFKA_MSG_F_FREE : RD_KAFKA_MSG_F_COPY;
+		produce_rc += send_array_to_rkt(rkt_array->rkt[rkt],
+				flags, msgs);
+	}
+
+	return produce_rc;
 }
 
 
@@ -246,4 +277,21 @@ void stop_rdkafka(){
 
 	rd_kafka_destroy(global_config.rk);
 	while(0 != rd_kafka_wait_destroyed(5000));
+}
+
+void rkt_array_swap(struct rkt_array *a, struct rkt_array *b) {
+	struct rkt_array temp;
+	memcpy(&temp,a,sizeof(temp));
+	memcpy(a,b,sizeof(*a));
+	memcpy(b,&temp,sizeof(*b));
+
+}
+
+void rkt_array_done(struct rkt_array *rkt_array) {
+	size_t i;
+	for (i=0; i<rkt_array->count; ++i) {
+		rd_kafka_topic_destroy(rkt_array->rkt[i]);
+	}
+	free(rkt_array->rkt);
+	memset(rkt_array, 0, sizeof(*rkt_array));
 }

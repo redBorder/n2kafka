@@ -24,6 +24,9 @@
 
 #include <jansson.h>
 #include "uuid_database.h"
+#include "util/kafka.h"
+
+#include <time.h>
 
 /* FW declaration */
 struct organizations_db_s;
@@ -143,6 +146,27 @@ void organizations_db_reload(organizations_db_t *db, json_t *organizations);
   */
 organization_db_entry_t *organizations_db_get(organizations_db_t *db,
 					const char *organization_uuid);
+
+/** Get a bytes consumed report for each organization
+  @param db Database
+  @param now Report's timestamp
+  @return Reports
+  */
+struct kafka_message_array *organization_db_interval_consumed0(
+				organizations_db_t *db, time_t now,
+				const struct itimerspec *interval,
+				const struct itimerspec *clean_interval,
+				const char *n2kafka_id, int clean);
+
+#define organization_db_interval_consumed(db, now, interval, clean_interval, \
+							 n2kafka_id) \
+	organization_db_interval_consumed0(db, now, interval, clean_interval, \
+								 n2kafka_id, 0)
+
+#define organization_db_clean_consumed(db, now, interval, clean_interval, \
+							 n2kafka_id) \
+	organization_db_interval_consumed0(db, now, interval, clean_interval, \
+								 n2kafka_id, 1)
 
 /** Checks if an entry exists in uuid database.
   @param db database
