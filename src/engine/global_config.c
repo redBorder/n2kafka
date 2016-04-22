@@ -622,7 +622,7 @@ void reload_config(struct n2kafka_config *config) {
 	json_decref(new_config_file);
 }
 
-rb_timer_t *decoder_register_timer(const struct timespec *interval,
+rb_timer_t *decoder_register_timer(const struct itimerspec *interval,
 					void (*cb)(void *), void *cb_ctx) {
 	char err[BUFSIZ];
 
@@ -641,7 +641,7 @@ void decoder_deregister_timer(rb_timer_t *timer) {
 }
 
 int decoder_timer_set_interval(struct rb_timer *timer,
-                        const struct timespec *ts) {
+                        const struct itimerspec *ts) {
 	char err[BUFSIZ];
 
 	const int rc = rb_timer_set_interval(&global_config.timers, timer,

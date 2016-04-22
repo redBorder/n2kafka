@@ -43,7 +43,7 @@ typedef struct rb_timers_list_s {
   @return 0 is success, !0 if error
   */
 int rb_timer_set_interval(rb_timers_list_t *list, rb_timer_t *timer,
-                        const struct timespec *ts, char *err, size_t errsize);
+                        const struct itimerspec *ts, char *err, size_t errsize);
 
 /** Gets timer interval
   @param timer timer to get the interval
@@ -85,7 +85,7 @@ void rb_timers_run(rb_timers_list_t *list);
   @return new timer if successful
   */
 rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
-	const struct timespec *interval, void (*cb)(void *), void *cb_ctx,
+	const struct itimerspec *interval, void (*cb)(void *), void *cb_ctx,
 	char *err, size_t errsize);
 
 /// Need to call this function if a registered timer calls SIGALRM

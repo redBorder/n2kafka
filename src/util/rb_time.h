@@ -43,3 +43,10 @@ static int cmp_timespec(const struct timespec *ts1,
 		return ts2->tv_nsec - ts1->tv_nsec;
 	}
 }
+
+static int zero_itimerspec(const struct itimerspec *its)
+						__attribute__((unused));
+static int zero_itimerspec(const struct itimerspec *its) {
+	return zero_timespec(&its->it_value)
+					&& zero_timespec(&its->it_interval);
+}

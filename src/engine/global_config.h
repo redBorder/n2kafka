@@ -130,7 +130,7 @@ void reload_config(struct n2kafka_config *config);
   @param ctx Context to call callback
   @note Callback will be called from another thread than decoder.
   */
-rb_timer_t *decoder_register_timer(const struct timespec *interval,
+rb_timer_t *decoder_register_timer(const struct itimerspec *interval,
     void (*cb)(void *), void *ctx);
 
 /** Unregister a registered timer
@@ -144,7 +144,7 @@ void decoder_deregister_timer(rb_timer_t *timer);
   @return 0 if success. !0 in other case.
   */
 int decoder_timer_set_interval(struct rb_timer *timer,
-                        const struct timespec *ts);
+                        const struct itimerspec *ts);
 
 /// @TODO use SIGEV_THREAD and delete this function!!
 void execute_global_timers();

@@ -62,16 +62,12 @@ struct rb_timer  {
   @return 0 if success, !0 if any
   */
 static int rb_timer_set_interval_NL(struct rb_timer *timer,
-		const struct timespec *ts, char *err, size_t errsize) {
+		const struct itimerspec *ts, char *err, size_t errsize) {
 	const int settime_flags = 0;
 	struct itimerspec *old_value = NULL;
-	struct itimerspec itimer_value;
-
-	memcpy(&itimer_value.it_value, ts, sizeof(itimer_value.it_value));
-	memcpy(&itimer_value.it_interval, ts, sizeof(itimer_value.it_interval));
 
 	const int settime_rc = timer_settime(timer->timerid,
-		settime_flags, &itimer_value, old_value);
+		settime_flags, ts, old_value);
 
 	if (0 != settime_rc) {
 		char buf[BUFSIZ];
@@ -83,7 +79,7 @@ static int rb_timer_set_interval_NL(struct rb_timer *timer,
 }
 
 int rb_timer_set_interval(rb_timers_list_t *list, struct rb_timer *timer,
-			const struct timespec *ts, char *err, size_t errsize) {
+			const struct itimerspec *ts, char *err, size_t errsize) {
 	pthread_mutex_lock(&list->mutex);
 	const int rc = rb_timer_set_interval_NL(timer, ts, err, errsize);
 	pthread_mutex_unlock(&list->mutex);
@@ -116,7 +112,7 @@ static void rb_timers_list_insert_head(rb_timers_list_t *list,
 }
 
 rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
-		const struct timespec *interval,
+		const struct itimerspec *interval,
 		void (*cb)(void *), void *cb_ctx, char *err, size_t errsize) {
 	struct sigevent sevp;
 
