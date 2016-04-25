@@ -57,6 +57,8 @@ struct rb_config {
 #endif
 
 int parse_rb_config(void *_db,const struct json_t *rb_config);
+/** Release all resources used */
+void rb_decoder_done(void *rb_config);
 /** Does nothing, since this decoder does not save anything related to 
     listener
     */

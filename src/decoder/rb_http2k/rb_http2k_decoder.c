@@ -528,3 +528,8 @@ void rb_decode(char *buffer, size_t buf_size,
 		process_rb_buffer(NULL,0,list,rb_opaque, sessionp);
 	}
 }
+
+void rb_decoder_done(void *vrb_config) {
+	struct rb_config *rb_config = vrb_config;
+	free_valid_rb_database(&rb_config->database);
+}

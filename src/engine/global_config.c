@@ -662,7 +662,7 @@ void free_global_config(){
 	shutdown_listeners(&global_config);
 
 	free_valid_mse_database(&global_config.mse.database);
-	free_valid_rb_database(&global_config.rb.database);
+	rb_decoder_done(&global_config.rb);
 
 	if(!only_stdout_output()){
 		flush_kafka();
