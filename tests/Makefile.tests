@@ -30,16 +30,17 @@ COVERAGE_OUTPUT_DIRECTORY = out
 all: test
 
 %.test: %.c %.objdeps
-	$(CC) $(CFLAGS)  $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
-	CMOCKA_MESSAGE_OUTPUT=XML CMOCKA_XML_FILE=$@.xml ./$@
-	# cat ./$@.xml
+	@printf "\033[1m\033[33mBuilding $@\033[1m\033[0m\n"
+	@$(CC) $(CFLAGS) $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 
 coverage:
-	LDFLAGS="${LDFLAGS} ${COVERAGE_LDFLAGS}" CPPFLAGS="${CPPFLAGS} ${COVERAGE_CPPFLAGS}" make
-	lcov --rc lcov_branch_coverage=1 --capture --directory ../ --output-file ${COVERAGE_INFO}
-	genhtml --branch-coverage ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY}
+	@LDFLAGS="${LDFLAGS} ${COVERAGE_LDFLAGS}" CPPFLAGS="${CPPFLAGS} ${COVERAGE_CPPFLAGS}" make
+	@lcov -q --rc lcov_branch_coverage=1 --capture --directory ../ --output-file ${COVERAGE_INFO}
+	@genhtml --branch-coverage ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
+	@./display_coverage.sh
 
 test: $(TEST_PROGS)
+	@./run_tests.sh
 
 clean:
 	rm -f $(TEST_PROGS) $(XML_FILES) $(COV_FILES) $(COVERAGE_INFO)
