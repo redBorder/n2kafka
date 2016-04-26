@@ -374,10 +374,12 @@ static void testMSE8DefaultEnrichment_miss() {
 }
 
 int main() {
-	testMSE8Enrichment_no_overlap();
-	testMSE8Enrichment_overlap();
-	testMSE8DefaultEnrichment_hit();
-	testMSE8DefaultEnrichment_miss();
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(testMSE8Enrichment_no_overlap),
+		cmocka_unit_test(testMSE8Enrichment_overlap),
+		cmocka_unit_test(testMSE8DefaultEnrichment_hit),
+		cmocka_unit_test(testMSE8DefaultEnrichment_miss),
+	};
 
-	return 0;
+	return cmocka_run_group_tests(tests, NULL, NULL);
 }

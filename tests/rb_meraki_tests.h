@@ -1,6 +1,11 @@
 #include "../src/decoder/meraki/rb_meraki.c"
 #include "rb_json_tests.c"
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <cmocka.h>
+
 #define RB_UNUSED __attribute__((unused))
 
 static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
@@ -21,9 +26,9 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 
 	if (config_str) {
 		config = json_loads(config_str, 0, NULL);
-		assert(config);
+		assert_true(config);
 		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
-		assert(decoder_info.per_listener_enrichment);
+		assert_true(decoder_info.per_listener_enrichment);
 	}
 
 	// Workaround
@@ -31,12 +36,12 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 
 	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
 									&jerr);
-	assert(meraki_secrets_array);
+	assert_true(meraki_secrets_array);
 
 	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
 	                     meraki_secrets_array);
 
-	assert(parse_rc == 0);
+	assert_true(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
 	char *aux = strdup(msg);
@@ -52,7 +57,7 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 			free(notifications_array->msgs[i].payload);
 		free(notifications_array);
 	} else {
-		assert(0==notifications_array);
+		assert_true(0==notifications_array);
 	}
 
 	meraki_decoder_info_destructor(&decoder_info);

@@ -3,10 +3,6 @@
 
 #include "../src/listener/http.c"
 
-#include <setjmp.h>
-#include <cmocka.h>
-#include <assert.h>
-
 static const char CONFIG_TEST[] =
     "{"
         "\"brokers\": \"localhost\","
@@ -86,9 +82,9 @@ static void test_validate_uri() {
 		NULL /* @TODO this should change */,VALID_URL,
 		&global_config.rb.database, &allok,&topic,&uuid,"test_ip");
 
-	assert(MHD_YES == validation_rc);
-	assert(0==strcmp(topic,"rb_flow"));
-	assert(0==strcmp(uuid,"abc"));
+	assert_true(MHD_YES == validation_rc);
+	assert_true(0==strcmp(topic,"rb_flow"));
+	assert_true(0==strcmp(uuid,"abc"));
 
 	free(topic);
 	free(uuid);
@@ -99,7 +95,7 @@ static void test_validate_uri() {
 static void prepare_args(
         const char *topic,const char *sensor_uuid,const char *client_ip,
         struct pair *mem,size_t memsiz,keyval_list_t *list) {
-	assert(3==memsiz);
+	assert_true(3==memsiz);
 	memset(mem,0,sizeof(*mem)*3);
 
 	mem[0].key   = "topic";
@@ -123,15 +119,15 @@ static void check_rb_decoder_double0(struct rb_session **sess,
 	json_int_t a;
 	int d;
 
-	assert(expected_size==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(expected_size==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	for(i=0;i<expected_size;++i) {
 		json_t *root = json_loadb(rkm[i].payload, rkm[i].len, 0, &jerr);
 		if(NULL == root) {
 			rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-			assert(0);
+			assert_true(0);
 		}
 
 		const int rc = json_unpack_ex(root, &jerr, 0,
@@ -141,19 +137,19 @@ static void check_rb_decoder_double0(struct rb_session **sess,
 
 		if(rc != 0) {
 			rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-			assert(0);
+			assert_true(0);
 		}
 
 		if(i==0) {
-			assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
+			assert_true(0==strcmp(client_mac,"54:26:96:db:88:01"));
 		} else {
-			assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
+			assert_true(0==strcmp(client_mac,"54:26:96:db:88:02"));
 		}
-		assert(0==strcmp(application_name,"wwww"));
-		assert(0==strcmp(sensor_uuid,"abc"));
-		assert(a == 1); /* Enrichment! original message had 5 here */
-		assert(0==strcmp(b,"c"));
-		assert(d == 1);
+		assert_true(0==strcmp(application_name,"wwww"));
+		assert_true(0==strcmp(sensor_uuid,"abc"));
+		assert_true(a == 1); /* Enrichment! original message had 5 here */
+		assert_true(0==strcmp(b,"c"));
+		assert_true(d == 1);
 
 		json_decref(root);
 		free(rkm[i].payload);
@@ -176,14 +172,14 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 	json_int_t f;
 	int h,u;
 
-	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	json_t *root = json_loadb(rkm[0].payload, rkm[0].len, 0, &jerr);
 	if(NULL == root) {
 		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
@@ -193,16 +189,16 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
-	assert(0==strcmp(client_mac,"54:26:96:db:88:02"));
-	assert(0==strcmp(application_name,"wwww"));
-	assert(0==strcmp(sensor_uuid, "def"));
-	assert(1==f);
-	assert(0==strcmp(g, "w"));
-	assert(0==h);
-	assert(0!=u);
+	assert_true(0==strcmp(client_mac,"54:26:96:db:88:02"));
+	assert_true(0==strcmp(application_name,"wwww"));
+	assert_true(0==strcmp(sensor_uuid, "def"));
+	assert_true(1==f);
+	assert_true(0==strcmp(g, "w"));
+	assert_true(0==h);
+	assert_true(0!=u);
 
 	json_decref(root);
 	free(rkm[0].payload);
@@ -216,14 +212,14 @@ static void check_rb_decoder_object(struct rb_session **sess,
 	json_int_t a,t1;
 	int d;
 
-	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
 		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
@@ -235,16 +231,16 @@ static void check_rb_decoder_object(struct rb_session **sess,
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
-	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	assert(0==strcmp(application_name,"wwww"));
-	assert(0==strcmp(sensor_uuid,"abc"));
-	assert(a == 1); /* Enrichment! original message had 5 here */
-	assert(0==strcmp(b,"c"));
-	assert(d == 1);
-	assert(t1== 1);
+	assert_true(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert_true(0==strcmp(application_name,"wwww"));
+	assert_true(0==strcmp(sensor_uuid,"abc"));
+	assert_true(a == 1); /* Enrichment! original message had 5 here */
+	assert_true(0==strcmp(b,"c"));
+	assert_true(d == 1);
+	assert_true(t1== 1);
 
 	json_decref(root);
 	free(rkm.payload);
@@ -257,14 +253,14 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 	const char *client_mac,*application_name,*sensor_uuid;
 	json_int_t a,a2,u_a;
 
-	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
 		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
@@ -277,16 +273,16 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
-	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	assert(0==strcmp(application_name,"wwww"));
-	assert(0==strcmp(sensor_uuid,"ghi"));
-	assert(a == 5);
+	assert_true(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert_true(0==strcmp(application_name,"wwww"));
+	assert_true(0==strcmp(sensor_uuid,"ghi"));
+	assert_true(a == 5);
 	/* Enrichment */
-	assert(a2 == 90);
-	assert(u_a == 1);
+	assert_true(a2 == 90);
+	assert_true(u_a == 1);
 
 	json_decref(root);
 	free(rkm.payload);
@@ -301,14 +297,14 @@ static void check_rb_decoder_array_enrich_v00(struct rb_session **sess,
 	const char *client_mac,*application_name,*sensor_uuid;
 	json_t *v=NULL;
 
-	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
 		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
@@ -318,22 +314,22 @@ static void check_rb_decoder_array_enrich_v00(struct rb_session **sess,
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	snprintf(buf,sizeof(buf),"v%zu",v_size);
 
-	assert(0==strcmp(sensor_uuid,buf));
-	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	assert(0==strcmp(application_name,"wwww"));
+	assert_true(0==strcmp(sensor_uuid,buf));
+	assert_true(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert_true(0==strcmp(application_name,"wwww"));
 
 	/* Enrichment vector */
-	assert(json_is_array(v));
-	assert(v_size==json_array_size(v));
+	assert_true(json_is_array(v));
+	assert_true(v_size==json_array_size(v));
 	for (i=0; i<v_size; ++i) {
 		json_t *v_i = json_array_get(v,i);
-		assert(json_is_integer(v_i));
-		assert((int)i == json_integer_value(v_i));
+		assert_true(json_is_integer(v_i));
+		assert_true((int)i == json_integer_value(v_i));
 	}
 
 	json_decref(root);
@@ -360,14 +356,14 @@ static void check_rb_decoder_array_enrich(struct rb_session **sess,
 	json_t *g0=NULL,*g1=NULL,*g2=NULL;
 	json_t *v0=NULL,*v1=NULL,*v2=NULL,*v3=NULL,*v4=NULL;
 
-	assert(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(1==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue,&rkm);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
 		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
 	const int rc = json_unpack_ex(root, &jerr, 0,
@@ -377,43 +373,43 @@ static void check_rb_decoder_array_enrich(struct rb_session **sess,
 
 	if(rc != 0) {
 		rdlog(LOG_ERR,"Couldn't unpack values: %s",jerr.text);
-		assert(0);
+		assert_true(0);
 	}
 
-	assert(0==strcmp(client_mac,"54:26:96:db:88:01"));
-	assert(0==strcmp(application_name,"wwww"));
-	assert(0==strcmp(sensor_uuid,"jkl"));
+	assert_true(0==strcmp(client_mac,"54:26:96:db:88:01"));
+	assert_true(0==strcmp(application_name,"wwww"));
+	assert_true(0==strcmp(sensor_uuid,"jkl"));
 
 	/* Original vector */
-	assert(json_is_array(g));
-	assert(3==json_array_size(g));
+	assert_true(json_is_array(g));
+	assert_true(3==json_array_size(g));
 	g0 = json_array_get(g,0);
 	g1 = json_array_get(g,1);
 	g2 = json_array_get(g,2);
-	assert(json_is_string(g0));
-	assert(0==strcmp("a",json_string_value(g0)));
-	assert(json_is_integer(g1));
-	assert(5==json_integer_value(g1));
-	assert(json_is_null(g2));
+	assert_true(json_is_string(g0));
+	assert_true(0==strcmp("a",json_string_value(g0)));
+	assert_true(json_is_integer(g1));
+	assert_true(5==json_integer_value(g1));
+	assert_true(json_is_null(g2));
 
 	/* Enrichment vector */
-	assert(json_is_array(v));
-	assert(5==json_array_size(v));
+	assert_true(json_is_array(v));
+	assert_true(5==json_array_size(v));
 	v0 = json_array_get(v,0);
 	v1 = json_array_get(v,1);
 	v2 = json_array_get(v,2);
 	v3 = json_array_get(v,3);
 	v4 = json_array_get(v,4);
-	assert(json_is_integer(v0));
-	assert(json_is_integer(v1));
-	assert(json_is_integer(v2));
-	assert(json_is_integer(v3));
-	assert(json_is_integer(v4));
-	assert(1 == json_integer_value(v0));
-	assert(2 == json_integer_value(v1));
-	assert(3 == json_integer_value(v2));
-	assert(4 == json_integer_value(v3));
-	assert(5 == json_integer_value(v4));
+	assert_true(json_is_integer(v0));
+	assert_true(json_is_integer(v1));
+	assert_true(json_is_integer(v2));
+	assert_true(json_is_integer(v3));
+	assert_true(json_is_integer(v4));
+	assert_true(1 == json_integer_value(v0));
+	assert_true(2 == json_integer_value(v1));
+	assert_true(3 == json_integer_value(v2));
+	assert_true(4 == json_integer_value(v3));
+	assert_true(5 == json_integer_value(v4));
 
 	json_decref(root);
 	free(rkm.payload);
@@ -745,8 +741,8 @@ static void test_rb_array_enrich0(const char *sensor_uuid,
 		"\"application_name\": \"wwww\", \"sensor_uuid\":\"%s\", "
 		"\"v\":5, \"g\":[\"a\",5,null]}",sensor_uuid);
 
-	assert(snprintf_rc > 0);
-	assert(snprintf_rc < BUFSIZ);
+	assert_true(snprintf_rc > 0);
+	assert_true(snprintf_rc < BUFSIZ);
 
 	struct message_in msgs[] = {
 		{msg_buf,(size_t)snprintf_rc},

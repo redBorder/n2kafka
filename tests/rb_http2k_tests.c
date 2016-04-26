@@ -1,6 +1,9 @@
 #include "decoder/rb_http2k/rb_http2k_decoder.c"
 #include "util/kafka.h"
 
+#include <setjmp.h>
+#include <cmocka.h>
+
 struct message_in {
 	const char *msg;
 	size_t size;
@@ -14,7 +17,7 @@ static void test_rb_decoder_setup(const char *config_txt) {
 	char temp_filename[sizeof(TEMP_TEMPLATE)];
 	strcpy(temp_filename,TEMP_TEMPLATE);
 	int temp_fd = mkstemp(temp_filename);
-	assert(temp_fd >= 0);
+	assert_true(temp_fd >= 0);
 	write(temp_fd, config_txt, strlen(config_txt));
 	parse_config(temp_filename);
 	unlink(temp_filename);
@@ -68,9 +71,9 @@ static void check_zero_messages(struct rb_session **sess,
 static void check_zero_messages(struct rb_session **sess,
                     void *unused __attribute__((unused))) {
 
-	assert(NULL != sess);
-	assert(NULL != *sess);
-	assert(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_true(NULL != sess);
+	assert_true(NULL != *sess);
+	assert_true(0==rd_kafka_msg_q_size(&(*sess)->msg_queue));
 }
 
 /** This function just checks that session is NULL */
@@ -80,6 +83,6 @@ static void check_null_session(struct rb_session **sess,
 static void check_null_session(struct rb_session **sess,
                     void *unused __attribute__((unused))) {
 
-	assert(NULL != sess);
-	assert(NULL == *sess);
+	assert_true(NULL != sess);
+	assert_true(NULL == *sess);
 }

@@ -1,6 +1,9 @@
 // rb_json_tests.c
 #undef NDEBUG
-#include <assert.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <cmocka.h>
 #include <jansson.h>
 #include <string.h>
 #include <librdkafka/rdkafka.h>
@@ -16,7 +19,7 @@ static void *rb_json_assert_unpack(const char *json, size_t flags,
 	json_t *root = json_loads(json, 0, &error);
 	if (root == NULL) {
 		fprintf(stderr, "[EROR PARSING JSON][%s][%s]\n", error.text, error.source);
-		assert(0);
+		assert_true(0);
 	}
 
 	va_list args;
@@ -26,7 +29,7 @@ static void *rb_json_assert_unpack(const char *json, size_t flags,
 
 	if (unpack_rc != 0 /* Failure */) {
 		fprintf(stderr, "[ERROR UNPACKING][%s][%s]\n", error.text, error.source);
-		assert(0);
+		assert_true(0);
 	}
 
 	va_end(args);
@@ -83,15 +86,15 @@ struct checkdata_array {
 		.size = sizeof(name##elms) / sizeof(name##elms[0]), \
 	}
 
-static void assertEqual(const int64_t a, const int64_t b, const char *key,
+static void assert_trueEqual(const int64_t a, const int64_t b, const char *key,
                         const char *src) __attribute__((unused));
-static void assertEqual(const int64_t a, const int64_t b, const char *key,
+static void assert_trueEqual(const int64_t a, const int64_t b, const char *key,
                         const char *src) {
 	if (a != b) {
 		fprintf(stderr,
 		        "[%s integer value mismatch] Actual: %ld, Expected: %ld in %s\n",
 		        key, a, b, src);
-		assert(a == b);
+		assert_true(a == b);
 	}
 }
 
@@ -99,7 +102,7 @@ static void rb_assert_json_value(const struct checkdata_value *chk_value,
                                  const json_t *json_value, const char *src)__attribute__((unused));
 static void rb_assert_json_value(const struct checkdata_value *chk_value,
                                  const json_t *json_value, const char *src) {
-	//assert(chk_value->type == json_typeof(json_value));
+	//assert_true(chk_value->type == json_typeof(json_value));
 	if (chk_value->value == NULL && json_value == NULL) {
 		return; // All ok
 	}
@@ -107,27 +110,27 @@ static void rb_assert_json_value(const struct checkdata_value *chk_value,
 	if (chk_value->value == NULL && json_value != NULL) {
 		fprintf(stderr, "Json key %s with value %s, should not exists in (%s)\n",
 		        chk_value->key, json_string_value(json_value), src);
-		assert(!json_value);
+		assert_true(!json_value);
 	}
 
 	if (NULL == json_value) {
 		fprintf(stderr, "Json value %s does not exists in %s\n", chk_value->key, src);
-		assert(json_value);
+		assert_true(json_value);
 	}
 	switch (json_typeof(json_value)) {
 	case JSON_INTEGER: {
 		const json_int_t json_int_value = json_integer_value(json_value);
 		const long chk_int_value = atol(chk_value->value);
-		assertEqual(json_int_value, chk_int_value, chk_value->key, src);
+		assert_trueEqual(json_int_value, chk_int_value, chk_value->key, src);
 	}
 	break;
 	case JSON_STRING: {
 		const char *json_str_value = json_string_value(json_value);
-		assert(0 == strcmp(json_str_value, chk_value->value));
+		assert_true(0 == strcmp(json_str_value, chk_value->value));
 	}
 	break;
 	default:
-		assert(!"You should not be here");
+		assert_true(!"You should not be here");
 	}
 }
 
@@ -137,7 +140,7 @@ static json_t *rb_assert_json_loadb(const char *buf, size_t buflen) {
 
 	if (root == NULL) {
 		fprintf(stderr, "[EROR PARSING JSON][%s][%s]\n", error.text, error.source);
-		assert(0);
+		assert_true(0);
 	}
 
 	return root;
@@ -174,7 +177,7 @@ static void rb_assert_json_array(const rd_kafka_message_t *msgs,
 
 	size_t i;
 
-	assert(msgs_size == checkdata_array->size);
+	assert_true(msgs_size == checkdata_array->size);
 	for (i = 0; i < checkdata_array->size; ++i) {
 		size_t payload_size = msgs[i].len;
 		rb_assert_json_n(msgs[i].payload, payload_size, checkdata_array->checks[i]);

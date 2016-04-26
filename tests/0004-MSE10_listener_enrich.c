@@ -352,10 +352,12 @@ static void testMSE10Decoder_default_miss() {
 }
 
 int main() {
-	testMSE10Decoder_no_overlap();
-	testMSE10Decoder_overlap();
-	testMSE10Decoder_default_hit();
-	testMSE10Decoder_default_miss();
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(testMSE10Decoder_no_overlap),
+		cmocka_unit_test(testMSE10Decoder_overlap),
+		cmocka_unit_test(testMSE10Decoder_default_hit),
+		cmocka_unit_test(testMSE10Decoder_default_miss),
+	};
 
-	return 0;
+	return cmocka_run_group_tests(tests, NULL, NULL);
 }
