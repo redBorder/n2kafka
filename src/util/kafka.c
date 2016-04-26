@@ -242,6 +242,8 @@ void stop_rdkafka(){
 		rd_kafka_poll(global_config.rk, 50);
 	}
 
+	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
+
 	rd_kafka_destroy(global_config.rk);
 	while(0 != rd_kafka_wait_destroyed(5000));
 }
