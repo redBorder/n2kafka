@@ -14,8 +14,8 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversi
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wdouble-promotion" # New in gcc 4.6
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused-local-typedefs" # New in gcc 4.7
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wcast-align -Wdisabled-optimization -Winit-self -Wlogical-op"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default" 
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization" 
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization"
 
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
@@ -41,10 +41,14 @@ function checks {
        "#include <librd/rd.h>"
 
     # Check that librdkafka is available, and allow to link it statically.
-    mkl_meta_set "librdkafka" "desc" "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
+    mkl_meta_set "librdkafka" "desc" \
+      "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
     mkl_meta_set "librdkafka" "deb" "librdkafka-dev"
     mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
-       "#include <librdkafka/rdkafka.h>"
+       "#include <librdkafka/rdkafka.h>
+       #if RD_KAFKA_VERSION < 0x00090100
+       #error Need librdkafka version >0.9.1
+       #endif"
 
     mkl_meta_set "libev" "desc" "A high performance full-featured event loop written in C"
     mkl_meta_set "libev" "deb" "libev-dev"

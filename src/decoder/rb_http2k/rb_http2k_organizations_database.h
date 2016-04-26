@@ -88,6 +88,14 @@ typedef struct organization_db_entry_s {
 #define organization_add_consumed_bytes(org, bytes) \
         ATOMIC_OP(add, fetch, &(org)->bytes_limit.consumed, bytes)
 
+/** Adds another n2kafka consumed bytes to this organization
+  @param org Organization
+  @param n2kafka_id n2kafka id that consumed this information
+  @param bytes Bytes that n2kafka reports to consume
+  */
+void organization_add_other_consumed_bytes(organization_db_entry_t *org,
+	const char *n2kafka_id, uint64_t bytes);
+
 /** Get's organization's consumed bytes
   @param org Organization
   @return organization's consumed bytes
@@ -118,6 +126,9 @@ void organizations_db_entry_decref(organization_db_entry_t *entry);
 /** Organization uuid database */
 typedef struct organizations_db_s {
 	/* Private data - do not access directly */
+	/** Mutex that protects against concurrent modification of reported
+	limits */
+	pthread_mutex_t reports_mutex;
 	/// database to search for uuids
 	uuid_db_t uuid_db;
 } organizations_db_t;
@@ -150,7 +161,9 @@ organization_db_entry_t *organizations_db_get(organizations_db_t *db,
 /** Get a bytes consumed report for each organization
   @param db Database
   @param now Report's timestamp
-  @return Reports
+  @param n2kafka_id N2kafka id
+  @param clean Clean counters
+  @return Reports (if clean==1, before the clean)
   */
 struct kafka_message_array *organization_db_interval_consumed0(
 				organizations_db_t *db, time_t now,

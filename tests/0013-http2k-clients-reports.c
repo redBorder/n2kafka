@@ -1,8 +1,10 @@
 #include "decoder/rb_http2k/rb_http2k_organizations_database.h"
+#include "decoder/rb_http2k/rb_http2k_sync_thread.c"
 #include "engine/global_config.h"
 #include "util/kafka.h"
 
 #include <math.h>
+#include <librdkafka/rdkafka.h>
 #include <librd/rdfloat.h>
 #include <librd/rdlog.h>
 #include <setjmp.h>
@@ -21,6 +23,10 @@ static const time_t expected_key_timestamp_report = 175;
 typedef void (*organization_database_modify_cb)(organizations_db_t *db,
 								void *ctx);
 
+/// Callback that validates organization database
+typedef void (*sync_receive_msg)(organizations_db_t *db,
+	struct kafka_message_array *msgs);
+
 /// Callback that validates a report
 typedef void (*validate_report_cb)(struct kafka_message_array *mq,void *ctx);
 
@@ -28,11 +34,30 @@ struct report_validation {
 	organization_database_modify_cb org_db_cb;
 	void *org_db_cb_ctx;
 
+	struct kafka_message_array *sync_msgs;
+	struct msg_consume_ctx *consume_ctx;
+
 	validate_report_cb validate_cb;
 	void *validate_cb_ctx;
 
 	int clean;
 };
+
+static void consume_sync_msgs(organizations_db_t *db,
+		struct msg_consume_ctx *consume_ctx, const char *n2kafka_id,
+					const struct kafka_message_array *mq) {
+	/* Need to overwrite this */
+	consume_ctx->thread->org_db = db;
+	consume_ctx->n2kafka_id = strdup(n2kafka_id);
+
+	size_t i = 0;
+	for (i = 0; i < mq->count; ++i) {
+		sync_thread_msg_consume0(&mq->msgs[i],consume_ctx);
+	}
+
+	free(consume_ctx->n2kafka_id);
+	consume_ctx->n2kafka_id = NULL;
+}
 
 static void validate_report0(json_t *config,
 		const struct report_validation *validators, size_t vsize) {
@@ -69,6 +94,11 @@ static void validate_report0(json_t *config,
 		if (validators[i].org_db_cb) {
 			validators[i].org_db_cb(&db,
 						validators[i].org_db_cb_ctx);
+		}
+
+		if (validators[i].sync_msgs) {
+			consume_sync_msgs(&db, validators[i].consume_ctx,
+				TEST_N2KAFKA_ID, validators[i].sync_msgs);
 		}
 
 		if (validators[i].validate_cb) {
@@ -243,16 +273,12 @@ static void client_consume_bytes(organizations_db_t *db, void *ctx) {
 	}
 }
 
-static void validate_bytes_consumed() {
-	/// Not valid
-}
-
 /*
- * TEST 5: Check two client's report, and to reset client's consumed bytes
+ * TEST 4: Check two client's report, and to reset client's consumed bytes
  */
 
-struct test5_ctx {
-#define TEST_5_CTX_MAGIC 0x0355CA1C0355CA1CL
+struct test4_ctx {
+#define TEST_4_CTX_MAGIC 0x0355CA1C0355CA1CL
 	uint64_t magic;
 	const char *n2kafka_id;
 	size_t expected_msgs;
@@ -260,22 +286,22 @@ struct test5_ctx {
 	int total_bytes_multiplier;
 	int limit_bytes_multiplier;
 };
-#define TEST5_INITIALIZER0(n2k_id,Em,Im,Tm,Lm) { .magic = TEST_5_CTX_MAGIC,    \
+#define TEST4_INITIALIZER0(n2k_id,Em,Im,Tm,Lm) { .magic = TEST_4_CTX_MAGIC,    \
 	.n2kafka_id = n2k_id,.expected_msgs = (Em),                           \
 	.interval_bytes_multiplier = (Im), .total_bytes_multiplier = (Tm),    \
 	.limit_bytes_multiplier = (Lm)}
 
-#define TEST5_INITIALIZER(Em,Im,Tm,Lm) \
-	TEST5_INITIALIZER0(TEST_N2KAFKA_ID,Em,Im,Tm,Lm)
+#define TEST4_INITIALIZER(Em,Im,Tm,Lm) \
+	TEST4_INITIALIZER0(TEST_N2KAFKA_ID,Em,Im,Tm,Lm)
 
 static void validate_key(const char *key, int keylen, void *vctx) {
-	struct test5_ctx *ctx = vctx;
+	struct test4_ctx *ctx = vctx;
 	time_t key_timestamp = 0;
 	const char *cursor = key;
 
 	assert(key);
 	assert(ctx);
-	assert(TEST_5_CTX_MAGIC == ctx->magic);
+	assert(TEST_4_CTX_MAGIC == ctx->magic);
 
 	/* 1st part should be n2kafka_id */
 	assert(0 == strcmp(cursor,ctx->n2kafka_id));
@@ -300,11 +326,11 @@ static void validate_report(json_t *msg, void *vctx) {
 	const char *sensor_uuid = NULL,*interval_bytes_consumed = NULL,
 		   *n2kafka_id = NULL;
 	json_int_t total_bytes_consumed,client_limit_bytes;
-	struct test5_ctx *ctx = vctx;
+	struct test4_ctx *ctx = vctx;
 
 	assert(msg);
 	assert(ctx);
-	assert(TEST_5_CTX_MAGIC == ctx->magic);
+	assert(TEST_4_CTX_MAGIC == ctx->magic);
 
 	const int rc = json_unpack_ex(msg, &jerr, 0, "{s:s,s:I,s:I,s:s,s:s}",
 		"n2kafka_id",&n2kafka_id,
@@ -328,13 +354,13 @@ static void validate_report(json_t *msg, void *vctx) {
 	assert(client_limit_bytes == dsensor_uuid*ctx->limit_bytes_multiplier);
 }
 
-static void validate_test5_reports(struct kafka_message_array *ma,
+static void validate_test4_reports(struct kafka_message_array *ma,
 								void *vctx) {
-	struct test5_ctx *ctx = vctx;
+	struct test4_ctx *ctx = vctx;
 
 	assert(ma);
 	assert(vctx);
-	assert(TEST_5_CTX_MAGIC == ctx->magic);
+	assert(TEST_4_CTX_MAGIC == ctx->magic);
 
 	/// This will assert that we have received limit
 	assert(ctx->expected_msgs == ma->count);
@@ -345,11 +371,11 @@ static void validate_reset_bytes_consumed() {
 	size_t n_uuids = 10, i;
 	json_t *uuids = json_object();
 	/// Expected 9 messages because uuid 0
-	struct test5_ctx test5_ctx1 = TEST5_INITIALIZER(9,1,1,10),
-	                 test5_ctx2 = TEST5_INITIALIZER(9,1,2,10),
-	                 test5_ctx3 = TEST5_INITIALIZER(9,1,3,10),
-	                 test5_ctx4 = TEST5_INITIALIZER(9,1,1,10),
-	                 test5_ctx5 = TEST5_INITIALIZER(0,0,0,10);
+	struct test4_ctx test4_ctx1 = TEST4_INITIALIZER(9,1,1,10),
+	                 test4_ctx2 = TEST4_INITIALIZER(9,1,2,10),
+	                 test4_ctx3 = TEST4_INITIALIZER(9,1,3,10),
+	                 test4_ctx4 = TEST4_INITIALIZER(9,1,1,10),
+	                 test4_ctx5 = TEST4_INITIALIZER(0,0,0,10);
 
 	const struct report_validation validators[] = {
 		/* 1st step: Every client consume N bytes. we should check
@@ -359,8 +385,8 @@ static void validate_reset_bytes_consumed() {
 			.org_db_cb = client_consume_bytes,
 			.org_db_cb_ctx = &n_uuids,
 
-			.validate_cb = validate_test5_reports,
-			.validate_cb_ctx = &test5_ctx1,
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test4_ctx1,
 		},
 		/* 2nd step: Every client consume N bytes. We should check
 		that bytes has been consumed and total_consumed_bytes has
@@ -369,8 +395,8 @@ static void validate_reset_bytes_consumed() {
 			.org_db_cb = client_consume_bytes,
 			.org_db_cb_ctx = &n_uuids,
 
-			.validate_cb = validate_test5_reports,
-			.validate_cb_ctx = &test5_ctx2,
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test4_ctx2,
 		},
 		/* 3rd step: Clean phase. Every client should have 0 bytes
 		consumed in this interval, and 2*uuid total_consumed_bytes */
@@ -380,8 +406,8 @@ static void validate_reset_bytes_consumed() {
 
 			.clean = 1,
 
-			.validate_cb = validate_test5_reports,
-			.validate_cb_ctx = &test5_ctx3,
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test4_ctx3,
 		},
 		/* 4th step: Every client consume N bytes. We should check
 		that bytes has been consumed, and total_consumed_bytes has
@@ -392,8 +418,8 @@ static void validate_reset_bytes_consumed() {
 
 			.clean = 1,
 
-			.validate_cb = validate_test5_reports,
-			.validate_cb_ctx = &test5_ctx4,
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test4_ctx4,
 		},
 		/* 5th step: Any client consume, and we call for report. We
 		should check that all clients has 0 interval bytes and 0
@@ -402,8 +428,8 @@ static void validate_reset_bytes_consumed() {
 			.org_db_cb = NULL,
 			.org_db_cb_ctx = NULL,
 
-			.validate_cb = validate_test5_reports,
-			.validate_cb_ctx = &test5_ctx5,
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test4_ctx5,
 		},
 	};
 
@@ -418,23 +444,184 @@ static void validate_reset_bytes_consumed() {
 }
 
 /*
+ *  TEST5: Consume reports test
+ */
+
+struct client_consume_sync_bytes_template {
+	json_int_t timestamp,client_total_bytes_consumed_multiplier,
+		client_limit_bytes_multiplier, value_multiplier;
+	const char *monitor, *n2kafka_id, *type, *unit;
+};
+
+/** Creates a kafka array that updates a number of uuids with a given
+multiplier */
+static struct kafka_message_array *gen_client_consume_sync_bytes(
+		const size_t n_uuids,
+		const struct client_consume_sync_bytes_template *template) {
+	size_t i;
+
+	struct kafka_message_array *ret = new_kafka_message_array(n_uuids);
+	assert(ret);
+
+	for (i=0; i<n_uuids; ++i) {
+		char uuid_buf[BUFSIZ];
+		const uint64_t value = i*(uint64_t)template->value_multiplier;
+		char value_buf[BUFSIZ];
+
+		/* Let's consume bytes for each client */
+		snprintf(uuid_buf, sizeof(uuid_buf), "%zu", i);
+		snprintf(value_buf, sizeof(value_buf), "%"PRIu64, value);
+
+		json_t *jmsg = json_pack("{"
+			"s:I," /* "timestamp" */
+			"s:I," /* "client_total_bytes_consumed" */
+			"s:I," /* "client_limit_bytes" */
+			"s:s," /* "monitor":"organization_received_bytes" */
+			"s:s," /* "value":0 */
+			"s:s," /* organization_uuid":"def_org" */
+			"s:s," /* n2kafka_id":"n2kafka_test" */
+			"s:s," /* type":"data" */
+			"s:s," /* unit":"bytes" */
+			"}",
+			"timestamp",template->timestamp,
+			"client_total_bytes_consumed",
+			    template->client_total_bytes_consumed_multiplier,
+			"client_limit_bytes",
+				template->client_limit_bytes_multiplier,
+			"monitor",template->monitor,
+			"value",value_buf,
+			"organization_uuid",uuid_buf,
+			"n2kafka_id",template->n2kafka_id,
+			"type",template->type,
+			"unit",template->unit);
+
+		char *msg = json_dumps(jmsg, 0);
+
+		save_kafka_msg_in_array(ret, msg, strlen(msg), NULL);
+		json_decref(jmsg);
+	}
+
+	return ret;
+}
+
+/** Validate to only receive other bytes. Our reports always should send 0
+consumed bytes, but actual client bytes should be reports received bytes */
+static void validate_consume_reports() {
+	size_t n_uuids = 10, i;
+	json_t *uuids = json_object();
+	sync_thread_t consume_thread_mock = {
+#ifdef SYNC_THREAD_MAGIC
+		.magic = SYNC_THREAD_MAGIC,
+#endif
+		.creation_rc = 0,
+		.run = 1,
+		.rk = NULL,
+		.rk_conf = NULL,
+		.thread = pthread_self(),
+		.org_db = NULL, // It will be overriden
+	};
+
+	struct msg_consume_ctx consume_ctx = {
+#ifdef MSG_CONSUME_CTX_MAGIC
+		.magic = MSG_CONSUME_CTX_MAGIC,
+#endif
+		.thread = &consume_thread_mock,
+		.in_sync = 1,
+		.n2kafka_id = NULL, // It will be overriden
+	};
+#define TEST5_CONSUME_BYTES_INIT0(mn2kafka_id,total_bytes_consumed_multiplier,\
+		limit_bytes_multiplier, mvalue_multiplier)		      \
+	{								      \
+		.timestamp = 1462282696,				      \
+		.client_total_bytes_consumed_multiplier			      \
+			= total_bytes_consumed_multiplier,		      \
+		.client_limit_bytes_multiplier = limit_bytes_multiplier,      \
+		.value_multiplier = mvalue_multiplier,			      \
+		.monitor = "organization_received_bytes",		      \
+		.n2kafka_id = mn2kafka_id,				      \
+		.type = "data",						      \
+		.unit = "bytes",					      \
+	}
+
+	static const struct client_consume_sync_bytes_template sync_bytes =
+		TEST5_CONSUME_BYTES_INIT0("other_n2kafka", 1, 10, 1);
+	static const struct client_consume_sync_bytes_template my_sync_bytes =
+		TEST5_CONSUME_BYTES_INIT0(TEST_N2KAFKA_ID, 1, 10, 1);
+	struct test4_ctx test5_nomsgs = TEST4_INITIALIZER(0,0,0,0),
+	                 test5_ctx2 = TEST4_INITIALIZER(9,1,2,10);
+
+	struct kafka_message_array *sync_msgs = gen_client_consume_sync_bytes(
+		n_uuids, &sync_bytes);
+	struct kafka_message_array *my_sync_msgs =
+		gen_client_consume_sync_bytes(n_uuids, &my_sync_bytes);
+
+	const struct report_validation validators[] = {
+		/* 1st step: Every client consume N bytes on others n2kafka.
+		we should check that no report are given, since we don't have
+		consumed anything */
+		{
+			.sync_msgs = sync_msgs,
+			.consume_ctx = &consume_ctx,
+
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test5_nomsgs,
+		},
+		/* 2nd step: Every client consume N bytes in this n2kafka.
+		We should check that bytes has been consumed and
+		interval_bytes and total_consumed_bytes has been updated
+		accordly */
+		{
+			.org_db_cb = client_consume_bytes,
+			.org_db_cb_ctx = &n_uuids,
+
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test5_ctx2,
+		},
+		/* 3rd step: Clean phase. We only receive our first consumed
+		bytes, that we should ignore, so we have received nothing.
+		*/
+		{
+			.sync_msgs = my_sync_msgs,
+			.consume_ctx = &consume_ctx,
+
+			.clean = 1,
+
+			.validate_cb = validate_test4_reports,
+			.validate_cb_ctx = &test5_nomsgs,
+		},
+	};
+
+	for (i=0; i<n_uuids; ++i) {
+		char uuid[BUFSIZ];
+		snprintf(uuid, sizeof(uuid), "%zu", i);
+		json_object_set_new(uuids, uuid,
+			new_config_uuid(sensor_enrichment(uuid), i*10));
+	}
+
+	validate_report0(uuids, validators, RD_ARRAYSIZE(validators));
+
+	for (i=0; i<sync_msgs->count; ++i) {
+		free(sync_msgs->msgs[i].payload);
+	}
+	free(sync_msgs);
+	for (i=0; i<my_sync_msgs->count; ++i) {
+		free(my_sync_msgs->msgs[i].payload);
+	}
+	free(my_sync_msgs);
+}
+
+/*
  * main function
  */
 
 int main() {
-	/// @TODO Need to have rdkafka inited. Maybe this plugin should have
-	/// it owns rdkafka handler.
-
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(validate_zero_clients_reports),
 		cmocka_unit_test(validate_zero_bytes_reports),
 		cmocka_unit_test(validate_reports_limits),
-		cmocka_unit_test(validate_bytes_consumed),
 		cmocka_unit_test(validate_reset_bytes_consumed),
+		cmocka_unit_test(validate_consume_reports),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
-
-
-	return 0;
 }

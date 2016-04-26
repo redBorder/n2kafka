@@ -21,6 +21,7 @@
 #pragma once
 
 #include "rb_database.h"
+#include "rb_http2k_sync_thread.h"
 
 #include "util/pair.h"
 
@@ -55,6 +56,8 @@ struct rb_config {
 		rb_timer_t *clean_timer;
 		/// Topics to send organization stats.
 		struct rkt_array topics;
+		/// Consumer ctx
+		sync_thread_t thread;
 	} organizations_sync;
 	struct rb_database database;
 };

@@ -652,7 +652,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	if (0 != organization_sync_rc) {
 		/* Warning already given */
-		return -1;
+		goto err;
 	}
 
 	topics_db = topics_db_new();
@@ -666,6 +666,9 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	json_t *organization_uuid = json_object_get(my_config,
 						RB_ORGANIZATIONS_UUID_KEY);
+
+	update_sync_topic(&rb_config->organizations_sync.thread,
+				rkt_array.count > 0 ? rkt_array.rkt[0] : NULL);
 
 	pthread_rwlock_wrlock(&rb_config->database.rwlock);
 	if (organization_uuid) {
@@ -713,6 +716,7 @@ void rb_opaque_done(void *_opaque) {
 }
 
 int parse_rb_config(void *vconfig, const struct json_t *config) {
+	char err[BUFSIZ];
 	struct rb_config *rb_config = vconfig;
 
 	assert(vconfig);
@@ -728,6 +732,27 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 		return -1;
 	}
 
+	rd_kafka_conf_t *rk_conf = rd_kafka_conf_dup(global_config.kafka_conf);
+	if (NULL == rk_conf) {
+		rdlog(LOG_CRIT, "Couldn't dup conf (out of memory?)");
+		goto rk_conf_dup_err;
+	}
+
+	const rd_kafka_conf_res_t set_group_id_rc = rd_kafka_conf_set(rk_conf,
+		"group.id", "global_config.n2kafka_id", err, sizeof(err));
+	if (set_group_id_rc != RD_KAFKA_RESP_ERR_NO_ERROR) {
+		rdlog(LOG_ERR, "Couldn't set group.id: %s",
+			rd_kafka_err2str(set_group_id_rc));
+		goto rk_conf_err;
+	}
+
+	const int sync_thread_init_rc = sync_thread_init(
+				&rb_config->organizations_sync.thread, rk_conf,
+					&rb_config->database.organizations_db);
+	if (0 != sync_thread_init_rc) {
+		goto consumer_thread_err;
+	}
+
 #ifdef RB_CONFIG_MAGIC
 	rb_config->magic = RB_CONFIG_MAGIC;
 #endif // RB_CONFIG_MAGIC
@@ -737,12 +762,23 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 		return -1;
 	}
 
-	if (init_db_rc == 0) {
-		/// @TODO error treatment
-		rb_decoder_reload(rb_config, config);
+	/// @TODO error treatment
+	const int decoder_reload_rc = rb_decoder_reload(rb_config, config);
+	if (decoder_reload_rc != 0) {
+		goto reload_err;
 	}
 
 	return 0;
+
+reload_err:
+	free_valid_rb_database(&rb_config->database);
+consumer_thread_err:
+rk_conf_err:
+	/// @TODO: Can't say if we have consumed it!
+	// rd_kafka_conf_destroy(rk_conf);
+rk_conf_dup_err:
+	rb_decoder_deregister_timers(rb_config);
+	return -1;
 }
 
 /** Produce a batch of messages
@@ -904,6 +940,8 @@ void rb_decoder_done(void *vrb_config) {
 	assert_rb_config(rb_config);
 	rb_decoder_deregister_timers(rb_config);
 	rkt_array_done(&rb_config->organizations_sync.topics);
+
+	sync_thread_done(&rb_config->organizations_sync.thread);
 
 	free_valid_rb_database(&rb_config->database);
 }

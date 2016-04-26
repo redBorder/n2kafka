@@ -105,5 +105,16 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	*/
 const char *default_topic_name();
 
+/** Get metadata topic
+  @param rkt Topic to obtain information
+  @param metadata pointer to hold metadata result. The \p *metadatap pointer
+	must be released with rd_kafka_metadata_destroy().
+  @param maximum response time before failing. If we get this timeout, this
+	function will retry forever.
+  @return RD_KAFKA_RESP_ERR_X code
+	*/
+int kafka_get_topic_metadata(rd_kafka_topic_t *rkt,
+		const struct rd_kafka_metadata **metadata, int timeout_ms);
+
 void flush_kafka();
 void stop_rdkafka();

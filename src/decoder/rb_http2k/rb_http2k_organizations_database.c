@@ -23,7 +23,6 @@
 #include "rb_http2k_organizations_database.h"
 #include "rb_http2k_sync_common.h"
 #include "rb_http2k_parser.h"
-#include "engine/global_config.h"
 #include "util/util.h"
 
 #include <librd/rdlog.h>
@@ -150,8 +149,20 @@ err:
 #define organization_clean_consumed_bytes(org) \
 	ATOMIC_OP(fetch,and,&(org)->bytes_limit.consumed,0)
 
+void organization_add_other_consumed_bytes(organization_db_entry_t *org,
+				const char *n2kafka_id, uint64_t bytes) {
+	(void)n2kafka_id;
+	pthread_mutex_t *reports_mutex = &org->db->reports_mutex;
+	pthread_mutex_lock(reports_mutex);
+	// If we increase both, next report will only contain OURs seen bytes
+	organization_add_consumed_bytes(org, bytes);
+	org->bytes_limit.reported += bytes;
+	pthread_mutex_unlock(reports_mutex);
+}
+
 int organizations_db_init(organizations_db_t *organizations_db) {
 	memset(organizations_db, 0, sizeof(*organizations_db));
+	pthread_mutex_init(&organizations_db->reports_mutex, NULL);
 	uuid_db_init(&organizations_db->uuid_db);
 	return 0;
 }
@@ -266,6 +277,7 @@ static void void_organizations_db_entry_decref(void *vuuid_entry) {
 void organizations_db_done(organizations_db_t *db) {
 	uuid_db_foreach(&db->uuid_db,void_organizations_db_entry_decref);
 	uuid_db_done(&db->uuid_db);
+	pthread_mutex_destroy(&db->reports_mutex);
 }
 
 /*
@@ -538,8 +550,6 @@ struct kafka_message_array *organization_db_interval_consumed0(
 				const char *n2kafka_id, int clean) {
 	static const char n2kafka_safe_id[] = "unknown_n2kafka";
 	char timestamp_buf[ULONG_MAX_STR_SIZE];
-	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	pthread_mutex_lock(&mutex);
 
 	struct reports_ctx ctx = {
 #ifdef REPORTS_CTX_MAGIC
@@ -571,6 +581,7 @@ struct kafka_message_array *organization_db_interval_consumed0(
 		goto yajl_gen_err;
 	}
 
+	pthread_mutex_lock(&db->reports_mutex);
 	const size_t entries = uuid_db_count(&db->uuid_db);
 	ctx.ret = new_kafka_message_array(entries);
 
@@ -586,9 +597,9 @@ struct kafka_message_array *organization_db_interval_consumed0(
 	uuid_db_foreach_arg(&db->uuid_db, void_organizations_db_entry_report,
 									&ctx);
 
-	pthread_mutex_unlock(&mutex);
-
 ret_err:
+	pthread_mutex_unlock(&db->reports_mutex);
+
 	yajl_gen_free(ctx.gen);
 
 timestamp_err:
