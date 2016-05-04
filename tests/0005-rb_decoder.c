@@ -114,7 +114,7 @@ static void check_rb_decoder_double0(struct rb_session **sess,
 	for(i=0;i<expected_size;++i) {
 		json_t *root = json_loadb(rkm[i].payload, rkm[i].len, 0, &jerr);
 		if(NULL == root) {
-			rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+			rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 			assert(0);
 		}
 
@@ -166,7 +166,7 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 
 	json_t *root = json_loadb(rkm[0].payload, rkm[0].len, 0, &jerr);
 	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 		assert(0);
 	}
 
@@ -206,7 +206,7 @@ static void check_rb_decoder_object(struct rb_session **sess,
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 		assert(0);
 	}
 
@@ -247,7 +247,7 @@ static void check_rb_decoder_object_enrich(struct rb_session **sess,
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 		assert(0);
 	}
 
@@ -291,7 +291,7 @@ static void check_rb_decoder_array_enrich_v00(struct rb_session **sess,
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 		assert(0);
 	}
 
@@ -350,7 +350,7 @@ static void check_rb_decoder_array_enrich(struct rb_session **sess,
 
 	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
 	if(NULL == root) {
-		rdlog(LOG_ERR,"Couldn load file: %s",jerr.text);
+		rdlog(LOG_ERR,"Couldn't load file: %s",jerr.text);
 		assert(0);
 	}
 
