@@ -40,7 +40,7 @@ typedef struct rb_timers_list_s {
   @param tv new interval
   @param err Error string (if any)
   @param errsize Size of err
-  @return 0 is success, !0 if error
+  @return 0 is success, !0 and errno if error
   */
 int rb_timer_set_interval(rb_timers_list_t *list, rb_timer_t *timer,
                         const struct itimerspec *ts, char *err, size_t errsize);
@@ -48,13 +48,13 @@ int rb_timer_set_interval(rb_timers_list_t *list, rb_timer_t *timer,
 /** Gets timer interval
   @param timer timer to get the interval
   @param ts Timespec to save the interval
-  @return 0 if success. !0 ioc.
+  @return 0 if success. !0 and errno if error
   */
-int rb_timer_get_interval(const rb_timer_t *timer, struct timespec *ts);
+int rb_timer_get_interval(const rb_timer_t *timer, struct itimerspec *ts);
 
 /** Start a timers list
   @param list of timers
-  @return 0 in success, 1 ioc
+  @return 0 in success, 1 ioc.
   */
 void rb_timers_list_init(rb_timers_list_t *list);
 

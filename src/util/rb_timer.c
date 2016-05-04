@@ -86,6 +86,10 @@ int rb_timer_set_interval(rb_timers_list_t *list, struct rb_timer *timer,
 	return rc;
 }
 
+int rb_timer_get_interval(const struct rb_timer *timer, struct itimerspec *ts) {
+	return timer_gettime(timer->timerid, ts);
+}
+
 /** Delete a timer
   @param timer Timer to destroy
   */
