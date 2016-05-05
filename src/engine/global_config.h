@@ -143,8 +143,11 @@ void decoder_deregister_timer(rb_timer_t *timer);
   @param ts New timer interval
   @return 0 if success. !0 in other case.
   */
-int decoder_timer_set_interval(struct rb_timer *timer,
-                        const struct itimerspec *ts);
+int decoder_timer_set_interval0(struct rb_timer *timer, int flags,
+						const struct itimerspec *ts);
+
+#define decoder_timer_set_interval(timer, timerspec) \
+	decoder_timer_set_interval0(timer, 0, timerspec)
 
 /// @TODO use SIGEV_THREAD and delete this function!!
 void execute_global_timers();

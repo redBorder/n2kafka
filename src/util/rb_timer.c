@@ -61,13 +61,12 @@ struct rb_timer  {
   @param errsize error buffer size
   @return 0 if success, !0 if any
   */
-static int rb_timer_set_interval_NL(struct rb_timer *timer,
+int rb_timer_set_interval0(rb_timer_t *timer, int flags,
 		const struct itimerspec *ts, char *err, size_t errsize) {
-	const int settime_flags = 0;
 	struct itimerspec *old_value = NULL;
 
-	const int settime_rc = timer_settime(timer->timerid,
-		settime_flags, ts, old_value);
+	const int settime_rc = timer_settime(timer->timerid, flags, ts,
+								old_value);
 
 	if (0 != settime_rc) {
 		char buf[BUFSIZ];
@@ -76,14 +75,6 @@ static int rb_timer_set_interval_NL(struct rb_timer *timer,
 	}
 
 	return settime_rc;
-}
-
-int rb_timer_set_interval(rb_timers_list_t *list, struct rb_timer *timer,
-			const struct itimerspec *ts, char *err, size_t errsize) {
-	pthread_mutex_lock(&list->mutex);
-	const int rc = rb_timer_set_interval_NL(timer, ts, err, errsize);
-	pthread_mutex_unlock(&list->mutex);
-	return rc;
 }
 
 int rb_timer_get_interval(const struct rb_timer *timer, struct itimerspec *ts) {
@@ -155,7 +146,7 @@ rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
 		goto err;
 	}
 
-	const int settime_rc = rb_timer_set_interval_NL(new_timer, interval,
+	const int settime_rc = rb_timer_set_interval(new_timer, interval,
 								err, errsize);
 	if (0 != settime_rc) {
 		goto settime_err;

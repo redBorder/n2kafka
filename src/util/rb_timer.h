@@ -42,8 +42,13 @@ typedef struct rb_timers_list_s {
   @param errsize Size of err
   @return 0 is success, !0 and errno if error
   */
-int rb_timer_set_interval(rb_timers_list_t *list, rb_timer_t *timer,
-                        const struct itimerspec *ts, char *err, size_t errsize);
+int rb_timer_set_interval0(rb_timer_t *timer, int flags,
+		const struct itimerspec *ts, char *err, size_t errsize);
+
+/** Convenience macro */
+#define rb_timer_set_interval(timer, timerspec, err, errsize) \
+	rb_timer_set_interval0(timer, 0, timerspec, err, errsize)
+
 
 /** Gets timer interval
   @param timer timer to get the interval
