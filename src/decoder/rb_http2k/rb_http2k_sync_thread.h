@@ -39,6 +39,19 @@ typedef struct sync_thread_s {
 	int creation_rc;
 	/// Say when a thread should stop
 	volatile int run;
+	/** Clean interval to know how old can we accept reports. Sync interval
+	    are delimited by timestamp T that match:
+	    T%interval_s + offset == 0. So, if we receive a message that is not
+	    in out own interval, we drop it.
+	    */
+	struct {
+		/// Mutex to protect fields
+		pthread_mutex_t mutex;
+		/// Clean interval
+		time_t interval_s;
+		/// Offset on clean.
+		time_t offset_s;
+	} clean_interval;
 	/** Consumer handler */
 	rd_kafka_t *rk;
 	/** Consumer handler base config */
@@ -68,3 +81,12 @@ void sync_thread_done(sync_thread_t *thread);
 /** Send an async request to consumer thread to update consumer topic. If
     topic is the same as current, no signal is given */
 int update_sync_topic(sync_thread_t *thread, rd_kafka_topic_t *topic);
+
+/** Update clean_interval. Thread will not accept messages that are in the
+  previous interval, i.e., that are supposed to be already cleaned.
+  @param thread Thread to update
+  @param interval_s Length of an interval
+  @param offset_s Offset from 0 that intervals start
+  */
+void update_sync_thread_clean_interval(sync_thread_t *thread,
+					time_t interval_s, time_t offset_s);

@@ -41,9 +41,41 @@ static void assert_sync_thread(const sync_thread_t *thread) {
 #endif
 }
 
+/// Context that message_consume needs
+struct msg_consume_ctx {
+#ifndef NDEBUG
+#define MSG_CONSUME_CTX_MAGIC 0x5C053CA1C5C053CAl
+	/// Constant to assert coherency
+	uint64_t magic;
+#endif
+	/// Sync thread
+	sync_thread_t *thread;
+
+	/// By partition sync state
+	struct {
+		/// Concurrent protection
+		pthread_mutex_t mutex;
+		/// Number of partitions we are following
+		int num_partitions;
+		/// Track partition sync status
+		int *in_sync;
+	} in_sync;
+
+	/// My n2kafka id to not consume out own messages
+	char *n2kafka_id;
+};
+
+/** Assert that we are using a valid msg_consume_ctx
+  @param ctx Context to check
+  */
+static void assert_msg_consume_ctx(const struct msg_consume_ctx *ctx) {
+#ifdef MSG_CONSUME_CTX_MAGIC
+	assert(MSG_CONSUME_CTX_MAGIC == ctx->magic);
+#endif
+}
+
 /* FW declaration */
 static void *sync_thread(void *);
-struct msg_consume_ctx;
 static void sync_thread_msg_consume(rd_kafka_message_t *msg, void *ctx);
 
 int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
@@ -60,6 +92,14 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 	thread->run = 1;
 	thread->rk_conf = rk_conf;
 	thread->org_db = org_db;
+
+	const int mtx_init_rc = pthread_mutex_init(
+					&thread->clean_interval.mutex, NULL);
+	if (mtx_init_rc != 0) {
+		rdlog(LOG_ERR, "Couldn't create mutex: %s",
+			mystrerror(errno, err, sizeof(err)));
+		return -1;
+	}
 
 	const rd_kafka_conf_res_t get_group_id_rc = rd_kafka_conf_get (rk_conf,
 		RDKAFKA_CONF_GROUP_ID, NULL, &group_id_size);
@@ -95,6 +135,7 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 void sync_thread_done(sync_thread_t *thread) {
 	thread->run = 0;
 	pthread_join(thread->thread, NULL);
+	pthread_mutex_destroy(&thread->clean_interval.mutex);
 }
 
 /** Checks if rk current topic is also the requested topic
@@ -175,6 +216,16 @@ static int update_sync_topic0(sync_thread_t *thread, rd_kafka_topic_t *rkt) {
 	rdlog(LOG_INFO, "Topic %s has %d partitions", topic_name,
 						partition_cnt);
 
+	struct msg_consume_ctx *ctx = rd_kafka_opaque(thread->rk);
+	assert(ctx);
+	pthread_mutex_lock(&ctx->in_sync.mutex);
+	ctx->in_sync.in_sync = calloc((size_t)partition_cnt,
+					sizeof(ctx->in_sync.in_sync[0]));
+	pthread_mutex_unlock(&ctx->in_sync.mutex);
+	if (NULL == ctx->in_sync.in_sync) {
+		rdlog(LOG_ERR, "Couldn't allocate partition_sync_array");
+		goto in_sync_calloc_err;
+	}
 
 	topics = rd_kafka_topic_partition_list_new(partition_cnt);
 	if (NULL == topics) {
@@ -201,6 +252,13 @@ static int update_sync_topic0(sync_thread_t *thread, rd_kafka_topic_t *rkt) {
 
 	rd_kafka_topic_partition_list_destroy(topics);
 list_new_err:
+in_sync_calloc_err:
+	if (rc != 0) {
+		/* Somethig went wrong, better to free memory */
+		pthread_mutex_lock(&ctx->in_sync.mutex);
+		free(ctx->in_sync.in_sync);
+		pthread_mutex_unlock(&ctx->in_sync.mutex);
+	}
 	rd_kafka_metadata_destroy(metadata);
 	return rc;
 }
@@ -213,30 +271,13 @@ int update_sync_topic(sync_thread_t *thread, rd_kafka_topic_t *topic) {
 	}
 }
 
-/// Context that message_consume needs
-struct msg_consume_ctx {
-#ifndef NDEBUG
-#define MSG_CONSUME_CTX_MAGIC 0x5C053CA1C5C053CAl
-	/// Constant to assert coherency
-	uint64_t magic;
-#endif
-	/// Sync thread
-	sync_thread_t *thread;
+void update_sync_thread_clean_interval(sync_thread_t *thread, time_t interval_s,
+							time_t offset_s) {
+	pthread_mutex_lock(&thread->clean_interval.mutex);
+	thread->clean_interval.interval_s = interval_s;
+	thread->clean_interval.offset_s = offset_s;
+	pthread_mutex_unlock(&thread->clean_interval.mutex);
 
-	/// This n2kafka is in sync
-	int in_sync;
-
-	/// My n2kafka id to not consume out own messages
-	char *n2kafka_id;
-};
-
-/** Assert that we are using a valid msg_consume_ctx
-  @param ctx Context to check
-  */
-static void assert_msg_consume_ctx(const struct msg_consume_ctx *ctx) {
-#ifdef MSG_CONSUME_CTX_MAGIC
-	assert(MSG_CONSUME_CTX_MAGIC == ctx->magic);
-#endif
 }
 
 /** Get an object from a json. If it can't get it, it will print an error
@@ -307,6 +348,8 @@ struct organization_bytes_update {
 	const char *n2kafka_id;
 	/// Organization uuid that this message refers
 	const char *organization_uuid;
+	/// Message timestamp
+	time_t timestamp;
 	/// Interval bytes
 	uint64_t bytes;
 };
@@ -321,13 +364,15 @@ static int real_sync_thread_msg_consume_unpack(json_t *msg,
 	int rc = 0;
 	json_error_t jerr;
 	const char *monitor = NULL;
+	json_int_t msg_timestamp = 0;
 
 	const int json_unpack_rc = json_unpack_ex(msg, &jerr, 0,
-		"{s?s,s?s,s?s}",
+		"{s?s,s?s,s?s,s?I}",
 		MONITOR_MSG_MONITOR_KEY, &monitor,
 		MONITOR_MSG_ORGANIZATION_UUID_KEY,
 					&bytes_update->organization_uuid,
-		MONITOR_MSG_N2KAFKA_ID_KEY, &bytes_update->n2kafka_id);
+		MONITOR_MSG_N2KAFKA_ID_KEY, &bytes_update->n2kafka_id,
+		MONITOR_MSG_TIMESTAMP_KEY, &msg_timestamp);
 
 	if (json_unpack_rc != 0) {
 		rdlog(LOG_ERR, "Couldn't unpack msg: %s", jerr.text);
@@ -343,6 +388,7 @@ static int real_sync_thread_msg_consume_unpack(json_t *msg,
 		goto done;
 	}
 
+	bytes_update->timestamp = msg_timestamp;
 	bytes_update->bytes = int_value_of(msg, MONITOR_MSG_VALUE_KEY);
 
 done:
@@ -357,8 +403,57 @@ done:
 static void real_sync_thread_msg_consume_update(
 		organization_db_entry_t *organization,
 		const struct organization_bytes_update *bytes_update) {
+
+	rdlog(LOG_DEBUG, "Consuming %"PRIu64" bytes of %s from %s",
+		bytes_update->bytes, bytes_update->organization_uuid,
+		bytes_update->n2kafka_id);
+
 	organization_add_other_consumed_bytes(organization,
 				bytes_update->n2kafka_id, bytes_update->bytes);
+}
+
+/** Tell if the kafka message has been produced by this n2kafka
+  @param n2kafka_id This n2kakfa id
+  @param msg Message we want to check
+  @return 0 if it is from another n2kafka, !0 in other case
+  */
+static int is_this_n2kafka_message(const char *n2kafka_id,
+					const rd_kafka_message_t *msg) {
+	assert(n2kafka_id);
+	assert(msg);
+	assert(msg->key);
+	assert(msg->key_len > 0);
+	return 0 == strncmp(n2kafka_id,msg->key, msg->key_len);
+}
+
+/** Tell timestamp interval slice. We should only accept a message if it is
+  in our interval slice.
+  @param timestamp timestamp we want to check
+  @param interval_duration Duration of interval
+  @param interval_offset Offset of interval.
+  @return interval slice
+  */
+static int64_t timestamp_interval_slice(time_t timestamp,
+			time_t interval_duration, time_t interval_offset) {
+	const time_t t = timestamp / interval_duration;
+	return (timestamp % interval_duration > interval_offset) ? t + 1 : t;
+}
+
+/** Check if two timestamp are in the same slice
+  @param time1 first time to compare
+  @param time2 second time to compare
+  @param interval_duration Slice width
+  @param interval_offset slice_offset
+  @return 0 if they are in the same slice, !0 in other case
+  */
+static int timestamp_interval_slice_cmp(time_t time1, time_t time2,
+			time_t interval_duration, time_t interval_offset) {
+	const int64_t time1_ts_slice = timestamp_interval_slice(time1,
+					interval_duration,interval_offset);
+	const int64_t time2_ts_slice = timestamp_interval_slice(time2,
+					interval_duration,interval_offset);
+
+	return time2_ts_slice - time1_ts_slice;
 }
 
 /** Consume a real message (i.e., is not an error signal)
@@ -370,6 +465,20 @@ static void real_sync_thread_msg_consume(rd_kafka_message_t *msg,
 	(void)ctx;
 	struct organization_bytes_update bytes_update;
 	json_error_t jerr;
+	time_t now = time(NULL);
+	int now_msg_timestamp_cmp = 0;
+
+	if (NULL == msg->key || 0 == msg->key_len) {
+		/* This message is not for us */
+		return;
+	}
+
+	pthread_mutex_lock(&ctx->in_sync.mutex);
+	const int in_sync = ctx->in_sync.in_sync[msg->partition];
+	pthread_mutex_unlock(&ctx->in_sync.mutex);
+	if (in_sync && is_this_n2kafka_message(ctx->n2kafka_id, msg)) {
+		return;
+	}
 
 	memset(&bytes_update, 0, sizeof(bytes_update));
 	json_t *jmsg = json_loadb(msg->payload, msg->len, 0, &jerr);
@@ -385,11 +494,30 @@ static void real_sync_thread_msg_consume(rd_kafka_message_t *msg,
 		goto done;
 	}
 
-	if (0 == bytes_update.bytes || 0 == strcmp(bytes_update.n2kafka_id,
-						ctx->n2kafka_id)) {
+	if (0 == bytes_update.bytes) {
 		/* We have nothing to do here */
 		goto done;
 	}
+
+	pthread_mutex_lock(&ctx->thread->clean_interval.mutex);
+	if (ctx->thread->clean_interval.interval_s) {
+		now_msg_timestamp_cmp = timestamp_interval_slice_cmp(
+					now,bytes_update.timestamp,
+					ctx->thread->clean_interval.interval_s,
+					ctx->thread->clean_interval.offset_s);
+	}
+	pthread_mutex_unlock(&ctx->thread->clean_interval.mutex);
+
+	if (0 != now_msg_timestamp_cmp) {
+		rdlog(LOG_DEBUG,
+			"[now=%tu][msg_ts=%tu][interval_s=%tu][offset_s=%tu]"
+			" Not in the same interval slice",
+			now, bytes_update.timestamp,
+			ctx->thread->clean_interval.interval_s,
+			ctx->thread->clean_interval.offset_s);
+		goto done;
+	}
+
 
 	organization_db_entry_t *organization = organizations_db_get(
 		ctx->thread->org_db, bytes_update.organization_uuid);
@@ -425,6 +553,21 @@ static void sync_thread_msg_consume_err(rd_kafka_message_t *msg,
 		break;
 
 	case RD_KAFKA_RESP_ERR__PARTITION_EOF:
+		{
+			pthread_mutex_lock(&ctx->in_sync.mutex);
+			const int in_sync =
+					ctx->in_sync.in_sync[msg->partition];
+			if (!in_sync) {
+				ctx->in_sync.in_sync[msg->partition] = 1;
+			}
+			pthread_mutex_unlock(&ctx->in_sync.mutex);
+			if (!in_sync) {
+				rdlog(LOG_INFO,
+					"partition %d "
+					"organization sync completed",
+					msg->partition);
+			}
+		}
 		break;
 	default:
 		rdlog(LOG_ERR, "Error consuming: %.*s",
@@ -500,11 +643,13 @@ static void *sync_thread(void *vthread) {
 #ifdef MSG_CONSUME_CTX_MAGIC
 		.magic = MSG_CONSUME_CTX_MAGIC,
 #endif
+		.in_sync = {
+			.mutex = PTHREAD_MUTEX_INITIALIZER,
+		},
 
 		/// @TODO does not use global config here!!
 		.n2kafka_id = global_config.n2kafka_id,
 		.thread = vthread,
-		.in_sync = 0,
 	};
 
 	assert_sync_thread(ctx.thread);
@@ -513,6 +658,8 @@ static void *sync_thread(void *vthread) {
 	if (rc != 0) {
 		return NULL;
 	}
+
+	rdlog(LOG_INFO, "Starting http2k organization bytes sync");
 
 	while(ctx.thread->run) {
 		/// @TODO end of partition message is returned. Why I can't

@@ -195,7 +195,7 @@ static void request_completed (void *cls,
 	if(con_info->zlib.enable) {
 		inflateEnd(&con_info->zlib.strm);
 	}
-	
+
 	free_con_info(con_info);
 	*con_cls = NULL;
 }
@@ -645,7 +645,7 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 		flags |= MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY;
 	} else {
 		rdlog(LOG_ERR,"Not a valid HTTP mode. Select one between("
-		    MODE_THREAD_PER_CONNECTION "," MODE_SELECT "," MODE_POLL "," 
+		    MODE_THREAD_PER_CONNECTION "," MODE_SELECT "," MODE_POLL ","
 		    MODE_EPOLL ")");
 		return NULL;
 	}
@@ -668,24 +668,24 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 
 	struct MHD_OptionItem opts[] = {
 		{MHD_OPTION_NOTIFY_COMPLETED, (intptr_t)&request_completed, h},
-		
+
 		/* Digest-Authentication related. Setting to 0 saves some memory */
 		{MHD_OPTION_NONCE_NC_SIZE, 0, NULL},
 
 		/* Max number of concurrent onnections */
-		{MHD_OPTION_CONNECTION_LIMIT, 
+		{MHD_OPTION_CONNECTION_LIMIT,
 			args->server_parameters.connection_limit, NULL},
 
 		/* Max number of connections per IP */
-		{MHD_OPTION_PER_IP_CONNECTION_LIMIT, 
+		{MHD_OPTION_PER_IP_CONNECTION_LIMIT,
 			args->server_parameters.per_ip_connection_limit, NULL},
 
 		/* Connection timeout */
-		{MHD_OPTION_CONNECTION_TIMEOUT, 
+		{MHD_OPTION_CONNECTION_TIMEOUT,
 			args->server_parameters.connection_timeout, NULL},
 
 		/* Memory limit per connection */
-		{MHD_OPTION_CONNECTION_MEMORY_LIMIT, 
+		{MHD_OPTION_CONNECTION_MEMORY_LIMIT,
 			args->server_parameters.connection_memory_limit, NULL},
 
 		/* Thread pool size */

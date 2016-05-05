@@ -539,11 +539,12 @@ static void parse_organization_monitor_sync_clean(
 static int parse_organization_monitor_sync(json_t *config,
 		struct rkt_array *organizations_monitor_topics,
 		struct itimerspec *monitor_interval,
-		struct itimerspec *clean_timerspec) {
+		struct itimerspec *clean_timerspec,
+		json_int_t *org_clean_offset_s) {
 	json_error_t jerr;
 	json_t *monitor_topics = NULL;
-	json_int_t monitor_topic_interval_s = 0, org_clean_mod_s = 0,
-		org_clean_offset_s = 0;
+	json_int_t monitor_topic_interval_s = 0, org_clean_mod_s = 0;
+	*org_clean_offset_s = 0;
 
 	assert(config);
 	assert(organizations_monitor_topics);
@@ -560,7 +561,7 @@ static int parse_organization_monitor_sync(json_t *config,
 			RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_MOD_KEY,
 							&org_clean_mod_s,
 			RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_OFFSET_KEY,
-							&org_clean_offset_s);
+							org_clean_offset_s);
 
 
 	if (0 != json_unpack_rc) {
@@ -569,20 +570,20 @@ static int parse_organization_monitor_sync(json_t *config,
 		return -1;
 	}
 
-	if (org_clean_offset_s > org_clean_mod_s) {
+	if (*org_clean_offset_s > org_clean_mod_s) {
 		const json_int_t new_org_clean_offset_s =
-					org_clean_offset_s % org_clean_mod_s;
+					*org_clean_offset_s % org_clean_mod_s;
 		rdlog(LOG_WARNING,
 			"Organization clean offset is bigger than clean mod"
 			" (%lld > %lld). Clean offset will be %lld",
-					org_clean_offset_s, org_clean_mod_s,
+					*org_clean_offset_s, org_clean_mod_s,
 					new_org_clean_offset_s);
 
-		org_clean_offset_s = new_org_clean_offset_s;
+		*org_clean_offset_s = new_org_clean_offset_s;
 	}
 
 	parse_organization_monitor_sync_clean(clean_timerspec, org_clean_mod_s,
-		org_clean_offset_s);
+		*org_clean_offset_s);
 
 	if (monitor_topics == NULL && 0 == monitor_topic_interval_s) {
 		/* You don't want monitor, nothing to do */
@@ -628,6 +629,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	struct rkt_array rkt_array;
 	struct itimerspec organizations_monitor_topic_ts,
 		          organizations_clean_ts;
+	json_int_t organization_clean_s_offset = 0;
 	sensors_db_t *sensors_db = NULL;
 
 	assert(rb_config);
@@ -648,7 +650,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	const int organization_sync_rc = parse_organization_monitor_sync(
 		my_config, &rkt_array, &organizations_monitor_topic_ts,
-		&organizations_clean_ts);
+		&organizations_clean_ts, &organization_clean_s_offset);
 
 	if (0 != organization_sync_rc) {
 		/* Warning already given */
@@ -682,6 +684,10 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	} else {
 		rc = -1;
 	}
+	update_sync_thread_clean_interval(
+			&rb_config->organizations_sync.thread,
+			organizations_clean_ts.it_interval.tv_sec,
+			organization_clean_s_offset);
 	rb_reload_monitor_timer(rb_config, &organizations_monitor_topic_ts,
 		&organizations_clean_ts);
 	swap_ptrs(topics_db,rb_config->database.topics_db);

@@ -57,9 +57,14 @@ int32_t rb_client_mac_partitioner (const rd_kafka_topic_t *_rkt,
 					void *rkt_opaque,void *msg_opaque);
 
 struct kafka_message_array *new_kafka_message_array(size_t size);
-int save_kafka_msg_key_in_array(struct kafka_message_array *array,
+int save_kafka_msg_key_partition_in_array(struct kafka_message_array *array,
 				char *key, size_t key_size,
-				char *buffer, size_t buf_size,void *opaque);
+				char *buffer, size_t buf_size,int partition,
+				void *opaque);
+#define save_kafka_msg_key_in_array(array, key, key_size, buffer, buf_size, \
+								opaque) \
+	save_kafka_msg_key_partition_in_array(array, key, key_size, buffer, \
+				buf_size, RD_KAFKA_PARTITION_UA, opaque)
 #define save_kafka_msg_in_array(array, buffer, buf_size, opaque) \
 	save_kafka_msg_key_in_array(array, NULL, 0, buffer, buf_size, opaque);
 

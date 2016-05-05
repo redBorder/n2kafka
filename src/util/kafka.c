@@ -175,9 +175,10 @@ struct kafka_message_array *new_kafka_message_array(size_t size){
 	return ret;
 }
 
-int save_kafka_msg_key_in_array(struct kafka_message_array *array,
+int save_kafka_msg_key_partition_in_array(struct kafka_message_array *array,
 				char *key, size_t key_len,
-				char *buffer, size_t buf_size, void *opaque) {
+				char *buffer, size_t buf_size,int partition,
+				void *opaque) {
 	if(array->count == array->size) {
 		rdlog(LOG_ERR,"Can't save msg in array: Not enough space");
 		return -1;
@@ -186,7 +187,7 @@ int save_kafka_msg_key_in_array(struct kafka_message_array *array,
 	const size_t i = array->count;
 	array->msgs[i].key = key;
 	array->msgs[i].key_len = key_len;
-	array->msgs[i].partition = RD_KAFKA_PARTITION_UA;
+	array->msgs[i].partition = partition;
 	array->msgs[i].payload = buffer;
 	array->msgs[i].len = buf_size;
 	array->msgs[i]._private = opaque;

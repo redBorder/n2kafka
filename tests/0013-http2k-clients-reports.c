@@ -12,7 +12,8 @@
 #include <assert.h>
 
 static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
-static const char TEST_N2KAFKA_ID[] = "0013-test";
+#define TEST_N2KAFKA_ID "0013-test"
+#define TEST_OTHER_N2KAFKA_ID "other-n2kafka"
 static const time_t test_timestamp = 1462430283;
 static const time_t test_report_interval = 25;
 static const time_t test_clean_interval = 300;
@@ -37,8 +38,14 @@ struct report_validation {
 	struct kafka_message_array *sync_msgs;
 	struct msg_consume_ctx *consume_ctx;
 
+	organization_database_modify_cb org_db_cb_bef_report;
+	void *org_db_cb_bef_report_ctx;
+
 	validate_report_cb validate_cb;
 	void *validate_cb_ctx;
+
+	organization_database_modify_cb org_db_cb_aft_report;
+	void *org_db_cb_aft_report_ctx;
 
 	int clean;
 };
@@ -101,6 +108,11 @@ static void validate_report0(json_t *config,
 				TEST_N2KAFKA_ID, validators[i].sync_msgs);
 		}
 
+		if (validators[i].org_db_cb_bef_report) {
+			validators[i].org_db_cb_bef_report(&db,
+					validators[i].org_db_cb_bef_report_ctx);
+		}
+
 		if (validators[i].validate_cb) {
 			struct kafka_message_array *ma = validators[i].clean ?
 				organization_db_clean_consumed(&db,
@@ -114,6 +126,12 @@ static void validate_report0(json_t *config,
 
 			free(ma);
 		}
+
+		if (validators[i].org_db_cb_aft_report) {
+			validators[i].org_db_cb_aft_report(&db,
+					validators[i].org_db_cb_aft_report_ctx);
+		}
+
 	}
 
 	organizations_db_done(&db);
@@ -257,10 +275,20 @@ static void validate_reports_limits() {
  * TEST 4: Check that consumed bytes are properly writed/readed
  */
 
-static void client_consume_bytes(organizations_db_t *db, void *ctx) {
+static void client_consume_bytes0(size_t i,
+			organization_db_entry_t *organization,void *ctx) {
+	(void)ctx;
+	organization_add_consumed_bytes(organization, i);
+}
+
+/** Do something foreach client, where client is a numeric string from 0 to
+  n_uuids */
+static void foreach_numeric_client(organizations_db_t *db, size_t n_uuids,
+	void (*cb)(size_t i, organization_db_entry_t *organization,void *ctx),
+								void *cb_ctx) {
+
 	char buf[BUFSIZ];
 	size_t i;
-	const size_t n_uuids = *(size_t *)ctx;
 
 	for (i=0; i<n_uuids; ++i) {
 		/* Let's consume bytes for each client */
@@ -268,9 +296,15 @@ static void client_consume_bytes(organizations_db_t *db, void *ctx) {
 		organization_db_entry_t *organization
 						= organizations_db_get(db,buf);
 		assert(organization);
-		organization_add_consumed_bytes(organization,i);
+		cb(i, organization, cb_ctx);
 		organizations_db_entry_decref(organization);
 	}
+}
+
+static void client_consume_bytes(organizations_db_t *db, void *ctx) {
+	const size_t n_uuids = *(size_t *)ctx;
+
+	foreach_numeric_client(db, n_uuids, client_consume_bytes0, NULL);
 }
 
 /*
@@ -451,6 +485,9 @@ struct client_consume_sync_bytes_template {
 	json_int_t timestamp,client_total_bytes_consumed_multiplier,
 		client_limit_bytes_multiplier, value_multiplier;
 	const char *monitor, *n2kafka_id, *type, *unit;
+	const char *key;
+	int partition;
+	size_t key_len;
 };
 
 /** Creates a kafka array that updates a number of uuids with a given
@@ -497,11 +534,23 @@ static struct kafka_message_array *gen_client_consume_sync_bytes(
 
 		char *msg = json_dumps(jmsg, 0);
 
-		save_kafka_msg_in_array(ret, msg, strlen(msg), NULL);
+		char *dup_key = strdup(template->key);
+		save_kafka_msg_key_partition_in_array(ret, dup_key,
+			template->key_len, msg, strlen(msg),
+			template->partition, NULL);
+
 		json_decref(jmsg);
 	}
 
 	return ret;
+}
+
+static void free_sync_msgs(struct kafka_message_array *sync_msgs) {
+	size_t i;
+	for (i=0; i<sync_msgs->count; ++i) {
+		free(sync_msgs->msgs[i].key);
+		free(sync_msgs->msgs[i].payload);
+	}
 }
 
 /** Validate to only receive other bytes. Our reports always should send 0
@@ -526,27 +575,48 @@ static void validate_consume_reports() {
 		.magic = MSG_CONSUME_CTX_MAGIC,
 #endif
 		.thread = &consume_thread_mock,
-		.in_sync = 1,
+		.in_sync = {
+			.mutex= PTHREAD_MUTEX_INITIALIZER,
+			.in_sync = (int []){0},
+		},
 		.n2kafka_id = NULL, // It will be overriden
 	};
-#define TEST5_CONSUME_BYTES_INIT0(mn2kafka_id,total_bytes_consumed_multiplier,\
-		limit_bytes_multiplier, mvalue_multiplier)		      \
-	{								      \
-		.timestamp = 1462282696,				      \
-		.client_total_bytes_consumed_multiplier			      \
-			= total_bytes_consumed_multiplier,		      \
-		.client_limit_bytes_multiplier = limit_bytes_multiplier,      \
-		.value_multiplier = mvalue_multiplier,			      \
-		.monitor = "organization_received_bytes",		      \
-		.n2kafka_id = mn2kafka_id,				      \
-		.type = "data",						      \
-		.unit = "bytes",					      \
+
+#define TEST5_CONSUME_BYTES_KEY(mn2kafka_id,mtimestamp,minterval)              \
+	mn2kafka_id "\0" RD_STRINGIFY(mtimestamp) "\0" RD_STRINGIFY(minterval)
+#define TEST5_CONSUME_BYTES_INIT0(mtimestamp,mn2kafka_id,                      \
+		total_bytes_consumed_multiplier,limit_bytes_multiplier,        \
+		mvalue_multiplier,mpartition)                                  \
+	{								       \
+		.timestamp = mtimestamp,				       \
+		.partition = mpartition,                                       \
+		.client_total_bytes_consumed_multiplier			       \
+			= total_bytes_consumed_multiplier,		       \
+		.client_limit_bytes_multiplier = limit_bytes_multiplier,       \
+		.value_multiplier = mvalue_multiplier,			       \
+		.monitor = "organization_received_bytes",		       \
+		.n2kafka_id = mn2kafka_id,				       \
+		.type = "data",						       \
+		.unit = "bytes",					       \
+		.key  = TEST5_CONSUME_BYTES_KEY(mn2kafka_id,mtimestamp,200),   \
+		.key_len = sizeof(TEST5_CONSUME_BYTES_KEY(mn2kafka_id,         \
+			mtimestamp,200))                                       \
 	}
+#define TEST5_CONSUME_BYTES_INITP(mn2kafka_id, total_bytes_consumed_multiplier,\
+				limit_bytes_multiplier, mvalue_multiplier,     \
+				mpartition)                                    \
+	TEST5_CONSUME_BYTES_INIT0(1462282696, mn2kafka_id,                     \
+		total_bytes_consumed_multiplier, limit_bytes_multiplier,       \
+		mvalue_multiplier,mpartition)
+#define TEST5_CONSUME_BYTES_INIT(mn2kafka_id, total_bytes_consumed_multiplier, \
+				limit_bytes_multiplier, mvalue_multiplier)     \
+	TEST5_CONSUME_BYTES_INITP(mn2kafka_id, total_bytes_consumed_multiplier,\
+				limit_bytes_multiplier, mvalue_multiplier, 0)
 
 	static const struct client_consume_sync_bytes_template sync_bytes =
-		TEST5_CONSUME_BYTES_INIT0("other_n2kafka", 1, 10, 1);
+		TEST5_CONSUME_BYTES_INIT(TEST_OTHER_N2KAFKA_ID, 1, 10, 1);
 	static const struct client_consume_sync_bytes_template my_sync_bytes =
-		TEST5_CONSUME_BYTES_INIT0(TEST_N2KAFKA_ID, 1, 10, 1);
+		TEST5_CONSUME_BYTES_INIT(TEST_N2KAFKA_ID, 1, 10, 1);
 	struct test4_ctx test5_nomsgs = TEST4_INITIALIZER(0,0,0,0),
 	                 test5_ctx2 = TEST4_INITIALIZER(9,1,2,10);
 
@@ -600,14 +670,424 @@ static void validate_consume_reports() {
 
 	validate_report0(uuids, validators, RD_ARRAYSIZE(validators));
 
-	for (i=0; i<sync_msgs->count; ++i) {
-		free(sync_msgs->msgs[i].payload);
+	free_sync_msgs(sync_msgs); free(sync_msgs);
+	free_sync_msgs(my_sync_msgs); free(my_sync_msgs);
+}
+
+/*
+ * TEST 6: Testing time slices
+ */
+
+static void validate_time_slices() {
+	size_t i;
+	struct {
+		time_t ts1,ts2,slice_width,slice_off;
+		int64_t expected_slice_ts1,expected_slice_ts2;
+		int cmp_time_slice;
+	} tests[] = {
+		{
+			.ts1=0, .ts2=0, .slice_width=30, .slice_off=0,
+			.expected_slice_ts1=0, .expected_slice_ts2=0,
+			.cmp_time_slice = 0,
+		},{
+			.ts1=15, .ts2=45, .slice_width=60, .slice_off=0,
+			.expected_slice_ts1=1, .expected_slice_ts2=1,
+			.cmp_time_slice = 0,
+		},{
+			.ts1=15, .ts2=45, .slice_width=60, .slice_off=30,
+			.expected_slice_ts1=0, .expected_slice_ts2=1,
+			.cmp_time_slice = 1,
+		}
+	};
+
+	for (i=0; i<RD_ARRAYSIZE(tests); ++i) {
+		const int64_t time_slice_1 = timestamp_interval_slice(
+				tests[i].ts1, tests[i].slice_width,
+				tests[i].slice_off);
+		const int64_t time_slice_2 = timestamp_interval_slice(
+				tests[i].ts2, tests[i].slice_width,
+				tests[i].slice_off);
+		assert(time_slice_1 == tests[i].expected_slice_ts1);
+		assert(time_slice_2 == tests[i].expected_slice_ts2);
+		const int cmp = !!timestamp_interval_slice_cmp(
+			tests[i].ts1, tests[i].ts2,tests[i].slice_width,
+			tests[i].slice_off);
+		assert(tests[i].cmp_time_slice == cmp);
 	}
-	free(sync_msgs);
-	for (i=0; i<my_sync_msgs->count; ++i) {
-		free(my_sync_msgs->msgs[i].payload);
+}
+
+/*
+ * TEST 7: Consume malformed messages
+ */
+
+static void *memdup(const void *orig, size_t siz) {
+	void *ret = calloc(1,siz);
+	assert(ret);
+	memcpy(ret, orig, siz);
+	return ret;
+}
+
+static void validate_invalid_reports() {
+	static const int test_partition = 0;
+	static const char test_payload[] = "test_payload";
+	int msg_offset = 0;
+	json_t *uuids = json_object();
+	sync_thread_t consume_thread_mock = {
+#ifdef SYNC_THREAD_MAGIC
+		.magic = SYNC_THREAD_MAGIC,
+#endif
+		.creation_rc = 0,
+		.run = 1,
+		.rk = NULL,
+		.rk_conf = NULL,
+		.thread = pthread_self(),
+		.org_db = NULL, // It will be overriden
+	};
+
+	struct msg_consume_ctx consume_ctx = {
+#ifdef MSG_CONSUME_CTX_MAGIC
+		.magic = MSG_CONSUME_CTX_MAGIC,
+#endif
+		.thread = &consume_thread_mock,
+		.in_sync = {
+			.mutex= PTHREAD_MUTEX_INITIALIZER,
+			.in_sync = (int []){0},
+		},
+		.n2kafka_id = NULL, // It will be overriden
+	};
+
+#define TEST6_KAFKA_MSG_INITIALIZER0(m_err, m_partition, m_payload, m_len,     \
+							m_key, m_key_len)      \
+	{ .err = m_err, .rkt = NULL, .partition = m_partition,                 \
+		.payload = m_payload ? memdup(m_payload, m_len) : NULL,        \
+		.len = m_len,                                                  \
+		.key = m_key ? memdup(m_key, m_key_len) : NULL,                \
+		.key_len = m_key_len,                                          \
+		.offset = msg_offset++, ._private = NULL}
+
+#define TEST6_KAFKA_MSG_INITIALIZER(m_err, m_partition, m_payload, m_key) \
+	TEST6_KAFKA_MSG_INITIALIZER0(m_err, m_partition, m_payload,       \
+		sizeof(m_payload)-1, m_key, sizeof(m_key)-1)
+
+	rd_kafka_message_t msgs[] = {
+		/* NULL key */
+		TEST6_KAFKA_MSG_INITIALIZER0(RD_KAFKA_RESP_ERR_NO_ERROR,
+						test_partition, test_payload,
+						sizeof(test_payload), NULL, 0),
+
+		/* key only have 2 fields */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+				test_partition, test_payload, "hello\0world"),
+
+		/* key have invalid timestamp: letters on it */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition, test_payload, "hello\0world\00010t"),
+
+		/* key have invalid timestamp: only letters */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+						test_partition, test_payload,
+						"hello\0world\0timestamp!"),
+
+		/* Invalid message: Object instead of string in monitor value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,"{\"monitor\":{},\"value\":100,"
+			"\"organization_uuid\":\"abc_org\","
+			"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+			"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: Invalid monitor */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes2\","
+			"\"value\":100,"
+			"\"organization_uuid\":\"abc_org\","
+			"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+			"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: no monitor in json */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,"{\"value\":100,"
+			"\"organization_uuid\":\"abc_org\","
+			"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+			"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: Object instead of string in
+						organization_uuid value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,,"
+				"\"organization_uuid\":{},"
+				"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+				"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: no organization_uuid in json */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,"
+				"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+				"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: Object instead of string in
+							n2kafka_id value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,"
+				"\"organization_uuid\":\"abc_org\","
+				"\"n2kafka_id\":{},"
+				"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: no n2kafka_id value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,"
+				"\"organization_uuid\":\"abc_org\","
+				"\"timestamp\":1462282696}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: Object instead of integer in timestamp
+									value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,"
+				"\"organization_uuid\":\"abc_org\","
+				"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\","
+				"\"timestamp\":{}}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+
+		/* Invalid message: no timestamp value */
+		TEST6_KAFKA_MSG_INITIALIZER(RD_KAFKA_RESP_ERR_NO_ERROR,
+			test_partition,
+			"{\"monitor\":\"organization_received_bytes\","
+				"\"value\":100,"
+				"\"organization_uuid\":\"abc_org\","
+				"\"n2kafka_id\":\""TEST_N2KAFKA_ID"\"}",
+			TEST_N2KAFKA_ID"\000abc_org\000200"),
+	};
+
+	struct kafka_message_array sync_msgs = {
+		.count = RD_ARRAYSIZE(msgs),
+		.size = RD_ARRAYSIZE(msgs),
+		.msgs = msgs,
+	};
+
+	const struct report_validation validators[] = {
+		/* 1st step: Every client consume N bytes on others n2kafka.
+		we should check that no report are given, since we don't have
+		consumed anything */
+		{
+			.sync_msgs = &sync_msgs,
+			.consume_ctx = &consume_ctx,
+		},
+	};
+
+	validate_report0(uuids, validators, RD_ARRAYSIZE(validators));
+
+	free_sync_msgs(&sync_msgs);
+}
+
+/*
+ * TEST8: Validate sync
+ */
+
+struct check_consumed_cb_ctx {
+#define CHECK_CONSUMED_CB_MAGIC 0x03053CBC03053CBCL
+	uint64_t magic;
+	size_t n_uuids;
+	int consumed_bytes_multiplier;
+	int reported_bytes_multiplier;
+};
+
+#define CHECK_CONSUMED_CB_CTX_INIT(mn_uuids, mconsumed, mreported)             \
+	{.magic=CHECK_CONSUMED_CB_MAGIC,.n_uuids=mn_uuids,                     \
+	.consumed_bytes_multiplier=mconsumed,                                  \
+	.reported_bytes_multiplier=mreported}
+
+static void client_check_consumed(size_t i,
+			organization_db_entry_t *organization, void *ctx) {
+	struct check_consumed_cb_ctx *consumed_ctx = ctx;
+	assert_true(CHECK_CONSUMED_CB_MAGIC == consumed_ctx->magic);
+	const uint64_t expected_consumed_bytes =
+			i*(uint64_t)consumed_ctx->consumed_bytes_multiplier;
+	const uint64_t expected_reported_bytes =
+			i*(uint64_t)consumed_ctx->reported_bytes_multiplier;
+
+	assert_true(expected_consumed_bytes ==
+				organization_consumed_bytes(organization));
+	assert_true(expected_reported_bytes ==
+		organization->bytes_limit.reported);
+}
+
+
+
+static struct kafka_message_array *prepare_test8_msgs(size_t n_uuids) {
+	size_t i;
+#define total_bytes_consumed_multiplier 1
+#define limit_bytes_multiplier 10000000
+
+	static const struct client_consume_sync_bytes_template template[] = {
+
+		TEST5_CONSUME_BYTES_INITP(TEST_N2KAFKA_ID,
+			total_bytes_consumed_multiplier, limit_bytes_multiplier,
+			0x1,0),
+		TEST5_CONSUME_BYTES_INITP(TEST_OTHER_N2KAFKA_ID,
+			total_bytes_consumed_multiplier, limit_bytes_multiplier,
+			0x100,0),
+		TEST5_CONSUME_BYTES_INITP(TEST_N2KAFKA_ID,
+			total_bytes_consumed_multiplier, limit_bytes_multiplier,
+			0x10000,1),
+		TEST5_CONSUME_BYTES_INITP(TEST_OTHER_N2KAFKA_ID,
+			total_bytes_consumed_multiplier, limit_bytes_multiplier,
+			0x1000000,1),
+	};
+	const size_t ret_size = n_uuids * RD_ARRAYSIZE(template);
+	struct kafka_message_array *ret = new_kafka_message_array(ret_size);
+
+	assert(ret);
+
+#undef total_bytes_consumed_multiplier
+#undef limit_bytes_multiplier
+
+	for (i=0; i<RD_ARRAYSIZE(template); ++i) {
+		struct kafka_message_array *tmp = gen_client_consume_sync_bytes(
+							n_uuids, &template[i]);
+		assert(ret);
+		assert(ret->count + tmp->count <= ret->size);
+
+		memcpy(&ret->msgs[ret->count], tmp->msgs,
+					sizeof(tmp->msgs[0])*tmp->count);
+		ret->count += tmp->count;
+		/* Do not free allocated messages */
+		memset(tmp->msgs, 0, sizeof(tmp->msgs[0])*tmp->count);
+		free_sync_msgs(tmp); free(tmp);
 	}
-	free(my_sync_msgs);
+
+	return ret;
+}
+
+static void check_consumed_cb(organizations_db_t *db, void *ctx) {
+	struct check_consumed_cb_ctx *consumed_ctx = ctx;
+
+	assert_true(CHECK_CONSUMED_CB_MAGIC == consumed_ctx->magic);
+	const size_t n_uuids = consumed_ctx->n_uuids;
+
+	foreach_numeric_client(db, n_uuids, client_check_consumed, ctx);
+}
+
+/** Message array that only contain EOF partition signal */
+#define PARTITION_EOF_MSG_ARRAY(partition_id) {                                \
+	.size=1, .count=1, .msgs = (rd_kafka_message_t[]){{                    \
+		.err = RD_KAFKA_RESP_ERR__PARTITION_EOF,                       \
+		.partition=partition_id                                        \
+	}}}
+
+/** Validate different sync partitions behavior */
+static void validate_thread_sync_partitions() {
+	size_t n_uuids = 10, i;
+	json_t *uuids = json_object();
+	sync_thread_t consume_thread_mock = {
+#ifdef SYNC_THREAD_MAGIC
+		.magic = SYNC_THREAD_MAGIC,
+#endif
+		.creation_rc = 0,
+		.run = 1,
+		.rk = NULL,
+		.rk_conf = NULL,
+		.thread = pthread_self(),
+		.org_db = NULL, // It will be overriden
+	};
+
+	struct msg_consume_ctx consume_ctx = {
+#ifdef MSG_CONSUME_CTX_MAGIC
+		.magic = MSG_CONSUME_CTX_MAGIC,
+#endif
+		.thread = &consume_thread_mock,
+		.in_sync = {
+			.mutex= PTHREAD_MUTEX_INITIALIZER,
+			.num_partitions = 2,
+			.in_sync = (int []){0,0},
+		},
+		.n2kafka_id = NULL, // It will be overriden
+	};
+
+
+	struct kafka_message_array *sync_msgs = prepare_test8_msgs(n_uuids);
+	struct kafka_message_array partition_eof_msg[] = {
+		PARTITION_EOF_MSG_ARRAY(0),
+		PARTITION_EOF_MSG_ARRAY(1),
+	};
+
+	struct check_consumed_cb_ctx check_ctx[] = {
+		/* All messages arrives: +0x100 per position */
+		CHECK_CONSUMED_CB_CTX_INIT(10, 0x01010101, 0x01010101),
+		/* Partition 0 is in sync, so we only receive others 3 msgs */
+		CHECK_CONSUMED_CB_CTX_INIT(10, 0x02020201, 0x02020201),
+		/* Partition 1 is in sync, so we only receive others 2 msgs */
+		CHECK_CONSUMED_CB_CTX_INIT(10, 0x03020301, 0x03020301),
+	};
+
+	const struct report_validation validators[] = {
+		/* 1st step: No partition is in sync, we need to hear our
+		own messages and any other messages */
+		{
+			.sync_msgs = sync_msgs, .consume_ctx = &consume_ctx,
+
+			.org_db_cb_bef_report = check_consumed_cb,
+			.org_db_cb_bef_report_ctx = &check_ctx[0],
+		},
+		/* 2nd step: Partition 0 sync. We need to stop listening our own
+		messages in that partition, but keep listening our others
+		partition messages */
+		{
+			.sync_msgs = &partition_eof_msg[0],
+			.consume_ctx = &consume_ctx,
+		},
+		{
+			.sync_msgs = sync_msgs, .consume_ctx = &consume_ctx,
+
+			.org_db_cb_bef_report = check_consumed_cb,
+			.org_db_cb_bef_report_ctx = &check_ctx[1],
+		},
+		{
+			/* We receive EOF_PARTITION again, since we have
+			consumed all pending messages */
+			.sync_msgs = &partition_eof_msg[0],
+			.consume_ctx = &consume_ctx,
+		},
+		/* 3rd step: Partition 1 sync. We need to stop listening our own
+		messages in both partitions, and keep listening others */
+		{
+			.sync_msgs = &partition_eof_msg[1],
+			.consume_ctx = &consume_ctx,
+		},
+		{
+			.sync_msgs = sync_msgs, .consume_ctx = &consume_ctx,
+
+			.org_db_cb_bef_report = check_consumed_cb,
+			.org_db_cb_bef_report_ctx = &check_ctx[2],
+		},
+	};
+
+	for (i=0; i<n_uuids; ++i) {
+		char uuid[BUFSIZ];
+		snprintf(uuid, sizeof(uuid), "%zu", i);
+		json_object_set_new(uuids, uuid,
+			new_config_uuid(sensor_enrichment(uuid), i*10));
+	}
+
+	validate_report0(uuids, validators, RD_ARRAYSIZE(validators));
+
+	free_sync_msgs(sync_msgs); free(sync_msgs);
 }
 
 /*
@@ -616,11 +1096,14 @@ static void validate_consume_reports() {
 
 int main() {
 	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(validate_time_slices),
 		cmocka_unit_test(validate_zero_clients_reports),
 		cmocka_unit_test(validate_zero_bytes_reports),
 		cmocka_unit_test(validate_reports_limits),
 		cmocka_unit_test(validate_reset_bytes_consumed),
 		cmocka_unit_test(validate_consume_reports),
+		cmocka_unit_test(validate_invalid_reports),
+		cmocka_unit_test(validate_thread_sync_partitions),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
