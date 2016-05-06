@@ -52,6 +52,7 @@
       }
     },
     "organizations_sync": {
+      "put_url": "http://localhost:80/",
       "topics": ["rb_monitor","rb_event"],
       "interval_s": 5,
       "clean_on": {

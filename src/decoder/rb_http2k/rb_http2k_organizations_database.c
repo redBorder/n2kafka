@@ -149,6 +149,43 @@ err:
 #define organization_clean_consumed_bytes(org) \
 	ATOMIC_OP(fetch,and,&(org)->bytes_limit.consumed,0)
 
+/** Try to send all configured warnings: log to console and send a PUT.
+  @param org Organziation to warn about
+  */
+static void produce_organization_warning(const organization_db_entry_t *org) {
+	rdlog(LOG_INFO, "Organization %s has reached it's bytes quota",
+			organization_db_entry_get_uuid(org));
+
+	if (org->db->limit_reached_cb) {
+		org->db->limit_reached_cb(org->db, org,
+						org->db->limit_reached_cb_ctx);
+	}
+}
+
+/** Add consumed bytes to an organization. If it reach the limit, it will queue
+  a warning in organizations db warning queue.
+  @param org Organization
+  @param bytes Bytes to add
+  @return updated consumed bytes
+  */
+#define organization_add_consumed_bytes0(org, bytes) \
+        ATOMIC_OP(add, fetch, &(org)->bytes_limit.consumed, bytes)
+
+uint64_t organization_add_consumed_bytes(organization_db_entry_t *org,
+							uint64_t bytes) {
+	const uint64_t ret = organization_add_consumed_bytes0(org, bytes);
+	const int limit_reached = organization_limit_reached(org);
+	if (limit_reached) {
+		const int warning_given = organization_fetch_set_warning_given(
+			org);
+		if (!warning_given) {
+			produce_organization_warning(org);
+		}
+	}
+
+	return ret;
+}
+
 void organization_add_other_consumed_bytes(organization_db_entry_t *org,
 				const char *n2kafka_id, uint64_t bytes) {
 	(void)n2kafka_id;

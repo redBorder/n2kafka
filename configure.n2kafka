@@ -72,6 +72,19 @@ function checks {
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
        "#include <yajl.h>"
 
+    # Check that libcurl is available, and allow to link it statically.
+    mkl_meta_set "lcurl" "desc" "Free and easy-to-use client-side URL transfer library"
+    mkl_meta_set "lcurl" "deb" "libcurl4-gnutls-dev"
+    mkl_lib_check --static=-lcurl "libcurl" "" fail CC "-lcurl -lpthread -lz" \
+       "#include <curl/curl.h>"
+
+    # Check libcurl is new enough
+    mkl_meta_set "curlversion" "name" "libcurl MAX_TOTAL_CONNECTIONS"
+    mkl_meta_set "curlversion" "desc" "libcurl 7.45.0 or later is required for the Max connections option"
+    mkl_compile_check "curlversion" "" fail CC "" \
+        "#include <curl/curl.h>
+        static int foo __attribute__((unused)) = CURLMOPT_MAX_TOTAL_CONNECTIONS;"
+
     if [[ "x$WITHOUT_OPTIMIZATION" != "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
     fi

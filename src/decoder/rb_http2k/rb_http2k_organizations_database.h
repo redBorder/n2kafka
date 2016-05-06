@@ -30,6 +30,7 @@
 
 /* FW declaration */
 struct organizations_db_s;
+typedef struct organizations_db_s organizations_db_t;
 
 /// organization resource limit
 struct organization_limit {
@@ -80,13 +81,14 @@ typedef struct organization_db_entry_s {
 /** Obtains organization max bytes */
 #define organization_get_max_bytes(org) ((org)->bytes_limit.max)
 
-/** Add consumed bytes to an organization
+/** Add consumed bytes to an organization. If it reach the limit, it will queue
+  a warning in organizations db warning queue.
   @param org Organization
   @param bytes Bytes to add
   @return updated consumed bytes
   */
-#define organization_add_consumed_bytes(org, bytes) \
-        ATOMIC_OP(add, fetch, &(org)->bytes_limit.consumed, bytes)
+uint64_t organization_add_consumed_bytes(organization_db_entry_t *org,
+							uint64_t bytes);
 
 /** Adds another n2kafka consumed bytes to this organization
   @param org Organization
@@ -124,14 +126,22 @@ void organization_add_other_consumed_bytes(organization_db_entry_t *org,
 void organizations_db_entry_decref(organization_db_entry_t *entry);
 
 /** Organization uuid database */
-typedef struct organizations_db_s {
+struct organizations_db_s {
 	/* Private data - do not access directly */
 	/** Mutex that protects against concurrent modification of reported
 	limits */
 	pthread_mutex_t reports_mutex;
+
 	/// database to search for uuids
 	uuid_db_t uuid_db;
-} organizations_db_t;
+
+	/// Callback when an organization has reached limit
+	void (*limit_reached_cb)(const organizations_db_t *org_db,
+				const organization_db_entry_t *org, void *ctx);
+
+	/// Context to limit reached callback
+	void *limit_reached_cb_ctx;
+};
 
 /** Initialize a new database
   @param db db to initialize

@@ -54,6 +54,7 @@ static const char RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_MOD_KEY[] =
 							"timestamp_s_mod";
 static const char RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_OFFSET_KEY[] =
 							"timestamp_s_offset";
+static const char RB_ORGANIZATIONS_SYNC_PUT_URL_KEY[] = "put_url";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
 
@@ -540,10 +541,11 @@ static int parse_organization_monitor_sync(json_t *config,
 		struct rkt_array *organizations_monitor_topics,
 		struct itimerspec *monitor_interval,
 		struct itimerspec *clean_timerspec,
-		json_int_t *org_clean_offset_s) {
+		json_int_t *org_clean_offset_s,char **http_put_url_copy) {
 	json_error_t jerr;
 	json_t *monitor_topics = NULL;
 	json_int_t monitor_topic_interval_s = 0, org_clean_mod_s = 0;
+	const char *http_put_url = NULL;
 	*org_clean_offset_s = 0;
 
 	assert(config);
@@ -552,11 +554,12 @@ static int parse_organization_monitor_sync(json_t *config,
 	assert(clean_timerspec);
 
 	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
-		"{s?{s?o,s?I,s:{s:I,s?I}}}",
+		"{s?{s?o,s?I,s?s,s:{s:I,s?I}}}",
 		RB_ORGANIZATIONS_SYNC_KEY,
 		RB_ORGANIZATIONS_SYNC_TOPICS_KEY,&monitor_topics,
 		RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY,
 						&monitor_topic_interval_s,
+		RB_ORGANIZATIONS_SYNC_PUT_URL_KEY, &http_put_url,
 		RB_ORGANIZATIONS_SYNC_CLEAN_KEY,
 			RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_MOD_KEY,
 							&org_clean_mod_s,
@@ -600,12 +603,23 @@ static int parse_organization_monitor_sync(json_t *config,
 			return 0;
 		}
 
+		if (http_put_url) {
+			*http_put_url_copy = strdup(http_put_url);
+			if (NULL == *http_put_url_copy) {
+				rdlog(LOG_ERR,
+					"Couldn't copy HTTP PUT URL (out of "
+					"memory?)");
+			}
+		}
+
 		const int create_rkt_rc = create_organization_monitor_topic(
 			monitor_topics, organizations_monitor_topics);
 
 		if (0 != create_rkt_rc) {
 			return -1;
 		}
+
+
 		return set_monitor_itimerspec(monitor_topic_interval_s,
 							monitor_interval);
 	} else {
@@ -627,6 +641,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	struct rb_config *rb_config = vrb_config;
 	struct topics_db *topics_db = NULL;
 	struct rkt_array rkt_array;
+	char *http_put_url = NULL;
 	struct itimerspec organizations_monitor_topic_ts,
 		          organizations_clean_ts;
 	json_int_t organization_clean_s_offset = 0;
@@ -650,7 +665,8 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	const int organization_sync_rc = parse_organization_monitor_sync(
 		my_config, &rkt_array, &organizations_monitor_topic_ts,
-		&organizations_clean_ts, &organization_clean_s_offset);
+		&organizations_clean_ts, &organization_clean_s_offset,
+		&http_put_url);
 
 	if (0 != organization_sync_rc) {
 		/* Warning already given */
@@ -691,6 +707,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	rb_reload_monitor_timer(rb_config, &organizations_monitor_topic_ts,
 		&organizations_clean_ts);
 	swap_ptrs(topics_db,rb_config->database.topics_db);
+	swap_ptrs(rb_config->organizations_sync.http.url, http_put_url);
 	rkt_array_swap(&rb_config->organizations_sync.topics, &rkt_array);
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
@@ -703,6 +720,10 @@ err:
 
 	if (sensors_db) {
 		sensors_db_destroy(sensors_db);
+	}
+
+	if (http_put_url) {
+		free(http_put_url);
 	}
 
 	json_decref(my_config);
@@ -719,6 +740,68 @@ void rb_opaque_done(void *_opaque) {
 #endif
 
 	free(opaque);
+}
+
+/// Elements to format HTTP PUT URL
+struct format_http_put_url_ctx {
+	/// Base url
+	const char *base_url;
+	/// Organization uuid
+	const char *organization_uuid;
+};
+
+/// snprintf convenience function
+static int format_http_put_url(char *buf, size_t buf_size,
+				const struct format_http_put_url_ctx *ctx) {
+	return snprintf(buf, buf_size, "%s/%s/reach_bytes_limit", ctx->base_url,
+							ctx->organization_uuid);
+}
+
+static void org_db_limit_reached_http(const organizations_db_t *org_db,
+			const organization_db_entry_t *org,
+			const char *base_url,
+			rb_http2k_curl_handler_t *curl_handler) {
+	char err[BUFSIZ];
+	const struct format_http_put_url_ctx ctx = {
+		.base_url = base_url,
+		.organization_uuid = organization_db_entry_get_uuid(org),
+	};
+
+	(void)org_db;
+
+	const int actual_url_size = format_http_put_url(NULL, 0, &ctx);
+	if (actual_url_size < 0) {
+		rdlog(LOG_ERR, "Couldn't calculate string size: %s",
+			mystrerror(errno, err, sizeof(err)));
+		return;
+	}
+
+	char actual_url[actual_url_size + 1];
+	const int print_rc = format_http_put_url(actual_url,
+					(size_t)actual_url_size + 1, &ctx);
+
+	if (print_rc < 0) {
+		rdlog(LOG_ERR, "Couldn't print URL: %s",
+			mystrerror(errno, err, sizeof(err)));
+		return;
+	} else if (print_rc > actual_url_size) {
+		rdlog(LOG_ERR, "Not enough space to print: Needed %d, "
+			"provided %d", print_rc, actual_url_size);
+		return;
+	}
+
+	rb_http2k_curl_handler_put_empty(curl_handler, actual_url);
+}
+
+static void org_db_limit_reached(const organizations_db_t *org_db,
+				const organization_db_entry_t *org, void *ctx) {
+	struct rb_config *rb_config = ctx;
+
+	if (rb_config->organizations_sync.http.url) {
+		org_db_limit_reached_http(org_db, org,
+			rb_config->organizations_sync.http.url,
+			&rb_config->organizations_sync.http.curl_handler);
+	}
 }
 
 int parse_rb_config(void *vconfig, const struct json_t *config) {
@@ -759,6 +842,12 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 		goto consumer_thread_err;
 	}
 
+	const int init_curl_rc = rb_http2k_curl_handler_init(
+		&rb_config->organizations_sync.http.curl_handler, 10000);
+	if (0 != init_curl_rc) {
+		goto curl_init_err;
+	}
+
 #ifdef RB_CONFIG_MAGIC
 	rb_config->magic = RB_CONFIG_MAGIC;
 #endif // RB_CONFIG_MAGIC
@@ -767,6 +856,11 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 		rdlog(LOG_ERR, "Couldn't init rb_database");
 		return -1;
 	}
+
+	/// @todo improve this initialization
+	rb_config->database.organizations_db.limit_reached_cb =
+							org_db_limit_reached;
+	rb_config->database.organizations_db.limit_reached_cb_ctx = rb_config;
 
 	/// @TODO error treatment
 	const int decoder_reload_rc = rb_decoder_reload(rb_config, config);
@@ -778,6 +872,9 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 
 reload_err:
 	free_valid_rb_database(&rb_config->database);
+	rb_http2k_curl_handler_done(
+			&rb_config->organizations_sync.http.curl_handler);
+curl_init_err:
 consumer_thread_err:
 rk_conf_err:
 	/// @TODO: Can't say if we have consumed it!
@@ -945,6 +1042,9 @@ void rb_decoder_done(void *vrb_config) {
 	struct rb_config *rb_config = vrb_config;
 	assert_rb_config(rb_config);
 	rb_decoder_deregister_timers(rb_config);
+	rb_http2k_curl_handler_done(
+			&rb_config->organizations_sync.http.curl_handler);
+
 	rkt_array_done(&rb_config->organizations_sync.topics);
 
 	sync_thread_done(&rb_config->organizations_sync.thread);

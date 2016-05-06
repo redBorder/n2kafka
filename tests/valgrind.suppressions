@@ -74,3 +74,11 @@
    ...
    fun:sasl_client_init
 }
+{
+   Curl well-known memory leaks
+   Memcheck:Leak
+   ...
+   fun:Curl_nss_init
+   fun:curl_global_init
+   ...
+}

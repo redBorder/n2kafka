@@ -313,7 +313,7 @@ static int rb_parse_map_key(void * ctx, const unsigned char * stringVal,
 			/* Nothing to worry, go ahead */
 			GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
 		} else {
-			/* Need to skip this value, since it is contained in enrichment 
+			/* Need to skip this value, since it is contained in enrichment
 			values */
 			sess->skip_value = 1;
 			return 1;
@@ -333,25 +333,13 @@ static int rb_parse_start_map(void * ctx)
 	GEN_OR_SKIP_NO_ROOT(sess,yajl_gen_map_open(g));
 }
 
-/** Adds organizations bytes, and emit a warning if this message has caused
-    that the organization's bytes quota has been reached. */
-static void add_organization_bytes(organization_db_entry_t *org,
-					uint64_t bytes, int *limit_reached) {
-	organization_add_consumed_bytes(org, bytes);
-	*limit_reached = organization_limit_reached(org);
-	if (*limit_reached && !organization_fetch_set_warning_given(org)) {
-		const char *org_uuid = organization_db_entry_get_uuid(org);
-		rdlog(LOG_INFO,
-			"Organzation %s has reached it's bytes quota",
-							org_uuid);
-	}
-}
-
+/** Generate kafka message and updates organization entry. If organization
+    reach limit, parsing returns.
+    */
 static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
 						rd_kafka_message_t *msg) {
 	const int message_key_offset = sess->message.current_key_offset;
 	const unsigned char * buf;
-	int limit_reached=0;
 	organization_db_entry_t *organization = sensor_db_entry_organization(
 								sess->sensor);
 	memset(msg,0,sizeof(*msg));
@@ -361,8 +349,8 @@ static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
 	yajl_gen_get_buf(sess->gen, &buf, &msg->len);
 
 	if (organization) {
-		add_organization_bytes(organization, msg->len, &limit_reached);
-		if (limit_reached) {
+		organization_add_consumed_bytes(organization, msg->len);
+		if (organization_limit_reached(organization)) {
 			return -1;
 		}
 	}
