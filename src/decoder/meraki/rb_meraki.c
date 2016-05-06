@@ -348,6 +348,12 @@ static int transform_meraki_observation_location(json_t *observation) {
 		return 0;
 	}
 
+	/// @TODO make a test for null locations
+	if (json_is_null(location)) {
+		json_object_del(observation, MERAKI_LOCATION_KEY);
+		return 0;
+	}
+
 	const int unpack_rc = json_unpack_ex(location,&jerr,0,
 		"{"
 			"s?f,"  /* lat */
