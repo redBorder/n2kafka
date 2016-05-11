@@ -176,6 +176,9 @@ void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
 	curl_easy_set_http_put_method(curl_handler, url);
 	curl_easy_setopt(curl_handler, CURLOPT_WRITEFUNCTION, write_callback);
 
+	// Skip SSL verification
+	curl_easy_setopt(curl_handler, CURLOPT_SSL_VERIFYPEER, 0L);
+
 	rdlog(LOG_DEBUG, "Adding curl handler %p to URL %s", curl_handler,
 									url);
 
