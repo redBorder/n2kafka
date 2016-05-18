@@ -28,6 +28,7 @@ static const uint64_t hashtable_seed = 0;
 
 /** Asserts that we're using a valid uuid_entry */
 static void uuid_entry_assert(const uuid_entry_t *uuid_entry) {
+        (void)uuid_entry;
 	assert(UUID_ENTRY_MAGIC == uuid_entry->magic);
 }
 

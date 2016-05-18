@@ -36,6 +36,8 @@ struct sensors_db_s {
 static void sensor_db_entry_assert(const sensor_db_entry_t *sensor_entry) {
 #ifdef SENSOR_DB_ENTRY_MAGIC
 	assert(SENSOR_DB_ENTRY_MAGIC == sensor_entry->magic);
+#else
+	(void)sensor_entry;
 #endif
 }
 

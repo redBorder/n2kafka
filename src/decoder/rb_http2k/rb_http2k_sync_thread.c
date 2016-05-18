@@ -38,6 +38,8 @@ static const char RDKAFKA_CONF_GROUP_ID[] = "group.id";
 static void assert_sync_thread(const sync_thread_t *thread) {
 #ifdef SYNC_THREAD_MAGIC
 	assert(SYNC_THREAD_MAGIC == thread->magic);
+#else
+	(void)thread;
 #endif
 }
 
@@ -71,6 +73,8 @@ struct msg_consume_ctx {
 static void assert_msg_consume_ctx(const struct msg_consume_ctx *ctx) {
 #ifdef MSG_CONSUME_CTX_MAGIC
 	assert(MSG_CONSUME_CTX_MAGIC == ctx->magic);
+#else
+	(void)ctx;
 #endif
 }
 

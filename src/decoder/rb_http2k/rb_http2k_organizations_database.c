@@ -45,6 +45,8 @@ static void organizations_db_entry_assert(
 			const organization_db_entry_t *organization_entry) {
 #ifdef ORGANIZATION_DB_ENTRY_MAGIC
 	assert(ORGANIZATION_DB_ENTRY_MAGIC == organization_entry->magic);
+#else
+	(void)organization_entry;
 #endif
 }
 
@@ -345,6 +347,7 @@ struct reports_ctx {
 };
 
 static void assert_reports_ctx(const struct reports_ctx *reports_ctx) {
+	(void)reports_ctx;
 	assert(REPORTS_CTX_MAGIC == reports_ctx->magic);
 }
 

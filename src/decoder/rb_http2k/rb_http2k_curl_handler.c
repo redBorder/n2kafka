@@ -38,6 +38,8 @@ static void assert_rb_http2k_curl_handler_ctx(
 					rb_http2k_curl_handler_t *handler) {
 #ifdef RB_HTTP2K_CURL_HANDLER_MAGIC
 	assert(RB_HTTP2K_CURL_HANDLER_MAGIC == handler->magic);
+#else
+	(void)handler;
 #endif
 }
 
