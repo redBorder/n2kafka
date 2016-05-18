@@ -8,11 +8,12 @@
     "decode_as": "rb_http2k"
   }],
   "brokers": "eugeniodev",
+  "n2kafka_id": "n2kafka_test",
   "rdkafka.socket.max.fails": "3",
   "rdkafka.socket.keepalive.enable": "true",
   "blacklist": ["192.168.101.3"],
   "rb_http2k_config": {
-    "uuids": {
+    "sensors_uuids": {
       "abc": {
 	"enrichment": {
           "a": 1,
@@ -20,9 +21,7 @@
           "d": true,
           "e": null
         },
-        "limits": {
-          "bytes":100
-        }
+        "organization_uuid":"abc_org"
       },
       "def": {
 	"enrichment": {
@@ -30,7 +29,35 @@
           "g": "w",
           "h": false,
           "i": null
+        },
+        "organization_uuid":"def_org"
+      }
+    },
+    "organizations_uuids": {
+      "abc_org": {
+        "enrichment": {
+          "a_org":10
+        },
+        "limits": {
+          "bytes": 10240
         }
+      },
+      "def_org": {
+        "enrichment": {
+          "b_org":20
+        },
+        "limits": {
+          "bytes": 20480
+        }
+      }
+    },
+    "organizations_sync": {
+      "put_url": "http://localhost:80/",
+      "topics": ["rb_monitor","rb_event"],
+      "interval_s": 5,
+      "clean_on": {
+        "timestamp_s_mod":300,
+        "timestamp_s_offset":299
       }
     },
     "topics": {

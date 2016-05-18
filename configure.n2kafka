@@ -14,8 +14,8 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversi
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wdouble-promotion" # New in gcc 4.6
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused-local-typedefs" # New in gcc 4.7
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wcast-align -Wdisabled-optimization -Winit-self -Wlogical-op"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default" 
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization" 
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization"
 
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
@@ -41,10 +41,14 @@ function checks {
        "#include <librd/rd.h>"
 
     # Check that librdkafka is available, and allow to link it statically.
-    mkl_meta_set "librdkafka" "desc" "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
+    mkl_meta_set "librdkafka" "desc" \
+      "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
     mkl_meta_set "librdkafka" "deb" "librdkafka-dev"
     mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
-       "#include <librdkafka/rdkafka.h>"
+       "#include <librdkafka/rdkafka.h>
+       #if RD_KAFKA_VERSION < 0x00090100
+       #error Need librdkafka version >0.9.1
+       #endif"
 
     mkl_meta_set "libev" "desc" "A high performance full-featured event loop written in C"
     mkl_meta_set "libev" "deb" "libev-dev"
@@ -67,6 +71,19 @@ function checks {
     mkl_meta_set "yajl" "desc" "Small event-driven (SAX-style) JSON parser"
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
        "#include <yajl.h>"
+
+    # Check that libcurl is available, and allow to link it statically.
+    mkl_meta_set "lcurl" "desc" "Free and easy-to-use client-side URL transfer library"
+    mkl_meta_set "lcurl" "deb" "libcurl4-gnutls-dev"
+    mkl_lib_check --static=-lcurl "libcurl" "" fail CC "-lcurl -lpthread -lz" \
+       "#include <curl/curl.h>"
+
+    # Check libcurl is new enough
+    mkl_meta_set "curlversion" "name" "libcurl MAX_TOTAL_CONNECTIONS"
+    mkl_meta_set "curlversion" "desc" "libcurl 7.45.0 or later is required for the Max connections option"
+    mkl_compile_check "curlversion" "" fail CC "" \
+        "#include <curl/curl.h>
+        static int foo __attribute__((unused)) = CURLMOPT_MAX_TOTAL_CONNECTIONS;"
 
     if [[ "x$WITHOUT_OPTIMIZATION" != "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"

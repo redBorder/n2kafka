@@ -21,6 +21,8 @@
 #pragma once
 
 #include "rb_database.h"
+#include "rb_http2k_sync_thread.h"
+#include "rb_http2k_curl_handler.h"
 
 #include "util/pair.h"
 
@@ -45,6 +47,27 @@ struct rb_config {
 	/// This value always have to be RB_CONFIG_MAGIC
 	uint64_t magic;
 #endif
+
+	/// @TODO protect all char * members!
+	struct {
+		/// Sync id to difference between others n2kafka and this one
+		char *n2kafka_id;
+		/// Timer to send organization stats to monitor
+		rb_timer_t *timer;
+		/// Timer to clean stats
+		rb_timer_t *clean_timer;
+		/// Topics to send organization stats.
+		struct rkt_array topics;
+		/// Consumer ctx
+		sync_thread_t thread;
+		/// http related
+		struct {
+			/// CURL handler to send PUT when done
+			rb_http2k_curl_handler_t curl_handler;
+			/// Url to send PUT request.
+			char *url;
+		} http;
+	} organizations_sync;
 	struct rb_database database;
 };
 
@@ -59,7 +82,7 @@ struct rb_config {
 int parse_rb_config(void *_db,const struct json_t *rb_config);
 /** Release all resources used */
 void rb_decoder_done(void *rb_config);
-/** Does nothing, since this decoder does not save anything related to 
+/** Does nothing, since this decoder does not save anything related to
     listener
     */
 int rb_decoder_reload(void *_db, const struct json_t *rb_config);
