@@ -1,9 +1,14 @@
 #pragma once
 
-#include "rb_mse_tests.h"
 #include "../src/decoder/mse/rb_mse.c"
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <cmocka.h>
+
 /// @TODO keep in sync with testMSE10Decoder
+
 static void testMSE10Decoder(const char *mse_array_str,
                              const char *_listener_config,
                              const char *mse_input,
@@ -28,17 +33,17 @@ static void testMSE10Decoder(const char *mse_array_str,
 	const int opaque_creator_rc = parse_decoder_info(&decoder_info,
 		listener_config,&topic_name);
 
-	assert(0 == opaque_creator_rc);
+	assert_true(0 == opaque_creator_rc);
 	json_decref(listener_config);
 
 	/* Currently, uses global_config */
 	decoder_info.mse_config = &mse_config;
 
 	json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
-	assert(mse_array);
+	assert_true(mse_array);
 	const int parse_rc = parse_mse_array(&decoder_info.mse_config->database,
 		mse_array);
-	assert(parse_rc == 0);
+	assert_true(parse_rc == 0);
 
 	char *aux = strdup(mse_input);
 	struct mse_array *notifications_array = process_mse_buffer(

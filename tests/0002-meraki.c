@@ -76,7 +76,7 @@ static const char MERAKI_MSG[] =
 	"}";
   // *INDENT-ON*
 
-const char MERAKI_EMPTY_OBSERVATIONS_MSG[] = 
+const char MERAKI_EMPTY_OBSERVATIONS_MSG[] =
   // *INDENT-OFF*
 	"{"
 	    "\"version\":\"2.0\","
@@ -325,13 +325,14 @@ static void MerakiDecoder_default_secret_miss() {
 }
 
 int main() {
-	MerakiDecoder_valid_enrich();
-	MerakiDecoder_novalid_enrich();
-	MerakiDecoder_valid_enrich_per_listener();
-	MerakiDecoder_empty_observations();
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(MerakiDecoder_valid_enrich),
+		cmocka_unit_test(MerakiDecoder_novalid_enrich),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_per_listener),
+		cmocka_unit_test(MerakiDecoder_empty_observations),
+		cmocka_unit_test(MerakiDecoder_default_secret_hit),
+		cmocka_unit_test(MerakiDecoder_default_secret_miss)
+	};
 
-	MerakiDecoder_default_secret_hit();
-	MerakiDecoder_default_secret_miss();
-
-	return 0;
+	return cmocka_run_group_tests(tests, NULL, NULL);
 }

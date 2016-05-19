@@ -22,7 +22,7 @@ coverage: version.o
 	# Need to disable optimizations
 	@cp Makefile.config ${Makefile_config_bak}
 	@sed -i 's%\-O[1-9s]%\-O0%g' Makefile.config
-	-(CPPFLAGS='--coverage' LDFLAGS='--coverage' make && cd tests && make coverage)
+	(CPPFLAGS='--coverage' LDFLAGS='--coverage' make && cd tests && make coverage)
 	@cp ${Makefile_config_bak} Makefile.config
 	@-rm ${Makefile_config_bak}
 
