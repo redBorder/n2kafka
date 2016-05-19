@@ -27,7 +27,7 @@ static void testMSE10Decoder(const char *mse_array_str,
 	struct mse_decoder_info decoder_info;
 
 	memset(&mse_config, 0, sizeof(mse_config));
-	memset(&decoder_info, 0, sizeof(decoder_info));
+	mse_decoder_info_create(&decoder_info);
 
 	json_t *listener_config = json_loads(_listener_config, 0, &jerr);
 	const int opaque_creator_rc = parse_decoder_info(&decoder_info,
