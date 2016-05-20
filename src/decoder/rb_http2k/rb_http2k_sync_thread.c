@@ -137,7 +137,7 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 }
 
 void sync_thread_done(sync_thread_t *thread) {
-	thread->run = 0;
+	ATOMIC_OP(fetch,and,&thread->run,0);
 	pthread_join(thread->thread, NULL);
 	pthread_mutex_destroy(&thread->clean_interval.mutex);
 }
@@ -665,7 +665,7 @@ static void *sync_thread(void *vthread) {
 
 	rdlog(LOG_INFO, "Starting http2k organization bytes sync");
 
-	while(ctx.thread->run) {
+	while(ATOMIC_OP(fetch,add,&ctx.thread->run,0)) {
 		/// @TODO end of partition message is returned. Why I can't
 		/// handle it via consumer_cb?
 		rd_kafka_message_t *msg;

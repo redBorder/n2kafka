@@ -19,6 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.h"
 #include "rb_http2k_curl_handler.h"
 
 #include <util/util.h>
@@ -99,7 +100,7 @@ static int curl_handler_purge_completed(rb_http2k_curl_handler_t *handler) {
 static void curl_handler_entry_point0(rb_http2k_curl_handler_t *handler) {
 	static int fifoq_pop_timeout_ms = 500;
 	int my_still_running = 0;
-	while(handler->run) {
+	while(ATOMIC_OP(fetch,add,&handler->run,0)) {
 		int still_running = 0;
 		CURL *elm = my_rd_fifoq_pop_timedwait(&handler->msg_queue,
 							fifoq_pop_timeout_ms);
@@ -158,7 +159,7 @@ int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
 }
 
 void rb_http2k_curl_handler_done(rb_http2k_curl_handler_t *handler) {
-	handler->run = 0;
+	ATOMIC_OP(fetch,and,&handler->run,0);
 	pthread_join(handler->thread, NULL);
 	curl_multi_cleanup(handler->curl_multi_handler);
 	curl_global_cleanup();
