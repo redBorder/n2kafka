@@ -515,7 +515,7 @@ sensor_err:
 	return NULL;
 }
 
-void free_rb_session(struct rb_config *rb_config,struct rb_session *sess) {
+void free_rb_session(struct rb_session *sess) {
 	yajl_free(sess->handler);
 	yajl_gen_free(sess->gen);
 

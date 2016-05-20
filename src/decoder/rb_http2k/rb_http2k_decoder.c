@@ -956,7 +956,7 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 		}
 	} else if (0 == bsize) {
 		/* Last call, need to free session */
-		free_rb_session(opaque->rb_config,*sessionp);
+		free_rb_session(*sessionp);
 		*sessionp = NULL;
 		return;
 	}
