@@ -34,14 +34,12 @@ for FILE in *.test; do
 
     # If a valgrind supressions file is provided, use it
     if [ -f "$SUPRESSIONS" ];then
-      valgrind --suppressions="$SUPRESSIONS" --xml=yes --xml-file="$MEM_XML" ./"$FILE" &>/dev/null
-      valgrind --suppressions="$SUPRESSIONS" --tool=helgrind --xml=yes --xml-file="$HELGRIND_XML" ./"$FILE" &>/dev/null
-      valgrind --suppressions="$SUPRESSIONS" --tool=drd --xml=yes --xml-file="$DRD_XML" ./"$FILE" &>/dev/null
-    else
-      valgrind --xml=yes --xml-file="$MEM_XML" ./"$FILE" &>/dev/null
-      valgrind --tool=helgrind --xml=yes --xml-file="$HELGRIND_XML" ./"$FILE" &>/dev/null
-      valgrind --tool=drd --xml=yes --xml-file="$DRD_XML" ./"$FILE" &>/dev/null
+      SUPPRESSIONS_VALGRIND_ARG=--suppressions="$SUPRESSIONS"
     fi
+
+    /opt/rh/devtoolset-3/root/usr/bin/valgrind $SUPPRESSIONS_VALGRIND_ARG --xml=yes --xml-file="$MEM_XML" ./"$FILE" &>/dev/null
+    /opt/rh/devtoolset-3/root/usr/bin/valgrind $SUPPRESSIONS_VALGRIND_ARG --tool=helgrind --xml=yes --xml-file="$HELGRIND_XML" ./"$FILE" &>/dev/null
+    /opt/rh/devtoolset-3/root/usr/bin/valgrind $SUPPRESSIONS_VALGRIND_ARG --tool=drd --xml=yes --xml-file="$DRD_XML" ./"$FILE" &>/dev/null
   fi
 
   printf "\e[1m=====================================================================================================\e[0m\n"
