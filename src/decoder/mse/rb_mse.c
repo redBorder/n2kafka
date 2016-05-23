@@ -424,6 +424,8 @@ static const json_t *mse_database_entry(const char *subscriptionName,
 
 void free_valid_mse_database(struct mse_database *db) {
 	if (db) {
+		pthread_rwlock_destroy(&db->rwlock);
+
 		if (db->root) {
 			json_decref(db->root);
 		}
