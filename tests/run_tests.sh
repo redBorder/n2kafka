@@ -1,12 +1,12 @@
 #!/bin/bash
 
-COLUMNS=101                         # Used for center text
-FAILURES=0                          # Number of test failures
-SUCCESSES=0                         # Numer of test successes
-SUPRESSIONS="valgrind.supressions"  # File containing valgrind supressions
-TOTAL_MEM_ERRORS=0                  # Errors detected with memcheck
-TOTAL_HELGRIND_ERRORS=0             # Errors detected with helgrind tool
-TOTAL_DRD_ERRORS=0                  # Errors detected with drd
+COLUMNS=101                          # Used for center text
+FAILURES=0                           # Number of test failures
+SUCCESSES=0                          # Numer of test successes
+SUPPRESSIONS="valgrind.suppressions" # File containing valgrind suppressions
+TOTAL_MEM_ERRORS=0                   # Errors detected with memcheck
+TOTAL_HELGRIND_ERRORS=0              # Errors detected with helgrind tool
+TOTAL_DRD_ERRORS=0                   # Errors detected with drd
 
 TITLE="RUNNING TESTS"
 printf "\n\e[1m\e[34m%*s\e[0m\n" $(((${#TITLE}+$COLUMNS)/2)) "$TITLE"
@@ -33,8 +33,8 @@ for FILE in *.test; do
     CMOCKA_XML_FILE="$RESULT_XML" CMOCKA_MESSAGE_OUTPUT=XML ./"$FILE" &>/dev/null
 
     # If a valgrind supressions file is provided, use it
-    if [ -f "$SUPRESSIONS" ];then
-      SUPPRESSIONS_VALGRIND_ARG=--suppressions="$SUPRESSIONS"
+    if [ -f "$SUPPRESSIONS" ];then
+      SUPPRESSIONS_VALGRIND_ARG=--suppressions="$SUPPRESSIONS"
     fi
 
     /opt/rh/devtoolset-3/root/usr/bin/valgrind $SUPPRESSIONS_VALGRIND_ARG --xml=yes --xml-file="$MEM_XML" ./"$FILE" &>/dev/null
