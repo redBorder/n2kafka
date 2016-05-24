@@ -23,6 +23,7 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimizati
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
 
 mkl_toggle_option "Feature" WITH_HTTP "--enable-http" "HTTP support using libmicrohttpd" "y"
+mkl_toggle_option "Debug" WITH_COVERAGE "--enable-coverage" "Coverage build" "n"
 
 function checks_libmicrohttpd {
     # quick hack to avoid bad formatted libmicrohttpd header. With this macro
@@ -87,8 +88,12 @@ function checks {
         "#include <curl/curl.h>
         static int foo __attribute__((unused)) = CURLMOPT_MAX_TOTAL_CONNECTIONS;"
 
-    if [[ "x$WITHOUT_OPTIMIZATION" != "xy" ]]; then
+    if [[ "x$WITHOUT_OPTIMIZATION" != "xy" || "x$WITH_COVERAGE" != "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
     fi
 
+    if [[ "x$WITH_COVERAGE" != "xn" ]]; then
+      mkl_mkvar_append CPPFLAGS CPPFLAGS "--coverage"
+      mkl_mkvar_append LDFLAGS LDFLAGS "--coverage"
+    fi
 }
