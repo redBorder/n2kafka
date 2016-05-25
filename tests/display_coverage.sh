@@ -1,6 +1,6 @@
 #!/bin/bash
 
-COLUMNS=89
+COLUMNS=101
 INPUT="coverage.out"
 
 # echo "$INPUT"
