@@ -1,5 +1,6 @@
 #!/bin/bash
 
+VALGRIND=${VALGRIND:=0}              # Run valgrind on tests
 COLUMNS=101                          # Used for center text
 FAILURES=0                           # Number of test failures
 SUCCESSES=0                          # Numer of test successes
