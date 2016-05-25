@@ -22,7 +22,7 @@
 #define INVALID_UUID "/abcdefg"
 
 // It should returns 200 when UUID, TOPIC and MESSAGE are valids
-static void test_valid_POST() {
+static void Test_Valid_POST() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -52,7 +52,7 @@ static void test_valid_POST() {
 }
 
 // It should returns 401 when UUID is not valid
-static void test_invalid_UUID() {
+static void Test_Invalid_UUID() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -82,7 +82,7 @@ static void test_invalid_UUID() {
 }
 
 // It should returns 403 when Topic is not valid
-static void test_invalid_topic() {
+static void Test_Invalid_Topic() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -111,7 +111,7 @@ static void test_invalid_topic() {
   free(url);
 }
 
-static void test_no_topic() {
+static void Test_No_Topic() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -139,7 +139,7 @@ static void test_no_topic() {
   free(url);
 }
 
-static void test_empty_body() {
+static void Test_Empty_Body() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -169,7 +169,7 @@ static void test_empty_body() {
 }
 
 // It should returns 403 when Topic is not valid
-static void test_invalid_URL() {
+static void Test_Invalid_URL() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -199,7 +199,7 @@ static void test_invalid_URL() {
 }
 
 // It should returns 403 when Topic is not valid
-static void test_deflate() {
+static void Test_Deflate() {
   z_stream defstream;
   defstream.zalloc = Z_NULL;
   defstream.zfree = Z_NULL;
@@ -278,10 +278,10 @@ int main() {
   sleep(1);
 
   const struct CMUnitTest tests[] = {
-      cmocka_unit_test(test_valid_POST),    cmocka_unit_test(test_invalid_UUID),
-      cmocka_unit_test(test_invalid_topic), cmocka_unit_test(test_no_topic),
-      cmocka_unit_test(test_invalid_URL),   cmocka_unit_test(test_deflate),
-      cmocka_unit_test(test_empty_body)};
+      cmocka_unit_test(Test_Valid_POST),    cmocka_unit_test(Test_Invalid_UUID),
+      cmocka_unit_test(Test_Invalid_Topic), cmocka_unit_test(Test_No_Topic),
+      cmocka_unit_test(Test_Invalid_URL),   cmocka_unit_test(Test_Deflate),
+      cmocka_unit_test(Test_Empty_Body)};
   const int res = cmocka_run_group_tests(tests, NULL, NULL);
 
   curl_global_cleanup();
