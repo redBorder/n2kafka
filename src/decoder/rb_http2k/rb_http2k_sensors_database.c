@@ -124,7 +124,6 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 
 	entry->refcnt = 1;
 	entry->uuid_entry.data = entry;
-	entry->enrichment = json_object_get(sensor_config,"enrichment");
 	const int unpack_rc = json_unpack_ex(sensor_config, &jerr, JSON_STRICT,
 		"{s?O,s?s}",
 		"enrichment",&entry->enrichment,
