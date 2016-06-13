@@ -22,7 +22,7 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 	memset(&meraki_config, 0, sizeof(meraki_config));
 	init_meraki_database(&meraki_config.database);
 
-	memset(&decoder_info,0,sizeof(decoder_info));
+	meraki_decoder_info_create(&decoder_info);
 
 	if (config_str) {
 		config = json_loads(config_str, 0, NULL);

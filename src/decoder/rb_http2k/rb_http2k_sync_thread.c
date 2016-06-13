@@ -38,6 +38,8 @@ static const char RDKAFKA_CONF_GROUP_ID[] = "group.id";
 static void assert_sync_thread(const sync_thread_t *thread) {
 #ifdef SYNC_THREAD_MAGIC
 	assert(SYNC_THREAD_MAGIC == thread->magic);
+#else
+	(void)thread;
 #endif
 }
 
@@ -71,6 +73,8 @@ struct msg_consume_ctx {
 static void assert_msg_consume_ctx(const struct msg_consume_ctx *ctx) {
 #ifdef MSG_CONSUME_CTX_MAGIC
 	assert(MSG_CONSUME_CTX_MAGIC == ctx->magic);
+#else
+	(void)ctx;
 #endif
 }
 
@@ -103,7 +107,7 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 
 	const rd_kafka_conf_res_t get_group_id_rc = rd_kafka_conf_get (rk_conf,
 		RDKAFKA_CONF_GROUP_ID, NULL, &group_id_size);
-	if (RD_KAFKA_RESP_ERR_NO_ERROR != get_group_id_rc) {
+	if (RD_KAFKA_CONF_OK != get_group_id_rc) {
 		rdlog(LOG_ERR,
 			"Couldn't get a valid group_id from rk_conf: %s",
 			rd_kafka_err2str(get_group_id_rc));
@@ -133,7 +137,7 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 }
 
 void sync_thread_done(sync_thread_t *thread) {
-	thread->run = 0;
+	ATOMIC_OP(fetch,and,&thread->run,0);
 	pthread_join(thread->thread, NULL);
 	pthread_mutex_destroy(&thread->clean_interval.mutex);
 }
@@ -661,7 +665,7 @@ static void *sync_thread(void *vthread) {
 
 	rdlog(LOG_INFO, "Starting http2k organization bytes sync");
 
-	while(ctx.thread->run) {
+	while(ATOMIC_OP(fetch,add,&ctx.thread->run,0)) {
 		/// @TODO end of partition message is returned. Why I can't
 		/// handle it via consumer_cb?
 		rd_kafka_message_t *msg;

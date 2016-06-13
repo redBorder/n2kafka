@@ -829,7 +829,7 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 
 	const rd_kafka_conf_res_t set_group_id_rc = rd_kafka_conf_set(rk_conf,
 		"group.id", "global_config.n2kafka_id", err, sizeof(err));
-	if (set_group_id_rc != RD_KAFKA_RESP_ERR_NO_ERROR) {
+	if (set_group_id_rc != RD_KAFKA_CONF_OK) {
 		rdlog(LOG_ERR, "Couldn't set group.id: %s",
 			rd_kafka_err2str(set_group_id_rc));
 		goto rk_conf_err;
@@ -956,7 +956,7 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 		}
 	} else if (0 == bsize) {
 		/* Last call, need to free session */
-		free_rb_session(opaque->rb_config,*sessionp);
+		free_rb_session(*sessionp);
 		*sessionp = NULL;
 		return;
 	}

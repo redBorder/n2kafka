@@ -75,7 +75,7 @@ static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
 
 static const long LOCATION_WARNING_THRESHOLD_S = 600;
 
-/* 
+/*
     VALIDATING MERAKI SECRET
 */
 
@@ -117,7 +117,7 @@ void meraki_database_done(struct meraki_database *db) {
 	pthread_rwlock_destroy(&db->rwlock);
 }
 
-/* 
+/*
     ENRICHMENT
 */
 
@@ -145,11 +145,11 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 	return opaque;
 }
 
-static int parse_meraki_decoder_info(
-			struct meraki_decoder_info *decoder_info,
-			const char **topic_name, json_t *config) {
-	json_error_t jerr;
+static int meraki_decoder_info_create(
+				struct meraki_decoder_info *decoder_info) {
 	char errbuf[BUFSIZ];
+
+	memset(decoder_info, 0, sizeof(*decoder_info));
 
 	/// @TODO move global_config to static allocated buffer
 	decoder_info->meraki_config = &global_config.meraki;
@@ -159,8 +159,22 @@ static int parse_meraki_decoder_info(
 	if(rwlock_init_rc != 0) {
 		strerror_r(errno, errbuf, sizeof(errbuf));
 		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
-		return -1;
 	}
+
+	return rwlock_init_rc;
+}
+
+static void meraki_decoder_info_destructor(struct meraki_decoder_info *decoder_info) {
+	pthread_rwlock_destroy(&decoder_info->per_listener_enrichment_rwlock);
+	if(decoder_info->per_listener_enrichment) {
+		json_decref(decoder_info->per_listener_enrichment);
+	}
+}
+
+static int parse_meraki_decoder_info(
+			struct meraki_decoder_info *decoder_info,
+			const char **topic_name, json_t *config) {
+	json_error_t jerr;
 
 	const int json_unpack_rc = json_unpack_ex(config,&jerr,0,"{s?O,s?s}",
 		MERAKI_ENRICHMENT_KEY,&decoder_info->per_listener_enrichment,
@@ -217,14 +231,27 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	opaque->magic = MERAKI_OPAQUE_MAGIC;
 #endif
 
+	const int decoder_info_create_rc = meraki_decoder_info_create(
+							&opaque->decoder_info);
+	if (0!=decoder_info_create_rc) {
+		goto decoder_info_err;
+	}
+
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,config);
 	if(per_listener_enrichment_rc != 0){
-		free(opaque);
-		*_opaque = NULL;
-		return -1;
+		goto parse_err;
 	}
 
 	return 0;
+
+parse_err:
+	meraki_decoder_info_destructor(&opaque->decoder_info);
+
+decoder_info_err:
+	free(opaque);
+	*_opaque = NULL;
+
+	return -1;
 }
 
 /// @TODO Join with meraki_opaque_creator
@@ -280,12 +307,6 @@ enrichment_err:
 	return rc;
 }
 
-static void meraki_decoder_info_destructor(struct meraki_decoder_info *decoder_info) {
-	if(decoder_info->per_listener_enrichment) {
-		json_decref(decoder_info->per_listener_enrichment);
-	}
-}
-
 void meraki_opaque_destructor(void *_opaque) {
 	struct meraki_opaque *opaque = _opaque;
 
@@ -326,7 +347,7 @@ static void enrich_meraki_observation(json_t *observation,
 	if(!transversal_data->enrichment) {
 		rdlog(LOG_WARNING,"No enrichment, cannot add extra data like type");
 		return;
-	} 
+	}
 
 	const int update_rc = json_object_update_missing(observation,transversal_data->enrichment);
 	if(update_rc != 0) {

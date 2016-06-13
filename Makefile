@@ -17,14 +17,10 @@ version.c:
 	@echo "const char *n2kafka_revision=\"`git describe --abbrev=6 --dirty --tags --always`\";" >> $@
 	@echo 'const char *n2kafka_version="1.0.0";' >> $@
 
-coverage: Makefile_config_bak := $(shell mktemp)
-coverage: version.o
-	# Need to disable optimizations
-	@cp Makefile.config ${Makefile_config_bak}
-	@sed -i 's%\-O[1-9s]%\-O0%g' Makefile.config
-	(CPPFLAGS='--coverage' LDFLAGS='--coverage' make && cd tests && make coverage)
-	@cp ${Makefile_config_bak} Makefile.config
-	@-rm ${Makefile_config_bak}
+coverage: all
+	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; \
+	then echo "$(MKL_RED) You need to configure using --enable-coverage"; false; \
+	else (cd tests && make coverage); fi)
 
 install: bin-install
 

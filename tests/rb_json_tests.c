@@ -1,5 +1,4 @@
 // rb_json_tests.c
-#undef NDEBUG
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>

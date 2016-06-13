@@ -2,7 +2,8 @@ include ../mklove/Makefile.base
 
 CC ?= cc
 TEST_PROGS := ${TEST_SRCS:%.c=%.test}
-XML_FILES  := ${TEST_SRCS:%.c=%.test.xml}
+XML_FILES  := ${TEST_SRCS:%.c=%.test.xml} ${TEST_SRCS:%.c=%.test.mem.xml} \
+	${TEST_SRCS:%.c=%.drd.xml} ${TEST_SRCS:%.c=%.test.helgrind.xml}
 COV_FILES  := ${TEST_SRCS:%.c=%.gcda} ${TEST_SRCS:%.c=%.gcno}
 CFLAGS += -g
 CFLAGS += -fstack-protector -DFORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -Wformat
@@ -15,8 +16,6 @@ LIBS += -lcmocka
 
 VALGRIND_SUP = --suppressions=valgrind.suppressions
 
-COVERAGE_CPPFLAGS = --coverage
-COVERAGE_LDFLAGS = --coverage
 COVERAGE_INFO = coverage.info
 COVERAGE_OUTPUT_DIRECTORY = out
 
@@ -33,9 +32,10 @@ all: test
 	@printf "\033[1m\033[33mBuilding $@\033[1m\033[0m\n"
 	@$(CC) $(CFLAGS) $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 
-coverage:
-	@LDFLAGS="${LDFLAGS} ${COVERAGE_LDFLAGS}" CPPFLAGS="${CPPFLAGS} ${COVERAGE_CPPFLAGS}" make
-	@lcov -q --rc lcov_branch_coverage=1 --capture --directory ../ --output-file ${COVERAGE_INFO}
+coverage: test
+	@lcov --gcov-tool=/opt/rh/devtoolset-3/root/usr/bin/gcov -q \
+		--rc lcov_branch_coverage=1 --capture \
+		--directory ../ --output-file ${COVERAGE_INFO}
 	@genhtml --branch-coverage ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
 	@./display_coverage.sh
 

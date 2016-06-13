@@ -165,10 +165,14 @@ err:
 
 void rb_timer_sigaction(int signum, siginfo_t *siginfo, void *ucontext) {
 	(void)ucontext;
+	(void)signum;
 	struct rb_timer *timer = siginfo->si_value.sival_ptr;
 
-	assert(SIGALRM == signum);
-	if (timer) {
+	if(SIGALRM != signum){
+		rdlog(LOG_DEBUG, "Unknown signal received!");
+		return;
+	}
+	if(timer) {
 		timer->execute_cb = 1;
 	}
 }
