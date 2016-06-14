@@ -148,10 +148,6 @@ static sensor_db_entry_t *create_sensor_db_entry(const char *sensor_uuid,
 	return entry;
 
 err_organization_db:
-	if (entry->enrichment) {
-		json_decref(entry->enrichment);
-	}
-
 err_unpack:
 	sensor_db_entry_decref(entry);
 	entry = NULL;
@@ -179,11 +175,7 @@ sensors_db_t *sensors_db_new(json_t *sensors_config,
 			sensor_uuid, organizations_db, client_config);
 		if (NULL != entry) {
 			uuid_db_insert(&ret->uuid_db, &entry->uuid_entry);
-		} else {
-			/* create_sensor_db_entry() has already log */
-			goto err_entry;
 		}
-
 	}
 
 	return ret;
