@@ -458,6 +458,7 @@ struct rb_session *new_rb_session(struct rb_config *rb_config,
 	} else if (NULL == sensor) {
 		rdlog(LOG_ERR,"Invalid sensor UUID %s from client %s",
 			sensor_uuid,client_ip);
+		topic_decref(topic_handler);
 		return NULL;
 	}
 
