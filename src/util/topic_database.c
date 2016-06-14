@@ -121,7 +121,7 @@ int topics_db_topic_exists(struct topics_db *db, const char *topic) {
 
 int topics_db_add(struct topics_db *db,rd_kafka_topic_t *rkt,
         const char *partition_key, size_t partition_key_len) {
-	/* Quick hack */
+	/* Quick hack to finalize partition_key with '\0' */
 	char zero='\0',*aux_zero=NULL;
 
 	struct topic_s *topic_s = NULL;
