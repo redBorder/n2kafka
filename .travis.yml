@@ -1,0 +1,42 @@
+sudo: required
+
+language: c
+
+notifications:
+  email: false
+
+branches:
+  only:
+    - master
+    - develop
+    - /^[0-9]+\.[0-9]+\.[0-9]+/
+
+services:
+  - docker
+
+install:
+  - pip install --user cpp-coveralls
+
+script:
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka make
+  - docker run -v $(pwd):/app -e CFLAGS=-w redborder/build-dockerfiles:n2kafka make tests -j 4
+
+after_success:
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka make clean
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure --enable-coverage
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka make coverage
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka lcov --remove tests/coverage.info 'tests/*' '/usr/*' --output-file tests/coverage.info
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka lcov --list tests/coverage.info
+  - coveralls --exclude /usr/lib --exclude tests --gcov-options '\-lp'
+
+before_deploy:
+  - tar -cvzf n2kafka-${TRAVIS_TAG}.tar.gz n2kafka
+
+deploy:
+  provider: releases
+  api_key:
+    secure: dTyNSU5oSYX9mc5u25b3Hxzui0nNp88z1IVaxAK7A1qROld3S9GT4PbM5jzM/kYrHrpbzGeV7NUzh/WyAorgtYa2W5waJyTA1WhTx2Vn2NUOcm5TZ1KiOHxK05zeIsTMVjzEIRXGj1xsoQ1f9dwzlBh1cMx5jSDk4E3+B/YKFgQ=
+  file: n2kafka-${TRAVIS_TAG}.tar.gz
+  on:
+    tags: true
