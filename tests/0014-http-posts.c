@@ -22,7 +22,7 @@
 #define INVALID_UUID "/abcdefg"
 
 // It should returns 200 when UUID, TOPIC and MESSAGE are valids
-static void Test_Valid_POST() {
+static void test_valid_POST() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -52,7 +52,7 @@ static void Test_Valid_POST() {
 }
 
 // It should returns 401 when UUID is not valid
-static void Test_Invalid_UUID() {
+static void test_invalid_UUID() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -82,7 +82,7 @@ static void Test_Invalid_UUID() {
 }
 
 // It should returns 403 when Topic is not valid
-static void Test_Invalid_Topic() {
+static void test_invalid_topic() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -111,7 +111,7 @@ static void Test_Invalid_Topic() {
   free(url);
 }
 
-static void Test_No_Topic() {
+static void test_no_topic() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -139,7 +139,7 @@ static void Test_No_Topic() {
   free(url);
 }
 
-static void Test_Empty_Body() {
+static void test_empty_body() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -169,7 +169,7 @@ static void Test_Empty_Body() {
 }
 
 // It should returns 403 when Topic is not valid
-static void Test_Invalid_URL() {
+static void test_invalid_URL() {
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -199,7 +199,7 @@ static void Test_Invalid_URL() {
 }
 
 // It should returns 403 when Topic is not valid
-static void Test_Deflate() {
+static void test_deflate() {
   z_stream defstream;
   defstream.zalloc = Z_NULL;
   defstream.zfree = Z_NULL;
@@ -257,20 +257,19 @@ int main() {
   pid_t pID = fork();
 
   if (pID == 0) {
-
     // Close stdin, stdout, stderr
     close(0);
     close(1);
     close(2);
     open("/dev/null", O_RDWR);
-    dup(0);
-    dup(0);
+    (void)(dup(0)+1);
+    (void)(dup(0)+1);
 
-    if (!execlp("../n2kafka", "n2kafka",
-                "../configs_example/n2kafka_config_rbhttp.json", (char *)0)) {
-      printf("Error executing n2kafka\n");
-      exit(1);
-    }
+    execlp("../n2kafka", "n2kafka",
+           "../configs_example/n2kafka_config_rbhttp.json", (char *)0);
+    printf("Error executing n2kafka\n");
+    exit(1);
+
   } else if (pID < 0) {
     exit(1);
   }
@@ -279,10 +278,10 @@ int main() {
   sleep(1);
 
   const struct CMUnitTest tests[] = {
-      cmocka_unit_test(Test_Valid_POST),    cmocka_unit_test(Test_Invalid_UUID),
-      cmocka_unit_test(Test_Invalid_Topic), cmocka_unit_test(Test_No_Topic),
-      cmocka_unit_test(Test_Invalid_URL),   cmocka_unit_test(Test_Deflate),
-      cmocka_unit_test(Test_Empty_Body)};
+      cmocka_unit_test(test_valid_POST),    cmocka_unit_test(test_invalid_UUID),
+      cmocka_unit_test(test_invalid_topic), cmocka_unit_test(test_no_topic),
+      cmocka_unit_test(test_invalid_URL),   cmocka_unit_test(test_deflate),
+      cmocka_unit_test(test_empty_body)};
   const int res = cmocka_run_group_tests(tests, NULL, NULL);
 
   curl_global_cleanup();
