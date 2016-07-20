@@ -6,7 +6,7 @@
         "num_threads": 20,
         "redborder_uri": true
     }],
-    "brokers": "eugeniodev",
+    "brokers": "kafka",
     "topic": "rb_flow",
     "n2kafka_id": "n2kafka_test",
     "rdkafka.socket.max.fails": "3",

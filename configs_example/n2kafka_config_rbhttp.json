@@ -7,7 +7,7 @@
     "redborder_uri": true,
     "decode_as": "rb_http2k"
   }],
-  "brokers": "eugeniodev",
+  "brokers": "kafka",
   "n2kafka_id": "n2kafka_test",
   "rdkafka.socket.max.fails": "3",
   "rdkafka.socket.keepalive.enable": "true",

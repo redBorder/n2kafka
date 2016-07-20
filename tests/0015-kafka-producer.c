@@ -35,7 +35,7 @@ static rd_kafka_t *init_kafka() {
 
   // Kafka
   char errstr[512];
-  char *brokers = "eugeniodev:9092";
+  char *brokers = "kafka:9092";
   rd_kafka_topic_partition_list_t *topics;
   rd_kafka_resp_err_t err;
   rd_kafka_conf_t *conf = rd_kafka_conf_new();

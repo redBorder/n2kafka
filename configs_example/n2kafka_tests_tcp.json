@@ -6,7 +6,7 @@
         "num_threads": 40,
         "max_time_threshold": 3600
     }],
-    "brokers": "eugeniodev",
+    "brokers": "kafka",
     "topic": "rb_flow",
     "n2kafka_id": "n2kafka_test",
     "rdkafka.socket.max.fails": "3",
