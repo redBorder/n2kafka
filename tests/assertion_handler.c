@@ -68,58 +68,33 @@ int assertion_handler_assert(struct assertion_handler_s *assertion_handler) {
 
   struct assertion_e *assertion;
   TAILQ_FOREACH(assertion, &assertion_handler->assertion_q, tailq) {
-    json_error_t assertion_jerr;
-
-    char *assertion_message, *assertion_b = NULL;
-    json_int_t assertion_a, assertion_a_org;
-    int assertion_d;
-
     struct value_e *value;
 
+    json_error_t assertion_jerr;
+    char *assertion_message = NULL;
+
     json_t *assertion_json = json_loads(assertion->str, 0, &assertion_jerr);
-    json_unpack_ex(assertion_json, &assertion_jerr, JSON_STRICT,
-                   "{s:s,s:i,s:s,s:b,s:n,s:i}", "message", &assertion_message,
-                   "a", &assertion_a, "b", &assertion_b, "d", &assertion_d, "e",
-                   "a_org", &assertion_a_org);
+    json_unpack_ex(assertion_json, &assertion_jerr, JSON_STRICT, "{s:s}",
+                   "message", &assertion_message);
 
     found = 0;
 
     TAILQ_FOREACH(value, &assertion_handler->value_q, tailq) {
       json_error_t value_jerr;
-
-      char *value_message, *value_b = NULL;
-      json_int_t value_a, value_a_org;
-      int value_d;
+      char *value_message = NULL;
 
       json_t *value_json = json_loads(value->str, 0, &value_jerr);
-      json_unpack_ex(value_json, &value_jerr, JSON_STRICT,
-                     "{s:s,s:i,s:s,s:b,s:n,s:i}", "message", &value_message,
-                     "a", &value_a, "b", &value_b, "d", &value_d, "e", "a_org",
-                     &value_a_org);
+      json_unpack_ex(value_json, &value_jerr, JSON_STRICT, "{s:s}",
+                              "message", &value_message);
 
-      // // Message
+      if (assertion_message == NULL || value_message == NULL) {
+        return 1;
+      }
+
       // printf("%s:%s -> %d\n", assertion_message, value_message,
       //        strcmp(assertion_message, value_message) == 0);
-      //
-      // // a
-      // printf("%d:%d -> %d \n", (int)assertion_a, (int)value_a,
-      //        (int)assertion_a == (int)value_a);
-      // // b
-      // printf("%s:%s -> %d \n", assertion_b, value_b,
-      //        strcmp(assertion_b, value_b) == 0);
-      //
-      // // d
-      // printf("%d:%d -> %d\n", assertion_d, value_d, assertion_d == value_d);
-      //
-      // // a_org
-      // printf("%d:%d -> %d\n", (int)assertion_a_org, (int)value_a_org,
-      //        (int)assertion_a_org == (int)value_a_org);
 
-      if (strcmp(assertion_message, value_message) == 0 &&
-          (int)assertion_a == (int)value_a &&
-          strcmp(assertion_b, value_b) == 0 &&
-          (int)assertion_d == (int)value_d &&
-          (int)assertion_a_org == (int)value_a_org) {
+      if (strcmp(assertion_message, value_message) == 0) {
         found++;
         json_decref(value_json);
         break;
