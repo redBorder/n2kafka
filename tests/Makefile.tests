@@ -33,7 +33,7 @@ all: test
 	@$(CC) $(CFLAGS) $(CPPFLAGS) $< `cat $(subst .c,.objdeps,$<)` -o $@ $(LDFLAGS) $(LIBS)
 
 coverage: test
-	@lcov --gcov-tool=/opt/rh/devtoolset-3/root/usr/bin/gcov -q \
+	@lcov --gcov-tool=gcov -q \
 		--rc lcov_branch_coverage=1 --capture \
 		--directory ../ --output-file ${COVERAGE_INFO}
 	@genhtml --branch-coverage ${COVERAGE_INFO} --output-directory ${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
