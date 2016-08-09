@@ -178,12 +178,8 @@ sensors_db_t *sensors_db_new(json_t *sensors_config,
 		}
 	}
 
-	return ret;
-
-err_entry:
-	sensors_db_destroy(ret);
 err:
-	return NULL;
+	return ret;
 }
 
 /** Obtains an entry from database, but does not increments reference counting
