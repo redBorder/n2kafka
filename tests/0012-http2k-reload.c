@@ -180,15 +180,16 @@ static void validate_organization(struct rb_config *cfg,
 	organizations_db_t *organizations_db = &cfg->database.organizations_db;
 	organization_db_entry_t *org = organizations_db_get(
 				organizations_db,organization_uuid);
-	const uint64_t org_max_bytes = organization_get_max_bytes(org);
-	json_t *org_enrichment = organization_get_enrichment(org);
+	if (NULL != org) {
+		const uint64_t org_max_bytes = organization_get_max_bytes(org);
+		json_t *org_enrichment = organization_get_enrichment(org);
 
-	assert(expected_max_bytes == org_max_bytes);
-	if (check_enrichment) {
-		check_enrichment(org_enrichment,check_enrichment_opaque);
+		assert(expected_max_bytes == org_max_bytes);
+		if (check_enrichment) {
+			check_enrichment(org_enrichment,check_enrichment_opaque);
+		}
+		organizations_db_entry_decref(org);
 	}
-
-	organizations_db_entry_decref(org);
 }
 
 static void validation_reload_pre(struct rb_config *cfg, void *ctx) {
