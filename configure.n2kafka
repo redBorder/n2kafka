@@ -73,7 +73,7 @@ function checks {
     # TODO include some function that is only in v2, because CentOS bring us v1
     mkl_meta_set "yajl" "desc" "Small event-driven (SAX-style) JSON parser"
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
-       "#include <yajl.h>"
+       "#include <yajl/yajl_parse.h>"
 
     # Check that libcurl is available, and allow to link it statically.
     mkl_meta_set "lcurl" "desc" "Free and easy-to-use client-side URL transfer library"
