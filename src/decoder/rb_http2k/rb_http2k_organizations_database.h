@@ -26,6 +26,8 @@
 #include "uuid_database.h"
 #include "util/kafka.h"
 
+#include <pthread.h>
+#include <stdbool.h>
 #include <time.h>
 
 /* FW declaration */
@@ -35,9 +37,9 @@ typedef struct organizations_db_s organizations_db_t;
 /// organization resource limit
 struct organization_limit {
 	/// Max allowed
-	volatile uint64_t max;
+	uint64_t max;
 	/// Consumed at this point
-	volatile uint64_t consumed;
+	uint64_t consumed;
 	/// Last reported bytes
 	uint64_t reported;
         /// Boolean that say if we have sent the waning about limit reached
@@ -55,6 +57,8 @@ typedef struct organization_db_entry_s {
 	/// Magic to assert coherency.
 	uint64_t magic;
 #endif
+	/// Mutex to protect concurrent access
+	pthread_mutex_t mutex;
 
 	/// Organization enrichment
 	json_t *enrichment;
@@ -72,6 +76,11 @@ typedef struct organization_db_entry_s {
 	uint64_t refcnt;
 } organization_db_entry_t;
 
+#define ORGANIZATION_BYTES_LIMIT_ATTR(org, attr) ({ \
+	pthread_mutex_lock(&(org)->mutex); \
+	typeof((org)->bytes_limit.attr) ret = (org)->bytes_limit.attr; \
+	pthread_mutex_unlock(&(org)->mutex); ret; })
+
 /** Obtains organization uuid */
 #define organization_db_entry_get_uuid(e) ((e)->uuid_entry.uuid)
 
@@ -79,7 +88,19 @@ typedef struct organization_db_entry_s {
 #define organization_get_enrichment(e) ((e)->enrichment)
 
 /** Obtains organization max bytes */
-#define organization_get_max_bytes(org) ((org)->bytes_limit.max)
+#define organization_get_max_bytes(org) \
+			ORGANIZATION_BYTES_LIMIT_ATTR(org,max)
+
+/** Add consumed bytes to an organization with no lock
+  @param org Organization to add bytes
+  @param bytes Bytes to add
+  @param reported_bytes Add bytes to already reported bytes too, so we will not
+  report them again. This is useful in case of we hear another http2k has
+  consumed this bytes
+  @return Updated bytes
+  */
+uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
+					uint64_t bytes, bool reported_bytes);
 
 /** Add consumed bytes to an organization. If it reach the limit, it will queue
   a warning in organizations db warning queue.
@@ -87,40 +108,30 @@ typedef struct organization_db_entry_s {
   @param bytes Bytes to add
   @return updated consumed bytes
   */
-uint64_t organization_add_consumed_bytes(organization_db_entry_t *org,
-							uint64_t bytes);
+#define organization_add_consumed_bytes(org, bytes) \
+	organization_add_consumed_bytes0(org, bytes, false)
 
 /** Adds another n2kafka consumed bytes to this organization
   @param org Organization
   @param n2kafka_id n2kafka id that consumed this information
   @param bytes Bytes that n2kafka reports to consume
   */
-void organization_add_other_consumed_bytes(organization_db_entry_t *org,
-	const char *n2kafka_id, uint64_t bytes);
+#define organization_add_other_consumed_bytes(org, n2kafka_id, bytes) \
+	organization_add_consumed_bytes0(org, bytes, true)
 
 /** Get's organization's consumed bytes
   @param org Organization
   @return organization's consumed bytes
   */
-#define organization_consumed_bytes(org) ((org)->bytes_limit.consumed)
-
-/** Set organization's warning given, and return previous value of the
-  variable
-  @param org organization
-  @return previous value of the variable
-  */
-#define organization_fetch_set_warning_given(org) \
-	ATOMIC_OP(fetch, or, &(org)->bytes_limit.warning_given, 1)
+#define organization_consumed_bytes(org) \
+			ORGANIZATION_BYTES_LIMIT_ATTR(org,consumed)
 
 /** Checks if organization byte limit has been reached
   @param org Organization
   @param lock If you need to lock database
   @return 1 if limit has been recahed, 0 in other case
   */
-#define organization_limit_reached(org) ({ \
-	uint64_t _max = organization_get_max_bytes(org); \
-	uint64_t _consumed = organization_consumed_bytes(org); \
-	_max != 0 && _consumed > _max; })
+bool organization_limit_reached(organization_db_entry_t *org);
 
 /** Decrements uuid entry, signaling that we are not going to use it anymore */
 void organizations_db_entry_decref(organization_db_entry_t *entry);
@@ -128,10 +139,6 @@ void organizations_db_entry_decref(organization_db_entry_t *entry);
 /** Organization uuid database */
 struct organizations_db_s {
 	/* Private data - do not access directly */
-	/** Mutex that protects against concurrent modification of reported
-	limits */
-	pthread_mutex_t reports_mutex;
-
 	/// database to search for uuids
 	uuid_db_t uuid_db;
 
