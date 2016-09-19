@@ -5,10 +5,6 @@ language: c
 notifications:
   email: false
 
-env:
-  global:
-      - DOCKER_VERSION=1.10.1-0~trusty
-
 branches:
   only:
     - master
@@ -19,7 +15,7 @@ services:
   - docker
 
 install:
-  - sudo apt-get -o Dpkg::Options::="--force-confnew" install -y docker-engine=${DOCKER_VERSION}
+  - sudo apt-get install -y docker-engine
   - pip install --user cpp-coveralls
 
 script:
