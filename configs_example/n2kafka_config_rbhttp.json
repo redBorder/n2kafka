@@ -7,7 +7,7 @@
     "redborder_uri": true,
     "decode_as": "rb_http2k"
   }],
-  "brokers": "eugeniodev",
+  "brokers": "kafka",
   "n2kafka_id": "n2kafka_test",
   "rdkafka.socket.max.fails": "3",
   "rdkafka.socket.keepalive.enable": "true",
@@ -56,8 +56,8 @@
       "topics": ["rb_monitor","rb_event"],
       "interval_s": 5,
       "clean_on": {
-        "timestamp_s_mod":300,
-        "timestamp_s_offset":299
+        "timestamp_s_mod":5,
+        "timestamp_s_offset":4
       }
     },
     "topics": {

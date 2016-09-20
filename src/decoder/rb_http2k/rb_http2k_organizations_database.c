@@ -55,10 +55,30 @@ void organizations_db_entry_decref(organization_db_entry_t *entry) {
 		if (entry->enrichment) {
 			json_decref(entry->enrichment);
 		}
-
+		pthread_mutex_destroy(&entry->mutex);
 		free(entry);
 	}
 }
+
+static bool organization_limit_reached0(organization_db_entry_t *org,
+								bool lock) {
+	if (lock) {
+		pthread_mutex_lock(&org->mutex);
+	}
+	const uint64_t max = org->bytes_limit.max;
+	const uint64_t consumed = org->bytes_limit.consumed;
+
+	if (lock) {
+		pthread_mutex_unlock(&org->mutex);
+	}
+
+	return max != 0 && consumed > max;
+}
+
+bool organization_limit_reached(organization_db_entry_t *org) {
+	return organization_limit_reached0(org, true);
+}
+
 
 /** Update database entry with new information (if needed)
   @param entry Entry to be updated
@@ -87,8 +107,10 @@ static int update_organization(organization_db_entry_t *entry,
 		goto unpack_err;
 	}
 
+	pthread_mutex_lock(&entry->mutex);
 	swap_ptrs(entry->enrichment, aux_enrichment);
 	entry->bytes_limit.max = (uint64_t)bytes_limit;
+	pthread_mutex_unlock(&entry->mutex);
 
 unpack_err:
 	if (aux_enrichment) {
@@ -126,6 +148,7 @@ static organization_db_entry_t *create_organization_db_entry(
 #endif
 	uuid_entry_init(&entry->uuid_entry);
 
+	pthread_mutex_init(&entry->mutex, NULL);
 	entry->refcnt = 1;
 	entry->uuid_entry.data = entry;
 
@@ -144,13 +167,6 @@ err:
 	return entry;
 }
 
-/** Clean consumed bytes
-  @param org Organization
-  @return Consumed bytes previous to clean
-  */
-#define organization_clean_consumed_bytes(org) \
-	ATOMIC_OP(fetch,and,&(org)->bytes_limit.consumed,0)
-
 /** Try to send all configured warnings: log to console and send a PUT.
   @param org Organziation to warn about
   */
@@ -164,44 +180,30 @@ static void produce_organization_warning(const organization_db_entry_t *org) {
 	}
 }
 
-/** Add consumed bytes to an organization. If it reach the limit, it will queue
-  a warning in organizations db warning queue.
-  @param org Organization
-  @param bytes Bytes to add
-  @return updated consumed bytes
-  */
-#define organization_add_consumed_bytes0(org, bytes) \
-        ATOMIC_OP(add, fetch, &(org)->bytes_limit.consumed, bytes)
+uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
+					uint64_t bytes, bool reported_bytes) {
+	pthread_mutex_lock(&org->mutex);
 
-uint64_t organization_add_consumed_bytes(organization_db_entry_t *org,
-							uint64_t bytes) {
-	const uint64_t ret = organization_add_consumed_bytes0(org, bytes);
-	const int limit_reached = organization_limit_reached(org);
+	org->bytes_limit.consumed += bytes;
+	const uint64_t ret = org->bytes_limit.consumed;
+	const bool limit_reached = organization_limit_reached0(org, false);
+	if (reported_bytes) {
+		org->bytes_limit.reported += bytes;
+	}
 	if (limit_reached) {
-		const int warning_given = organization_fetch_set_warning_given(
-			org);
-		if (!warning_given) {
+		if (!org->bytes_limit.warning_given) {
+			(org)->bytes_limit.warning_given = true;
 			produce_organization_warning(org);
 		}
 	}
 
-	return ret;
-}
+	pthread_mutex_unlock(&org->mutex);
 
-void organization_add_other_consumed_bytes(organization_db_entry_t *org,
-				const char *n2kafka_id, uint64_t bytes) {
-	(void)n2kafka_id;
-	pthread_mutex_t *reports_mutex = &org->db->reports_mutex;
-	pthread_mutex_lock(reports_mutex);
-	// If we increase both, next report will only contain OURs seen bytes
-	organization_add_consumed_bytes(org, bytes);
-	org->bytes_limit.reported += bytes;
-	pthread_mutex_unlock(reports_mutex);
+	return ret;
 }
 
 int organizations_db_init(organizations_db_t *organizations_db) {
 	memset(organizations_db, 0, sizeof(*organizations_db));
-	pthread_mutex_init(&organizations_db->reports_mutex, NULL);
 	uuid_db_init(&organizations_db->uuid_db);
 	return 0;
 }
@@ -316,7 +318,6 @@ static void void_organizations_db_entry_decref(void *vuuid_entry) {
 void organizations_db_done(organizations_db_t *db) {
 	uuid_db_foreach(&db->uuid_db,void_organizations_db_entry_decref);
 	uuid_db_done(&db->uuid_db);
-	pthread_mutex_destroy(&db->reports_mutex);
 }
 
 /*
@@ -432,15 +433,26 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 	unsigned char value_buf[ULONG_MAX_STR_SIZE],
 		limit_buf[ULONG_MAX_STR_SIZE],total_buf[ULONG_MAX_STR_SIZE];
 	int value_buf_rc,limit_buf_rc,total_buf_rc;
-	json_t *enrichment = NULL;
 	const unsigned char *gen_payload = NULL;
 	char *payload = NULL;
-	const uint64_t bytes_consumed =
-				ctx->flags & REPORTS_CTX_F__CLEAN ?
-				organization_clean_consumed_bytes(org)
-				: organization_consumed_bytes(org);
+
+	pthread_mutex_lock(&org->mutex);
+	json_t *enrichment = organization_get_enrichment(org);
+	if (enrichment) {
+		json_incref(enrichment);
+	}
+	const uint64_t bytes_consumed = org->bytes_limit.consumed;
 	const uint64_t interval_bytes_consumed
 			= bytes_consumed - org->bytes_limit.reported;
+
+	/* Let's assume the report will reach the destination */
+	if (ctx->flags & REPORTS_CTX_F__CLEAN) {
+		org->bytes_limit.consumed = 0;
+	}
+	org->bytes_limit.reported =
+		(ctx->flags & REPORTS_CTX_F__CLEAN) ? 0 : bytes_consumed;
+	pthread_mutex_unlock(&org->mutex);
+
 	struct key_info key_info = {
 		.organization_uuid = organization_db_entry_get_uuid(org),
 		.n2kafka_id        = ctx->n2kafka_id,
@@ -457,6 +469,12 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 
 	if (0 == interval_bytes_consumed) {
 		/* It does not have sense to send this! */
+		if (enrichment) {
+			pthread_mutex_lock(&org->mutex);
+			json_decref(enrichment);
+			pthread_mutex_unlock(&org->mutex);
+		}
+
 		return 0;
 	}
 
@@ -522,9 +540,12 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 		}
 	}
 
-	enrichment = organization_get_enrichment(org);
 	if (enrichment) {
 		gen_jansson_object(ctx->gen, enrichment);
+		pthread_mutex_lock(&org->mutex);
+		json_decref(enrichment);
+		pthread_mutex_unlock(&org->mutex);
+		enrichment = NULL;
 	}
 
 	yajl_gen_map_close(ctx->gen);
@@ -542,10 +563,6 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 
 	save_kafka_msg_key_in_array(ctx->ret, &payload[len], (size_t)key_len,
 		payload, len, NULL);
-
-	/* Let's assume the report will reach the destination */
-	org->bytes_limit.reported =
-		(ctx->flags & REPORTS_CTX_F__CLEAN) ? 0 : bytes_consumed;
 
 	return 0;
 }
@@ -621,7 +638,6 @@ struct kafka_message_array *organization_db_interval_consumed0(
 		goto yajl_gen_err;
 	}
 
-	pthread_mutex_lock(&db->reports_mutex);
 	const size_t entries = uuid_db_count(&db->uuid_db);
 	ctx.ret = new_kafka_message_array(entries);
 
@@ -638,8 +654,6 @@ struct kafka_message_array *organization_db_interval_consumed0(
 									&ctx);
 
 ret_err:
-	pthread_mutex_unlock(&db->reports_mutex);
-
 	yajl_gen_free(ctx.gen);
 
 timestamp_err:
