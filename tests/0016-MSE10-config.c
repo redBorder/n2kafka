@@ -1,5 +1,6 @@
 #include "engine/global_config.h"
 #include "rb_mse_tests.h"
+#include "rb_mem_tests.h"
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -96,6 +97,16 @@ static const char MSE_ARRAY_IN[] = "[]";
 	// *INDENT-ON*
 
 static const char MSE_EMPTY[] = "";
+
+static void mem_test(void (*cb)(const char *_listener_config),
+	                 const char *_listener_config) {
+	size_t i = 1;
+	do {
+		mem_wrap_fail_in = i++;
+		cb(_listener_config);
+	} while (0 == mem_wrap_fail_in);
+	mem_wrap_fail_in = 0;
+}
 
 static void testMSE10Decoder14_null_mse(const char *mse_array_str,
                              const char *_listener_config) {
@@ -486,6 +497,39 @@ static void mytest8(const char *buffer) {
 	free(mse_ar);
 }
 
+static void testMSE10Decoder14_test_men(const char *mse_array_str,
+                             const char *_listener_config) {
+	json_error_t jerr;
+//	size_t i;
+	const char *topic_name;
+	struct mse_config mse_config;
+	struct mse_decoder_info decoder_info;
+
+	memset(&mse_config, 0, sizeof(mse_config));
+	mse_decoder_info_create(&decoder_info);
+
+	json_t *listener_config = json_loads(_listener_config, 0, &jerr);
+	const int opaque_creator_rc = parse_decoder_info(&decoder_info,
+				listener_config,&topic_name);
+
+	assert_true(0 == opaque_creator_rc);
+	json_decref(listener_config);
+
+	/* Currently, uses global_config */
+	decoder_info.mse_config = &mse_config;
+
+	// mse_array == NULL
+	json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
+	assert_true(mse_array);
+	const int parse_rc = parse_mse_array(&decoder_info.mse_config->database,
+										 mse_array);
+
+	mse_decoder_info_destroy(&decoder_info);
+	free_valid_mse_database(&mse_config.database);
+	json_decref(mse_array);
+}
+
+
 static void test_process_mse_buffer_mse_notification_empty() {
 	testMSE10Decoder14_process_mse_buffer_3(MSE10_2,
 	                NO_SUBSCRIPTION_NAME_MSE10_ASSOC, NOW);
@@ -549,6 +593,15 @@ static void test_null_mse() {
 	                MSE_NOT_ARRAY_IN);
 }
 
+static void check_test1() {
+	testMSE10Decoder14_test_men(MSE_ARRAY_IN,
+	                LISTENER_NULL_CONFIG);
+}
+
+static void test1_mem() {
+	mem_test(check_test1,LISTENER_NULL_CONFIG);
+}
+
 static void testMSE8ConfigInitGlobal() {
 	init_global_config();
 }
@@ -570,6 +623,7 @@ int main() {
 		cmocka_unit_test(test_empty_json),
 		cmocka_unit_test(test_process_mse_buffer_mse_empty),
 		cmocka_unit_test(test_process_mse_buffer_mse_notification_empty),
+		cmocka_unit_test(test1_mem),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

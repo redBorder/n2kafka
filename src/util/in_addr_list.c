@@ -79,6 +79,11 @@ int in_addr_list_contains(const in_addr_list_t *list,const struct in_addr *addr)
 
 /// Deallocate a list.
 void in_addr_list_done(in_addr_list_t *list){
+	if (NULL == list){
+		rdlog(LOG_ERR, "The list parameters is NULL");
+		return;
+	}
+
 	in_addr_list_node_t *n=NULL;
 	while((n = LIST_FIRST(syslist(list)))){
 		LIST_REMOVE(n,entry);

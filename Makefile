@@ -77,10 +77,14 @@ tests/%.xml: tests/%.test
 	@echo -e '\033[0;33m Testing:\033[0m $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
+MALLOC_FUNCTIONS := $(strip malloc calloc strdup realloc json_object)
+WRAP_ALLOC_FUNCTIONS := $(foreach fn, $(MALLOC_FUNCTIONS)\
+						 ,-Wl,-u,$(fn) -Wl,-wrap,$(fn))
+
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
-tests/%.test: tests/%.o $(filter-out src/engine/n2kafka.o,$(OBJS))
+tests/%.test: tests/%.o tests/rb_mem_tests.o $(filter-out src/engine/n2kafka.o,$(OBJS))
 	@echo -e '\033[0;33m Building: $@ \033[0m'
-	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka
+	@$(CC) $(WRAP_ALLOC_FUNCTIONS) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) tests/rb_mem_tests.o -lcmocka
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \

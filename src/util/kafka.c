@@ -51,6 +51,7 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 
 	if(NULL == my_rkt_conf) {
 		rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+		rd_kafka_topic_conf_destroy(template_config);
 		return NULL;
 	}
 

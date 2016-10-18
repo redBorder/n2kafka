@@ -565,6 +565,11 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 	                              struct mse_data);
 
 	struct mse_array *mse_array = calloc(1, alloc_size);
+	if (NULL == mse_array) {
+		rdlog(LOG_ERR, "Can not alloc the mse_array (out of memory?)");
+		return NULL;
+	}
+
 	mse_array->size = mse_array_size;
 	mse_array->data = (void *)&mse_array[1];
 
