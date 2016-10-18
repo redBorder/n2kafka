@@ -379,13 +379,17 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	                                     "{s:s,s?o}", "stream", &stream, MSE_ENRICHMENT_KEY, &enrichment);
 
 	if (unpack_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0), err.text);
+		char *sensor_json = json_dumps(sensor, 0);
+		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json, err.text);
+		free(sensor_json);
 		return -1;
 	}
 
 	if (stream == NULL) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0),
+		char *sensor_json = json_dumps(sensor, 0);
+		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json,
 		      "No \"stream\"");
+		free(sensor_json);
 		return -1;
 	}
 
