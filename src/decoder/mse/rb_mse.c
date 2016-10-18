@@ -545,6 +545,11 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 		return NULL;
 	}
 
+	if (0 == json_is_array(notifications_array)) {
+		rdlog(LOG_ERR, "The MSE10 JSON notifications array is not an array %s", err.text);
+		return NULL;
+	}
+
 	const size_t mse_array_size = json_array_size(notifications_array);
 	const size_t alloc_size = sizeof(struct mse_array) + mse_array_size * sizeof(
 	                              struct mse_data);
