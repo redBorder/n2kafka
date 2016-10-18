@@ -167,6 +167,11 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		topic_name = default_topic_name();
 	}
 
+	if (!topic_name) {
+		rdlog(LOG_ERR, "Can't create rkt with no topic");
+		return -1;
+	}
+
 	opaque->rkt = new_rkt_global_config(topic_name,
 		rb_client_mac_partitioner,err,sizeof(err));
 
@@ -308,7 +313,8 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
-		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		if (NULL == topic_name)
+			rblog(LOG_DEBUG,"Empty topic_name conf in new_rkt_global_config.");
 		goto rkt_err;
 	}
 
@@ -318,6 +324,10 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 	decoder_info->max_time_offset_warning_wait = max_time_offset_warning_wait;
 	decoder_info->max_time_offset = max_time_offset;
 	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
+
+	rd_kafka_topic_destroy(rkt_aux);
+	json_decref(enrichment_aux);
+	return 0;
 
 rkt_err:
 enrichment_err:
@@ -329,7 +339,7 @@ enrichment_err:
 		json_decref(enrichment_aux);
 	}
 
-	return 0;
+	return -1;
 }
 
 void mse_opaque_done(void *_opaque) {

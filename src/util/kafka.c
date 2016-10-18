@@ -40,6 +40,12 @@
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsize) {
 	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
+
+	if (NULL == topic_name) {
+		rblog(LOG_DEBUG,"Empty topic_name conf in new_rkt_global_config.");
+		return NULL;
+	}
+
 	rd_kafka_topic_conf_t *my_rkt_conf
 		= rd_kafka_topic_conf_dup(template_config);
 

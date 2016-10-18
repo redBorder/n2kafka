@@ -116,7 +116,7 @@ struct n2kafka_config{
 extern struct n2kafka_config global_config;
 
 static inline bool only_stdout_output(){
-	return global_config.debug && !global_config.brokers;
+	return !global_config.brokers && !global_config.debug;
 }
 
 void init_global_config();
