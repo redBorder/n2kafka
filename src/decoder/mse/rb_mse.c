@@ -176,7 +176,11 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
-		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		if (NULL == topic_name) {
+			rdlog(LOG_ERR, "Can't create MSE topic: %s", err);
+		} else {
+			rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		}
 		return -1;
 	}
 
