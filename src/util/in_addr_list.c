@@ -23,6 +23,8 @@
 #include <sys/socket.h>
 #include <stdlib.h>
 #include <string.h>
+#include <librd/rdlog.h>
+
 
 
 typedef struct in_addr_list_node_s{
@@ -42,6 +44,11 @@ struct in_addr_list_s{
 /// Init a sockaddr_in list.
 in_addr_list_t *in_addr_list_new(){
 	in_addr_list_t *list = calloc(1,sizeof(*list));
+	if (NULL == list) {
+		rdlog(LOG_ERR, "Can't alloc a sockaddr_in list (out of memory?)");
+		return NULL;
+	}
+
 	LIST_INIT(syslist(list));
 	return list;
 }
@@ -49,6 +56,11 @@ in_addr_list_t *in_addr_list_new(){
 /// Add an address to list.
 void in_addr_list_add(in_addr_list_t *list,const struct in_addr *addr){
 	in_addr_list_node_t *node = calloc(1,sizeof(*node));
+
+	if (NULL == node) {
+		rdlog(LOG_ERR, "Can't alloc the node (out of memory?)");
+		return;
+	}
 
 	memcpy(&node->addr,addr,sizeof(*addr));
 
