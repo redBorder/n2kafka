@@ -252,6 +252,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 	json_t *new_value = NULL;
 	json_int_t last_time_warned = 0;
 	struct mse_database *db = &decoder_info->mse_config->database;
+	int json_ret = 0;
 
 	pthread_mutex_lock(&db->warning_ht_lock);
 	if ((value = json_object_get(db->warning_ht, data->subscriptionName))
@@ -262,14 +263,19 @@ static void mse_warn_timestamp(struct mse_data *data,
 			rdlog(LOG_WARNING, "Timestamp out of date");
 			data->timestamp_warnings++;
 			new_value = json_integer(now);
-			json_object_set(db->warning_ht, data->subscriptionName, new_value);
+
+			json_ret = json_object_set(db->warning_ht, data->subscriptionName, new_value);
+			if (json_ret != 0)
+				rdlog(LOG_ERR, "Can't add new value in warning_ht");
 		}
 	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
 		data->timestamp_warnings++;
 		new_value = json_integer(now);
-		json_object_set_new(db->warning_ht, data->subscriptionName,
-		                    new_value);
+		json_ret = json_object_set_new(db->warning_ht, data->subscriptionName,
+		                               new_value);
+		if (json_ret != 0)
+			rdlog(LOG_ERR, "Can't add new value in warning_ht");
 	}
 	pthread_mutex_unlock(&db->warning_ht_lock);
 }
