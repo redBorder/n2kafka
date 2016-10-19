@@ -260,6 +260,7 @@ decoder_info_err:
 }
 
 /// @TODO Join with meraki_opaque_creator
+/// @TODO Test stalls in rd_kafka_topic_destroy
 int meraki_opaque_reload(json_t *config,void *vopaque) {
 	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);
