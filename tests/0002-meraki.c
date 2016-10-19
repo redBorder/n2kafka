@@ -1,4 +1,6 @@
 #include "rb_meraki_tests.h"
+#include "rb_mem_tests.h"
+
 
 static const char MERAKI_MSG[] =
   // *INDENT-OFF*
@@ -195,6 +197,15 @@ CHECKDATA(check3,
 	{.key = "wireless_id", .value = "Trinity"}
 );
 
+static void mem_test(void (*cb)()) {
+	size_t i = 1;
+	do {
+		mem_wrap_fail_in = i++;
+		cb();
+	} while (0 == mem_wrap_fail_in);
+	mem_wrap_fail_in = 0;
+}
+
 static void MerakiDecoder_valid_enrich() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
@@ -205,6 +216,10 @@ static void MerakiDecoder_novalid_enrich() {
 	struct checkdata_array *checkdata = NULL;
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_OUT, MERAKI_MSG,
 								checkdata);
+}
+
+static void MerakiDecoder_valid_enrich_mem(){
+	mem_test(MerakiDecoder_valid_enrich);
 }
 
 static void MerakiDecoder_empty_observations() {
@@ -331,7 +346,8 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_valid_enrich_per_listener),
 		cmocka_unit_test(MerakiDecoder_empty_observations),
 		cmocka_unit_test(MerakiDecoder_default_secret_hit),
-		cmocka_unit_test(MerakiDecoder_default_secret_miss)
+		cmocka_unit_test(MerakiDecoder_default_secret_miss),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_mem)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

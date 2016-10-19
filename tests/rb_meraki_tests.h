@@ -49,15 +49,16 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 		aux, strlen(msg), "127.0.0.1", &decoder_info);
 	free(aux);
 
-	if (checkdata) {
-		rb_assert_json_array(notifications_array->msgs,
-		                     notifications_array->count, checkdata);
-
-		for (i = 0; i < notifications_array->count; ++i)
-			free(notifications_array->msgs[i].payload);
-		free(notifications_array);
-	} else {
-		assert_true(0==notifications_array);
+	if (NULL != notifications_array) {
+		if (checkdata) {
+			rb_assert_json_array(notifications_array->msgs,
+			                     notifications_array->count, checkdata);
+				for (i = 0; i < notifications_array->count; ++i)
+					free(notifications_array->msgs[i].payload);
+				free(notifications_array);
+			} else {
+				assert_true(0==notifications_array);
+		}
 	}
 
 	meraki_decoder_info_destructor(&decoder_info);

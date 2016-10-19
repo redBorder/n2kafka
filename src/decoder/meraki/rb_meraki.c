@@ -591,6 +591,12 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 	const size_t msgs_size = json_array_size(observations);
 	struct kafka_message_array *msgs = new_kafka_message_array(msgs_size);
 
+	if (NULL == msgs) {
+		json_decref(meraki_transversal.enrichment);
+		rdlog(LOG_ERR,"Error allocating kafka message array (out of memory?");
+		return NULL;
+	}
+
 	for(i=0;i<msgs_size;++i)
 		extract_meraki_observation(msgs,i,observations,&meraki_transversal);
 
