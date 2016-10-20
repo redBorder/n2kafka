@@ -78,6 +78,9 @@ static const char MERAKI_MSG[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_EMPTY[] = "{}";
+static const char MERAKI_MSG_INVALID[] = "{";
+
 const char MERAKI_EMPTY_OBSERVATIONS_MSG[] =
   // *INDENT-OFF*
 	"{"
@@ -102,6 +105,32 @@ static const char MERAKI_SECRETS_IN[] = \
 	          "\"sensor_name\": \"meraki1\" "
 	          ", \"sensor_id\": 2"
 	        "},"
+	        "\"r3dB0rder2\": { "
+	          "\"sensor_name\": \"meraki2\" "
+	          ", \"sensor_id\": 3"
+	        "}"
+	    /* "}" */
+	"}";
+  // *INDENT-ON*
+
+static const char MERAKI_SECRETS_IN_INVALID_JSON[] = \
+	// *INDENT-OFF*
+	"{"
+		/* "\"meraki-secrets\": {" */
+	        "\"r3dB0rder\": "
+	    /* "}" */
+	"}";
+	// *INDENT-ON*
+
+static const char MERAKI_SECRETS_IN_INVALID[] = \
+  // *INDENT-OFF*
+	"{"
+		/* "\"meraki-secrets\": {" */
+	        "\"r3dB0rder\": { "
+	          "\"sensor_name\": \"meraki1\" "
+	          ", \"sensor_id\": 2"
+//	        "},"
+	        "}"
 	        "\"r3dB0rder2\": { "
 	          "\"sensor_name\": \"meraki2\" "
 	          ", \"sensor_id\": 3"
@@ -197,6 +226,98 @@ CHECKDATA(check3,
 	{.key = "wireless_id", .value = "Trinity"}
 );
 
+static void MerakiDecoder_test_meraki_null(const char *config_str, const char *secrets,
+		const char *msg, const struct checkdata_array *checkdata) {
+	size_t i;
+	const char *topic_name = NULL;
+	json_error_t jerr;
+	struct meraki_config meraki_config;
+	struct meraki_decoder_info decoder_info;
+	json_t *config = NULL;
+
+	memset(&meraki_config, 0, sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
+
+	meraki_decoder_info_create(&decoder_info);
+
+	if (config_str) {
+		config = json_loads(config_str, 0, NULL);
+		assert_true(config);
+		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
+		assert_true(decoder_info.per_listener_enrichment);
+	}
+
+	// Workaround
+	decoder_info.meraki_config = &meraki_config;
+
+	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
+									&jerr);
+	assert_false(meraki_secrets_array);
+
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
+	                     meraki_secrets_array);
+
+	assert_true(parse_rc != 0);
+	//json_decref(meraki_secrets_array);
+
+	struct kafka_message_array *notifications_array = process_meraki_buffer(
+		msg, strlen(msg), "127.0.0.1", &decoder_info);
+
+	assert_null(notifications_array);
+
+	meraki_decoder_info_destructor(&decoder_info);
+	if (config) {
+		json_decref(config);
+	}
+	meraki_database_done(&meraki_config.database);
+}
+
+static void MerakiDecoder_test_meraki_msj_null(const char *config_str, const char *secrets,
+		const char *msg, const struct checkdata_array *checkdata) {
+	size_t i;
+	const char *topic_name = NULL;
+	json_error_t jerr;
+	struct meraki_config meraki_config;
+	struct meraki_decoder_info decoder_info;
+	json_t *config = NULL;
+
+	memset(&meraki_config, 0, sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
+
+	meraki_decoder_info_create(&decoder_info);
+
+	if (config_str) {
+		config = json_loads(config_str, 0, NULL);
+		assert_true(config);
+		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
+		assert_true(decoder_info.per_listener_enrichment);
+	}
+
+	// Workaround
+	decoder_info.meraki_config = &meraki_config;
+
+	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
+									&jerr);
+	assert_true(meraki_secrets_array);
+
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
+	                     meraki_secrets_array);
+
+	assert_true(parse_rc == 0);
+	json_decref(meraki_secrets_array);
+
+	struct kafka_message_array *notifications_array = process_meraki_buffer(
+		msg, strlen(msg), "127.0.0.1", &decoder_info);
+
+	assert_null(notifications_array);
+
+	meraki_decoder_info_destructor(&decoder_info);
+	if (config) {
+		json_decref(config);
+	}
+	meraki_database_done(&meraki_config.database);
+}
+
 static void mem_test(void (*cb)()) {
 	size_t i = 1;
 	do {
@@ -206,9 +327,33 @@ static void mem_test(void (*cb)()) {
 	mem_wrap_fail_in = 0;
 }
 
+static void MerakiDecoder_valid_enrich_meraki_msg_empty() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_meraki_msj_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_EMPTY, &checkdata);
+}
+
+static void MerakiDecoder_valid_enrich_meraki_msg_invalid() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_meraki_msj_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_INVALID, &checkdata);
+}
+
 static void MerakiDecoder_valid_enrich() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG, &checkdata);
+}
+
+static void MerakiDecoder_valid_enrich_invalid_secret() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG, &checkdata);
+}
+
+static void MerakiDecoder_valid_enrich_invalid_secret_json() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_meraki_null(NULL, MERAKI_SECRETS_IN_INVALID_JSON,
 		MERAKI_MSG, &checkdata);
 }
 
@@ -342,12 +487,16 @@ static void MerakiDecoder_default_secret_miss() {
 int main() {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(MerakiDecoder_valid_enrich),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_secret),
 		cmocka_unit_test(MerakiDecoder_novalid_enrich),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_per_listener),
 		cmocka_unit_test(MerakiDecoder_empty_observations),
 		cmocka_unit_test(MerakiDecoder_default_secret_hit),
 		cmocka_unit_test(MerakiDecoder_default_secret_miss),
-		cmocka_unit_test(MerakiDecoder_valid_enrich_mem)
+		cmocka_unit_test(MerakiDecoder_valid_enrich_mem),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_secret_json),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_empty),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_invalid)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

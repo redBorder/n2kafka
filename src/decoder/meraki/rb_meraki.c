@@ -229,6 +229,7 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	struct meraki_opaque *opaque = (*_opaque) = calloc(1,sizeof(*opaque));
 	if(NULL == opaque) {
 		rdlog(LOG_ERR,"%s","Can't allocate meraki opaque (out of memory?)");
+	//	*_opaque = NULL;
 		return -1;
 	}
 
