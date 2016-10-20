@@ -112,15 +112,15 @@ static void test_send_message_http() {
 
   if (pID == 0) {
     // Close stdin, stdout, stderr
-    close(0);
-    close(1);
-    close(2);
-    open("/dev/null", O_RDWR);
-    (void)(dup(0) + 1);
-    (void)(dup(0) + 1);
+    // close(0);
+    // close(1);
+    // close(2);
+    // open("/dev/null", O_RDWR);
+    // (void)(dup(0) + 1);
+    // (void)(dup(0) + 1);
 
-    execlp("../n2kafka", "n2kafka",
-           "../configs_example/n2kafka_tests_http.json", (char *)0);
+    execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_tests_http.json",
+           (char *)0);
     printf("Error executing n2kafka\n");
     exit(1);
 
@@ -240,7 +240,7 @@ static void test_send_message_tcp() {
     (void)(dup(0) + 1);
     (void)(dup(0) + 1);
 
-    execlp("../n2kafka", "n2kafka", "../configs_example/n2kafka_tests_tcp.json",
+    execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_tests_tcp.json",
            (char *)0);
     printf("Error executing n2kafka\n");
     exit(1);
