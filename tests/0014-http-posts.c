@@ -262,11 +262,11 @@ int main() {
     close(1);
     close(2);
     open("/dev/null", O_RDWR);
-    (void)(dup(0)+1);
-    (void)(dup(0)+1);
+    (void)(dup(0) + 1);
+    (void)(dup(0) + 1);
 
-    execlp("../n2kafka", "n2kafka",
-           "../configs_example/n2kafka_config_rbhttp.json", (char *)0);
+    execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_config_rbhttp.json",
+           (char *)0);
     printf("Error executing n2kafka\n");
     exit(1);
 
