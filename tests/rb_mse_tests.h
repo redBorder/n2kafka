@@ -45,9 +45,8 @@ static void testMSE10Decoder(const char *mse_array_str,
 		mse_array);
 	assert_true(parse_rc == 0);
 
-	char *aux = strdup(mse_input);
 	struct mse_array *notifications_array = process_mse_buffer(
-	        aux,
+	        mse_input,
 	        strlen(mse_input),
 	        "127.0.0.1",
 	        &decoder_info,
@@ -55,7 +54,6 @@ static void testMSE10Decoder(const char *mse_array_str,
 
 	check_result(notifications_array);
 
-	free(aux);
 	for (i = 0; notifications_array && i < notifications_array->size; ++i)
 		free(notifications_array->data[i].string);
 
