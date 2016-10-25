@@ -212,13 +212,13 @@ static void validate_msgs(struct kafka_message_array *ma,
 			rdlog(LOG_ERR, "Couldn't load msg %zu: %s", i,
 								jerr.text);
 			assert(0);
+		} else {
+			validate_msg(msg);
+			key_cb(ma->msgs[i].key,ma->msgs[i].key_len,cb_ctx);
+			cb(msg,cb_ctx);
+			json_decref(msg);
+			free(ma->msgs[i].payload);
 		}
-
-		validate_msg(msg);
-		key_cb(ma->msgs[i].key,ma->msgs[i].key_len,cb_ctx);
-		cb(msg,cb_ctx);
-		json_decref(msg);
-		free(ma->msgs[i].payload);
 	}
 }
 
