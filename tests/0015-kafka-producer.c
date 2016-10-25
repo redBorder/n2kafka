@@ -1,21 +1,8 @@
+#include "integration_tests.h"
+
 #include "assertion_handler.c"
 
-#include <curl/curl.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-
 #include <arpa/inet.h>
-
-#include <setjmp.h>
-#include <stdarg.h>
-#include <stddef.h>
-
-#include <cmocka.h>
-
 #include <librdkafka/rdkafka.h>
 
 #define SENT_MESSAGE_HTTP_1 "{\"message\": \"Hello world HTTP\"}"
@@ -30,12 +17,13 @@
 #define TCP_PORT 2056
 #define TCP_MESSAGES_DELAY 5
 
+#ifdef TESTS_KAFKA_HOST
 static rd_kafka_t *init_kafka() {
   rd_kafka_t *rk;
 
   // Kafka
   char errstr[512];
-  char *brokers = "kafka:9092";
+  char *brokers = TESTS_KAFKA_HOST;
   rd_kafka_topic_partition_list_t *topics;
   rd_kafka_resp_err_t err;
   rd_kafka_conf_t *conf = rd_kafka_conf_new();
@@ -93,12 +81,15 @@ static rd_kafka_t *init_kafka() {
 
   return rk;
 }
+#endif
 
 /**
  * Send a message using curl and expect to receive the enriched message via
  * kafka
  */
 static void test_send_message_http() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -112,12 +103,12 @@ static void test_send_message_http() {
 
   if (pID == 0) {
     // Close stdin, stdout, stderr
-    // close(0);
-    // close(1);
-    // close(2);
-    // open("/dev/null", O_RDWR);
-    // (void)(dup(0) + 1);
-    // (void)(dup(0) + 1);
+    close(0);
+    close(1);
+    close(2);
+    open("/dev/null", O_RDWR);
+    (void)(dup(0) + 1);
+    (void)(dup(0) + 1);
 
     execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_tests_http.json",
            (char *)0);
@@ -219,6 +210,8 @@ static void test_send_message_http() {
  * via kafka
  */
 static void test_send_message_tcp() {
+  SKIP_IF_NOT_INTEGRATION;
+
   int sock;
   struct sockaddr_in server;
   struct assertion_handler_s *assertion_handler = NULL;

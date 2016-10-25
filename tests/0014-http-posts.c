@@ -1,17 +1,4 @@
-#include <curl/curl.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <zlib.h>
-
-#include <setjmp.h>
-#include <stdarg.h>
-#include <stddef.h>
-
-#include <cmocka.h>
+#include "integration_tests.h"
 
 #define VALID_MESSAGE "{\"message\": \"Hello world\"}"
 #define VALID_TOPIC "/rb_flow"
@@ -23,6 +10,8 @@
 
 // It should returns 200 when UUID, TOPIC and MESSAGE are valids
 static void Test_Valid_POST() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -53,6 +42,8 @@ static void Test_Valid_POST() {
 
 // It should returns 401 when UUID is not valid
 static void Test_Invalid_UUID() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -83,6 +74,8 @@ static void Test_Invalid_UUID() {
 
 // It should returns 403 when Topic is not valid
 static void Test_Invalid_Topic() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -112,6 +105,8 @@ static void Test_Invalid_Topic() {
 }
 
 static void Test_No_Topic() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -140,6 +135,8 @@ static void Test_No_Topic() {
 }
 
 static void Test_Empty_Body() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -170,6 +167,8 @@ static void Test_Empty_Body() {
 
 // It should returns 403 when Topic is not valid
 static void Test_Invalid_URL() {
+  SKIP_IF_NOT_INTEGRATION;
+
   CURL *curl;
   CURLcode res;
   long http_code = 0;
@@ -200,6 +199,8 @@ static void Test_Invalid_URL() {
 
 // It should returns 403 when Topic is not valid
 static void Test_Deflate() {
+  SKIP_IF_NOT_INTEGRATION;
+
   z_stream defstream;
   defstream.zalloc = Z_NULL;
   defstream.zfree = Z_NULL;
@@ -251,6 +252,7 @@ static void Test_Deflate() {
 }
 
 int main() {
+#ifdef TESTS_KAFKA_HOST
   curl_global_init(CURL_GLOBAL_ALL);
 
   printf("Initializing n2kafka\n");
@@ -265,18 +267,17 @@ int main() {
     (void)(dup(0) + 1);
     (void)(dup(0) + 1);
 
-    execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_config_rbhttp.json",
+    execlp("./n2kafka", "n2kafka", "configs_example/n2kafka_tests_http.json",
            (char *)0);
     printf("Error executing n2kafka\n");
     exit(1);
-
   } else if (pID < 0) {
     exit(1);
   }
+#endif
 
   // Wait for n2kafka to initialize
   sleep(1);
-
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(Test_Valid_POST),    cmocka_unit_test(Test_Invalid_UUID),
       cmocka_unit_test(Test_Invalid_Topic), cmocka_unit_test(Test_No_Topic),
@@ -284,9 +285,11 @@ int main() {
       cmocka_unit_test(Test_Empty_Body)};
   const int res = cmocka_run_group_tests(tests, NULL, NULL);
 
+#ifdef TESTS_KAFKA_HOST
   curl_global_cleanup();
   kill(pID, SIGINT);
   sleep(1);
+#endif
 
   return res;
 }
