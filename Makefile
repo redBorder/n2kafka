@@ -46,6 +46,15 @@ run_tests = tests/run_tests.sh $(1) $(TESTS_C:.c=)
 run_valgrind = $(VALGRIND) --tool=$(1) $(SUPPRESSIONS_VALGRIND_ARG) --xml=yes \
 					--xml-file=$(2) $(3) >/dev/null 2>&1
 
+setup-tests:
+	docker network create --subnet=172.26.0.0/24 test
+	docker run -d --net test --ip 172.26.0.2 --name zookeeper wurstmeister/zookeeper
+	docker run -d --net test --ip 172.26.0.3 --name kafka -e KAFKA_ADVERTISED_HOST_NAME="172.26.0.3" -e KAFKA_ADVERTISED_PORT="9092" -e KAFKA_ZOOKEEPER_CONNECT="172.26.0.2:2181" -v /var/run/docker.sock:/var/run/docker.sock wurstmeister/kafka
+
+teardown-tests:
+	docker rm -f zookeeper kafka
+	docker network rm test
+
 tests: $(TESTS_XML)
 	@$(call run_tests, -cvdh)
 
@@ -62,25 +71,25 @@ helchecks: $(TESTS_HELGRIND_XML)
 	@$(call run_tests,-h)
 
 tests/%.mem.xml: tests/%.test
-	@echo -e '\033[0;33m Checking memory:\033[0m $<'
+	@echo -e '\033[1;34m[Checking memory ]\033[0m\t $<'
 	-@$(call run_valgrind,memcheck,"$@","./$<")
 
 tests/%.helgrind.xml: tests/%.test
-	@echo -e '\033[0;33m Testing concurrency [HELGRIND]:\033[0m $<'
+	@echo -e '\033[1;34m[Checking concurrency with HELGRIND]\033[0m\t $<'
 	-@$(call run_valgrind,helgrind,"$@","./$<")
 
 tests/%.drd.xml: tests/%.test
-	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
+	@echo -e '\033[1;34m[Checking concurrency with DRD]\033[0m\t $<'
 	-@$(call run_valgrind,drd,"$@","./$<")
 
 tests/%.xml: tests/%.test
-	@echo -e '\033[0;33m Testing:\033[0m $<'
+	@echo -e '\033[1;34m[Testing ]\033[0m\t $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
 tests/%.test: tests/%.o $(filter-out src/engine/n2kafka.o,$(OBJS))
-	@echo -e '\033[0;33m Building: $@ \033[0m'
-	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka
+	@echo -e '\033[1;32m[Building]\033[0m\t $@'
+	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka >/dev/null 2>&1
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \
