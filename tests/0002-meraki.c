@@ -78,6 +78,65 @@ static const char MERAKI_MSG[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_NULL[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":2,"
+	    "\"secret\": 2,"
+	    "\"type\":2,"
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	            "},"
+	            "{"
+	                "\"ipv4\":null,"
+	                "\"location\":{"
+	                    "\"lat\":37.42200897584358,"
+	                    "\"lng\":-122.20751219778322,"
+	                    "\"unc\":23.641346501668412,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:30Z\","
+	                "\"ssid\":null,"
+	                "\"os\":null,"
+	                "\"clientMac\":\"80:56:f2:44:55:66\","
+	                "\"seenEpoch\":1432020630,"
+	                "\"rssi\":13,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Hon Hai/Foxconn\""
+	            "},"
+	            "{"
+	                "\"ipv4\":\"/10.1.3.41\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205737322192,"
+	                    "\"lng\":-122.20762896118686,"
+	                    "\"unc\":37.49420236988837,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"3c:ab:8e:77:88:99\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
+
 static const char MERAKI_MSG_EMPTY[] = "{}";
 static const char MERAKI_MSG_INVALID[] = "{";
 
@@ -339,6 +398,12 @@ static void MerakiDecoder_valid_enrich_meraki_msg_invalid() {
 		MERAKI_MSG_INVALID, &checkdata);
 }
 
+static void MerakiDecoder_msg_observation_empty() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NULL, &checkdata);
+}
+
 static void MerakiDecoder_valid_enrich() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
@@ -496,7 +561,8 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_valid_enrich_mem),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_secret_json),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_empty),
-		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_invalid)
+		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_invalid),
+		cmocka_unit_test(MerakiDecoder_msg_observation_empty)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
