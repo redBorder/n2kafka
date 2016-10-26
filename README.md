@@ -43,3 +43,36 @@ behavior:
   * `"rdkafka.socket.keepalive.enable":"true"`
   * `"delivery.report.only.error":"true"`
 
+## Testing
+
+### Unit tests
+
+Run full unit tests suite:
+
+```bash
+make tests
+```
+
+This will run the full test suite, including Valgrind memory and threads
+checking. If no memory and threads checking is required, just run:
+
+```bash
+make checks
+```
+
+### Integration tests
+
+Integration tests involves some external services that should be running during
+testing: Kafka and Zookeeper. By default, integration tests
+are disabled due to this requirements and can be enabled through `configure`:
+
+```bash
+./configure --enable-integration-tests
+```
+
+Docker can be used to easily setup a basic testing environment:
+
+```bash
+make setup-tests # Set up a Kafka and Zookeeper in Docker
+make teardown-tests # Clean test environment
+```
