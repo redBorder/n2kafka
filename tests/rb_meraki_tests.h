@@ -44,10 +44,8 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 	assert_true(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
-	char *aux = strdup(msg);
 	struct kafka_message_array *notifications_array = process_meraki_buffer(
-		aux, strlen(msg), "127.0.0.1", &decoder_info);
-	free(aux);
+		msg, strlen(msg), "127.0.0.1", &decoder_info);
 
 	if (NULL != notifications_array) {
 		if (notifications_array->count > 0) {
