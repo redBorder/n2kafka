@@ -77,8 +77,18 @@ static const char MERAKI_MSG[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_NO_OBSERVATION[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	"}";
+	// *INDENT-ON*
+
+
 static const char MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC[] =
-  // *INDENT-OFF*
+	// *INDENT-OFF*
 	"{"
 	    "\"version\":\"2.0\","
 	    "\"secret\":\"r3dB0rder\","
@@ -112,6 +122,79 @@ static const char MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC[] =
 	    "}"
 	"}";
   // *INDENT-ON*
+
+static const char MERAKI_MSG_OBSERVATION_NO_TIMESTAMP[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":-122.20766382990405,"
+	                    "\"unc\":49.0,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                //"\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
+static const char MERAKI_MSG_OBSERVATION_NO_SRC_IPV4[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                //"\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":-122.20766382990405,"
+	                    "\"unc\":49.0,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
 
 
 static const char MERAKI_MSG_NO_APMAC[] =
@@ -191,8 +274,9 @@ static const char MERAKI_MSG_NO_APMAC[] =
   // *INDENT-ON*
 
 
-static const char MERAKI_MSG_NO_OBSERVATION[] =
-  // *INDENT-OFF*
+
+static const char MERAKI_MSG_OBSERVATION_NO_RSSI[] =
+	// *INDENT-OFF*
 	"{"
 	    "\"version\":\"2.0\","
 	    "\"secret\":\"r3dB0rder\","
@@ -201,10 +285,32 @@ static const char MERAKI_MSG_NO_OBSERVATION[] =
 	        "\"apMac\":\"55:55:55:55:55:55\","
 	        "\"apFloors\":[],"
 	        "\"apTags\":[],"
-	        "\"observations\":\"AAAAAA_TEST\""
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":-122.20766382990405,"
+	                    "\"unc\":49.0,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                //"\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
 	    "}"
 	"}";
-  // *INDENT-ON*
+	// *INDENT-ON*
+
 
 static const char MERAKI_MSG_OBSERVATION_NULL[] =
   // *INDENT-OFF*
@@ -218,46 +324,6 @@ static const char MERAKI_MSG_OBSERVATION_NULL[] =
 	        "\"apTags\":[],"
 	        "\"observations\":["
 	            "{"
-	            "},"
-	            "{"
-	                "\"ipv4\":null,"
-	                "\"location\":{"
-	                    "\"lat\":37.42200897584358,"
-	                    "\"lng\":-122.20751219778322,"
-	                    "\"unc\":23.641346501668412,"
-	                    "\"x\":["
-	                    "],"
-	                    "\"y\":["
-	                    "]"
-	                "},"
-	                "\"seenTime\":\"2015-05-19T07:30:30Z\","
-	                "\"ssid\":null,"
-	                "\"os\":null,"
-	                "\"clientMac\":\"80:56:f2:44:55:66\","
-	                "\"seenEpoch\":1432020630,"
-	                "\"rssi\":13,"
-	                "\"ipv6\":null,"
-	                "\"manufacturer\":\"Hon Hai/Foxconn\""
-	            "},"
-	            "{"
-	                "\"ipv4\":\"/10.1.3.41\","
-	                "\"location\":{"
-	                    "\"lat\":37.42205737322192,"
-	                    "\"lng\":-122.20762896118686,"
-	                    "\"unc\":37.49420236988837,"
-	                    "\"x\":["
-	                    "],"
-	                    "\"y\":["
-	                    "]"
-	                "},"
-	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
-	                "\"ssid\":\"Trinity\","
-	                "\"os\":\"Apple iOS\","
-	                "\"clientMac\":\"3c:ab:8e:77:88:99\","
-	                "\"seenEpoch\":1432020634,"
-	                "\"rssi\":0,"
-	                "\"ipv6\":null,"
-	                "\"manufacturer\":\"Apple\""
 	            "}"
 	        "]"
 	    "}"
@@ -297,6 +363,21 @@ const char MERAKI_EMPTY_OBSERVATIONS_MSG[] =
 	"}";
   // *INDENT-ON*
 
+
+static const char MERAKI_MSG_INVALID_OBSERVATION[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":\"AAAAAA_TEST\""
+	    "}"
+	"}";
+	// *INDENT-ON*
 
 static const char MERAKI_SECRETS_IN[] = \
   // *INDENT-OFF*
@@ -519,6 +600,64 @@ static void MerakiDecoder_test_notificacion_array_null(const char *config_str, c
 	meraki_database_done(&meraki_config.database);
 }
 
+static void MerakiDecoder_test_notificacion_array_not_null(const char *config_str, const char *secrets,
+		const char *msg, const struct checkdata_array *checkdata) {
+	size_t i;
+	const char *topic_name = NULL;
+	json_error_t jerr;
+	struct meraki_config meraki_config;
+	struct meraki_decoder_info decoder_info;
+	json_t *config = NULL;
+
+	memset(&meraki_config, 0, sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
+
+	meraki_decoder_info_create(&decoder_info);
+
+	if (config_str) {
+		config = json_loads(config_str, 0, NULL);
+		assert_true(config);
+		parse_meraki_decoder_info(&decoder_info, &topic_name, config);
+		assert_true(decoder_info.per_listener_enrichment);
+	}
+
+	// Workaround
+	decoder_info.meraki_config = &meraki_config;
+
+	json_t *meraki_secrets_array = json_loadb(secrets, strlen(secrets), 0,
+									&jerr);
+	assert_true(meraki_secrets_array);
+
+	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
+	                     meraki_secrets_array);
+
+	assert_true(parse_rc == 0);
+	json_decref(meraki_secrets_array);
+
+	struct kafka_message_array *notifications_array = process_meraki_buffer(
+		msg, strlen(msg), "127.0.0.1", &decoder_info);
+
+	assert_non_null(notifications_array);
+
+	if (notifications_array->count > 0) {
+		if (checkdata) {
+			for (i = 0; i < notifications_array->count; ++i)
+				free(notifications_array->msgs[i].payload);
+			free(notifications_array);
+		} else {
+			assert_true(0==notifications_array);
+		}
+	} else {
+		free(notifications_array);
+	}
+
+	meraki_decoder_info_destructor(&decoder_info);
+	if (config) {
+		json_decref(config);
+	}
+	meraki_database_done(&meraki_config.database);
+}
+
 static void mem_test(void (*cb)()) {
 	size_t i = 1;
 	do {
@@ -538,6 +677,24 @@ static void MerakiDecoder_msg_observation_no_client_mac() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC, &checkdata);
+}
+
+static void MerakiDecoder_msg_observation_no_timestamp() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NO_TIMESTAMP, &checkdata);
+}
+
+static void MerakiDecoder_msg_observation_no_rssi() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_not_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NO_RSSI, &checkdata);
+}
+
+static void MerakiDecoder_msg_observation_no_src_ipv4() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_not_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NO_SRC_IPV4, &checkdata);
 }
 
 static void MerakiDecoder_valid_enrich_meraki_msg_empty() {
@@ -563,6 +720,13 @@ static void MerakiDecoder_msg_observation_invalid() {
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG_OBSERVATION_INVALID, &checkdata);
 }
+
+static void MerakiDecoder_msg_invalid_observation() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_INVALID_OBSERVATION, &checkdata);
+}
+
 
 static void MerakiDecoder_msg_no_observation() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
@@ -731,8 +895,12 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_msg_observation_empty),
 		cmocka_unit_test(MerakiDecoder_msg_observation_invalid),
 		cmocka_unit_test(MerakiDecoder_msg_no_observation),
+		cmocka_unit_test(MerakiDecoder_msg_invalid_observation),
 		cmocka_unit_test(MerakiDecoder_msg_no_apmac),
-		cmocka_unit_test(MerakiDecoder_msg_observation_no_client_mac)
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_client_mac),
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_timestamp),
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_src_ipv4),
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_rssi)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
