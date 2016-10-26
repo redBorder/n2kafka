@@ -19,16 +19,14 @@ install:
   - pip install --user cpp-coveralls
 
 script:
-  - docker network create --subnet=172.26.0.0/24 test
-  - docker run -d --net test --ip 172.26.0.2 --name zookeeper wurstmeister/zookeeper
-  - docker run -d --net test --ip 172.26.0.3 --name kafka -e KAFKA_ADVERTISED_HOST_NAME="172.26.0.3" -e KAFKA_ADVERTISED_PORT="9092" -e KAFKA_ZOOKEEPER_CONNECT="172.26.0.2:2181" -v /var/run/docker.sock:/var/run/docker.sock wurstmeister/kafka
-  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure
+  - make setup-tests
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure --enable-integration-tests
   - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka make
   - docker run -v $(pwd):/app -e CFLAGS=-w --link kafka --net test redborder/build-dockerfiles:n2kafka make tests
 
 after_success:
   - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka make clean
-  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure --enable-coverage
+  - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka ./configure --enable-coverage --enable-integration-tests
   - docker run -v $(pwd):/app -e CFLAGS=-w --link kafka --net test redborder/build-dockerfiles:n2kafka make coverage
   - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka lcov --remove tests/coverage.info 'tests/*' '/usr/*' --output-file tests/coverage.info
   - docker run -v $(pwd):/app redborder/build-dockerfiles:n2kafka lcov --list tests/coverage.info
