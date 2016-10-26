@@ -49,6 +49,8 @@ static void opaque_check_no_kafka() {
 	assert(unpack_rc2 == 0);
 	assert(0 == strcmp(value_a, "b"));
 
+	meraki_opaque_cast(opaque_config);
+
 	json_decref(opaque_config);
 
 	free(global_config.topic);
@@ -56,13 +58,27 @@ static void opaque_check_no_kafka() {
 
 }
 
+static void mem_test(void (*cb)()) {
+	size_t i = 1;
+	do {
+		mem_wrap_fail_in = i++;
+		cb();
+	} while (0 == mem_wrap_fail_in);
+	mem_wrap_fail_in = 0;
+}
+
 static void test_opaque1(){
 	opaque_check_no_kafka();
 }
 
+static void test_opaque_mem_test(){
+	mem_test(opaque_check_no_kafka);
+}
+
 int main() {
 	const struct CMUnitTest tests[] = {
-		cmocka_unit_test(test_opaque1)
+		cmocka_unit_test(test_opaque1),
+		cmocka_unit_test(test_opaque_mem_test)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

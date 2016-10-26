@@ -577,12 +577,15 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 		enrichment_tmp = json_object_get(db->root,CONFIG_MERAKI_DEFAULT_SECRET_KEY);
 	}
 
+	/*  meraki_transversal.wireless_station == NULL */
+
 	if(enrichment_tmp){
 		pthread_rwlock_rdlock(&decoder_info->per_listener_enrichment_rwlock);
 		if(decoder_info->per_listener_enrichment)
 			meraki_transversal.enrichment = json_deep_copy(decoder_info->per_listener_enrichment);
 		pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
 		if(meraki_transversal.enrichment)
+			/* Control si return -1 */
 			json_object_update_missing_copy(meraki_transversal.enrichment,enrichment_tmp);
 		else
 			meraki_transversal.enrichment = json_deep_copy(enrichment_tmp);
