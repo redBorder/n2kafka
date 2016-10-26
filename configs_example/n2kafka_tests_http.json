@@ -1,62 +1,71 @@
 {
-    "listeners": [{
-        "proto": "http",
-        "port": 2057,
-        "mode": "epoll",
-        "num_threads": 20,
-        "redborder_uri": true
-    }],
-    "brokers": "kafka",
-    "topic": "rb_flow",
-    "n2kafka_id": "n2kafka_test",
-    "rdkafka.socket.max.fails": "3",
-    "rdkafka.socket.keepalive.enable": "true",
-    "blacklist": ["192.168.101.3"],
-    "rb_http2k_config": {
-        "sensors_uuids": {
-            "abc": {
-                "enrichment": {
-                    "a": 1,
-                    "b": "c",
-                    "d": true,
-                    "e": null
-                },
-                "organization_uuid": "abc_org"
-            },
-            "def": {
-                "enrichment": {
-                    "f": 1,
-                    "g": "w",
-                    "h": false,
-                    "i": null
-                },
-                "organization_uuid": "def_org"
-            }
+  "listeners": [{
+    "proto": "http",
+    "port": 2057,
+    "mode": "epoll",
+    "num_threads": 20,
+    "redborder_uri": true,
+    "decode_as": "rb_http2k"
+  }],
+  "brokers": "172.26.0.3",
+  "n2kafka_id": "n2kafka_test",
+  "rdkafka.socket.max.fails": "3",
+  "rdkafka.socket.keepalive.enable": "true",
+  "blacklist": ["192.168.101.3"],
+  "rb_http2k_config": {
+    "sensors_uuids": {
+      "abc": {
+	"enrichment": {
+          "a": 1,
+          "b": "c",
+          "d": true,
+          "e": null
         },
-        "organizations_uuids": {
-            "abc_org": {
-                "enrichment": {
-                    "a_org": 10
-                },
-                "limits": {
-                    "bytes": 10240
-                }
-            },
-            "def_org": {
-                "enrichment": {
-                    "b_org": 20
-                },
-                "limits": {
-                    "bytes": 20480
-                }
-            }
+        "organization_uuid":"abc_org"
+      },
+      "def": {
+	"enrichment": {
+          "f": 1,
+          "g": "w",
+          "h": false,
+          "i": null
         },
-        "topics": {
-            "rb_flow": {
-                "partition_key": "client_mac",
-                "partition_algo": "mac"
-            },
-            "rb_event": {}
+        "organization_uuid":"def_org"
+      }
+    },
+    "organizations_uuids": {
+      "abc_org": {
+        "enrichment": {
+          "a_org":10
+        },
+        "limits": {
+          "bytes": 10240
         }
+      },
+      "def_org": {
+        "enrichment": {
+          "b_org":20
+        },
+        "limits": {
+          "bytes": 20480
+        }
+      }
+    },
+    "organizations_sync": {
+      "put_url": "http://localhost:80/",
+      "topics": ["rb_monitor","rb_event"],
+      "interval_s": 5,
+      "clean_on": {
+        "timestamp_s_mod":5,
+        "timestamp_s_offset":4
+      }
+    },
+    "topics": {
+      "rb_flow": {
+        "partition_key": "client_mac",
+        "partition_algo": "mac"
+      },
+      "rb_event": {}
     }
+  }
 }
