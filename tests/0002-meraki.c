@@ -1,7 +1,6 @@
 #include "rb_meraki_tests.h"
 #include "rb_mem_tests.h"
 
-
 static const char MERAKI_MSG[] =
   // *INDENT-OFF*
 	"{"
@@ -78,6 +77,135 @@ static const char MERAKI_MSG[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":-122.20766382990405,"
+	                    "\"unc\":49.0,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                //"\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
+
+static const char MERAKI_MSG_NO_APMAC[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        //"\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":-122.20766382990405,"
+	                    "\"unc\":49.0,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "},"
+	            "{"
+	                "\"ipv4\":null,"
+	                "\"location\":{"
+	                    "\"lat\":37.42200897584358,"
+	                    "\"lng\":-122.20751219778322,"
+	                    "\"unc\":23.641346501668412,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:30Z\","
+	                "\"ssid\":null,"
+	                "\"os\":null,"
+	                "\"clientMac\":\"80:56:f2:44:55:66\","
+	                "\"seenEpoch\":1432020630,"
+	                "\"rssi\":13,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Hon Hai/Foxconn\""
+	            "},"
+	            "{"
+	                "\"ipv4\":\"/10.1.3.41\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205737322192,"
+	                    "\"lng\":-122.20762896118686,"
+	                    "\"unc\":37.49420236988837,"
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"3c:ab:8e:77:88:99\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
+
+static const char MERAKI_MSG_NO_OBSERVATION[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":\"AAAAAA_TEST\""
+	    "}"
+	"}";
+  // *INDENT-ON*
+
 static const char MERAKI_MSG_OBSERVATION_NULL[] =
   // *INDENT-OFF*
 	"{"
@@ -136,6 +264,20 @@ static const char MERAKI_MSG_OBSERVATION_NULL[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_INVALID[] =
+  // *INDENT-OFF*
+	"{"
+	    "\"version\":2,"
+	    "\"secret\": 2,"
+	    "\"type\":2,"
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\": null"
+	    "}"
+	"}";
+  // *INDENT-ON*
 
 static const char MERAKI_MSG_EMPTY[] = "{}";
 static const char MERAKI_MSG_INVALID[] = "{";
@@ -331,7 +473,7 @@ static void MerakiDecoder_test_meraki_null(const char *config_str, const char *s
 	meraki_database_done(&meraki_config.database);
 }
 
-static void MerakiDecoder_test_meraki_msj_null(const char *config_str, const char *secrets,
+static void MerakiDecoder_test_notificacion_array_null(const char *config_str, const char *secrets,
 		const char *msg, const struct checkdata_array *checkdata) {
 	size_t i;
 	const char *topic_name = NULL;
@@ -386,22 +528,46 @@ static void mem_test(void (*cb)()) {
 	mem_wrap_fail_in = 0;
 }
 
+static void MerakiDecoder_msg_no_apmac() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_NO_APMAC, &checkdata);
+}
+
+static void MerakiDecoder_msg_observation_no_client_mac() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC, &checkdata);
+}
+
 static void MerakiDecoder_valid_enrich_meraki_msg_empty() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
-	MerakiDecoder_test_meraki_msj_null(NULL, MERAKI_SECRETS_IN,
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG_EMPTY, &checkdata);
 }
 
 static void MerakiDecoder_valid_enrich_meraki_msg_invalid() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
-	MerakiDecoder_test_meraki_msj_null(NULL, MERAKI_SECRETS_IN,
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG_INVALID, &checkdata);
 }
 
 static void MerakiDecoder_msg_observation_empty() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
-	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
 		MERAKI_MSG_OBSERVATION_NULL, &checkdata);
+}
+
+static void MerakiDecoder_msg_observation_invalid() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_INVALID, &checkdata);
+}
+
+static void MerakiDecoder_msg_no_observation() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_NO_OBSERVATION, &checkdata);
 }
 
 static void MerakiDecoder_valid_enrich() {
@@ -562,7 +728,11 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_secret_json),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_empty),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_meraki_msg_invalid),
-		cmocka_unit_test(MerakiDecoder_msg_observation_empty)
+		cmocka_unit_test(MerakiDecoder_msg_observation_empty),
+		cmocka_unit_test(MerakiDecoder_msg_observation_invalid),
+		cmocka_unit_test(MerakiDecoder_msg_no_observation),
+		cmocka_unit_test(MerakiDecoder_msg_no_apmac),
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_client_mac)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

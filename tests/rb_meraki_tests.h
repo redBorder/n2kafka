@@ -50,14 +50,18 @@ static void MerakiDecoder_test_base(const char *config_str, const char *secrets,
 	free(aux);
 
 	if (NULL != notifications_array) {
-		if (checkdata) {
-			rb_assert_json_array(notifications_array->msgs,
-			                     notifications_array->count, checkdata);
+		if (notifications_array->count > 0) {
+			if (checkdata) {
+				rb_assert_json_array(notifications_array->msgs,
+				                     notifications_array->count, checkdata);
 				for (i = 0; i < notifications_array->count; ++i)
 					free(notifications_array->msgs[i].payload);
 				free(notifications_array);
 			} else {
 				assert_true(0==notifications_array);
+			}
+		} else {
+			free(notifications_array);
 		}
 	}
 

@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <librdkafka/rdkafka.h>
+#include <stdbool.h>
 
 static const char CONFIG_MERAKI_SECRETS_KEY[] = "meraki-secrets";
 static const char CONFIG_MERAKI_DEFAULT_SECRET_KEY[] = "*";
@@ -431,8 +432,10 @@ static void adjust_meraki_rssi(json_t *client_rssi_num) {
 }
 
 /* transform meraki observation in our suitable keys/values */
-static void transform_meraki_observation(json_t *observation,
+static bool transform_meraki_observation(json_t *observation,
                            struct meraki_transversal_data *transversal_data) {
+
+	bool is_observation = false;
 	json_error_t jerr;
 	json_t *src=NULL,*client_os = NULL,*client_mac=NULL,
 		*client_mac_vendor=NULL, *timestamp=NULL,*client_rssi_num=NULL,
@@ -443,6 +446,7 @@ static void transform_meraki_observation(json_t *observation,
 
 	if(NULL == transversal_data->wireless_station) {
 		rdlog(LOG_WARNING,"No %s in meraki message", MERAKI_WIRELESS_STATION_KEY);
+		return is_observation;
 	} else {
 		json_object_set(observation,MERAKI_WIRELESS_STATION_KEY,
 			                       transversal_data->wireless_station);
@@ -469,7 +473,7 @@ static void transform_meraki_observation(json_t *observation,
 
 	if(unpack_rc != 0) {
 		rdlog(LOG_ERR,"Can't unpack meraki message: %s",jerr.text);
-		return;
+		return is_observation;
 	}
 
 	/// @TODO ipv6 treatment
@@ -506,6 +510,8 @@ static void transform_meraki_observation(json_t *observation,
 	        MERAKI_TIMESTAMP_ORIGINAL_KEY,MERAKI_TIMESTAMP_DESTINATION_KEY);
 
 	enrich_meraki_observation(observation,transversal_data);
+
+	return true;
 }
 
 static void extract_meraki_observation(struct kafka_message_array *msgs,size_t idx,
@@ -518,11 +524,13 @@ static void extract_meraki_observation(struct kafka_message_array *msgs,size_t i
 		return;
 	}
 
-	transform_meraki_observation(observation_i,transversal_data);
+	bool is_observation = transform_meraki_observation(observation_i,transversal_data);
 
-	char *buf = json_dumps(observation_i,JSON_COMPACT|JSON_ENSURE_ASCII);
-	/// @TODO Don't use strlen
-	save_kafka_msg_in_array(msgs,buf,strlen(buf),NULL);
+	if (is_observation == true){
+		char *buf = json_dumps(observation_i,JSON_COMPACT|JSON_ENSURE_ASCII);
+		/// @TODO Don't use strlen
+		save_kafka_msg_in_array(msgs,buf,strlen(buf),NULL);
+	}
 }
 
 static struct kafka_message_array *extract_meraki_data(json_t *json,struct meraki_decoder_info *decoder_info) {
@@ -620,7 +628,7 @@ static struct kafka_message_array *process_meraki_buffer(const char *buffer,size
 	}
 
 	notifications = extract_meraki_data(json,decoder_info);
-	if(!notifications || notifications->size == 0) {
+	if(!notifications || notifications->size == 0 || (notifications->size > 0 && notifications->count == 0)) {
 		/* Nothing to do here */
 		free(notifications);
 		notifications = NULL;
