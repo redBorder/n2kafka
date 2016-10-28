@@ -216,7 +216,10 @@ static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t 
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
-		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
+		if (NULL == err)
+			rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
+		else
+			rdlog(LOG_ERR, "Can't create Meraki topic %s", topic_name);
 		return -1;
 	}
 

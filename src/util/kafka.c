@@ -39,6 +39,12 @@
     @return New topic handler */
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsize) {
+
+	if (NULL == global_config.kafka_topic_conf) {
+		rblog(LOG_DEBUG,"Empty new_rkt_global_config.");
+		return NULL;
+	}
+
 	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
 
 	if (NULL == topic_name) {
