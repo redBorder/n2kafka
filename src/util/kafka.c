@@ -63,6 +63,13 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 
 	rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
 
+	if (NULL == global_config.rk){
+		rdlog(LOG_ERR,"Null global_config.rk in new_rkt_global_config");
+		rd_kafka_topic_conf_destroy(template_config);
+		rd_kafka_topic_conf_destroy(my_rkt_conf);
+		return NULL;
+	}
+
 	rd_kafka_topic_t *ret = rd_kafka_topic_new(global_config.rk, topic_name,
 		my_rkt_conf);
 	if (NULL == ret) {
