@@ -734,6 +734,48 @@ static void MerakiDecoder_msg_no_observation() {
 		MERAKI_MSG_NO_OBSERVATION, &checkdata);
 }
 
+static void MerakiDecoder_test_config(const char *config_str, const char *secrets,
+		const char *msg, const struct checkdata_array *checkdata) {
+	const char *topic_name = NULL;
+	json_error_t jerr;
+	struct meraki_config meraki_config;
+	struct meraki_decoder_info decoder_info;
+	json_t *config = NULL;
+
+	memset(&meraki_config, 0, sizeof(meraki_config));
+	init_meraki_database(&meraki_config.database);
+
+	meraki_decoder_info_create(&decoder_info);
+
+	assert(config_str);
+	config = json_loads(config_str, 0, NULL);
+	assert_true(config);
+	int ret_config = parse_meraki_decoder_info(&decoder_info, &topic_name, config);
+	assert_null(topic_name);
+	assert_null(decoder_info.per_listener_enrichment);
+	assert_int_equal(ret_config, -1);
+
+	meraki_decoder_info_destructor(&decoder_info);
+	if (config) {
+		json_decref(config);
+	}
+	meraki_database_done(&meraki_config.database);
+}
+
+static void MerakiDecoder_valid_enrich_config() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	const char MERAKI_CONFIG_EMPTY[] = "{}";
+	MerakiDecoder_test_config(MERAKI_CONFIG_EMPTY, MERAKI_SECRETS_IN,
+		MERAKI_MSG, &checkdata);
+}
+
+static void MerakiDecoder_valid_enrich_invalid_config() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	const char MERAKI_CONFIG_ENRICHMENT[] = "{\"topic\":\"topic_test\", \"enrichment\":{\"a\":1,\"b\":\"c\"}}";
+	MerakiDecoder_test_base(MERAKI_CONFIG_ENRICHMENT, MERAKI_SECRETS_IN,
+		MERAKI_MSG, &checkdata);
+}
+
 static void MerakiDecoder_valid_enrich() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
@@ -900,7 +942,9 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_msg_observation_no_client_mac),
 		cmocka_unit_test(MerakiDecoder_msg_observation_no_timestamp),
 		cmocka_unit_test(MerakiDecoder_msg_observation_no_src_ipv4),
-		cmocka_unit_test(MerakiDecoder_msg_observation_no_rssi)
+		cmocka_unit_test(MerakiDecoder_msg_observation_no_rssi),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_config),
+		cmocka_unit_test(MerakiDecoder_valid_enrich_config)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

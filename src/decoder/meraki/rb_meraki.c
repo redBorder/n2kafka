@@ -187,6 +187,11 @@ static int parse_meraki_decoder_info(
 		return json_unpack_rc;
 	}
 
+	if(NULL == decoder_info->per_listener_enrichment){
+		rdlog(LOG_ERR,"Meraki config is null.");
+		return -1;
+	}
+
 	return 0;
 }
 
