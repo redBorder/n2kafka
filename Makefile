@@ -6,6 +6,8 @@ TESTS_C = $(sort $(wildcard tests/0*.c))
 
 TESTS = $(TESTS_C:.c=.test)
 TESTS_OBJS = $(TESTS:.test=.o)
+TESTS_DEPS = tests/rb_mem_tests.c
+TESTS_DEPS_O = $(TESTS_DEPS:.c=.o)
 TESTS_CHECKS_XML = $(TESTS_C:.c=.xml)
 TESTS_MEM_XML = $(TESTS_C:.c=.mem.xml)
 TESTS_HELGRIND_XML = $(TESTS_C:.c=.helgrind.xml)
@@ -30,9 +32,10 @@ version.c:
 install: bin-install
 
 clean: bin-clean
-	rm -f $(TESTS) $(TESTS_OBJS) $(TESTS_XML) $(COV_FILES)
+	rm -f $(TESTS) $(TESTS_OBJS) $(TESTS_DEPS_O) $(TESTS_XML) $(COV_FILES)
 
-COV_FILES = $(foreach ext,gcda gcno, $(SRCS:.c=.$(ext)) $(TESTS_C:.c=.$(ext)))
+COV_FILES = $(foreach ext,gcda gcno, $(SRCS:.c=.$(ext)) $(TESTS_C:.c=.$(ext)) \
+		$(TESTS_DEPS:.c=.$(ext)))
 
 VALGRIND ?= valgrind
 SUPPRESSIONS_FILE ?= tests/valgrind.suppressions
@@ -82,9 +85,9 @@ WRAP_ALLOC_FUNCTIONS := $(foreach fn, $(MALLOC_FUNCTIONS)\
 						 ,-Wl,-u,$(fn) -Wl,-wrap,$(fn))
 
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
-tests/%.test: tests/%.o tests/rb_mem_tests.o $(filter-out src/engine/n2kafka.o,$(OBJS))
+tests/%.test: tests/%.o $(TESTS_DEPS_O) $(filter-out src/engine/n2kafka.o,$(OBJS))
 	@echo -e '\033[0;33m Building: $@ \033[0m'
-	@$(CC) $(WRAP_ALLOC_FUNCTIONS) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) tests/rb_mem_tests.o -lcmocka
+	@$(CC) $(WRAP_ALLOC_FUNCTIONS) $(CPPFLAGS) $(TESTS_DEPS_O) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \
