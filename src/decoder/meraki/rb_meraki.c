@@ -417,6 +417,8 @@ static int transform_meraki_observation_location(json_t *observation) {
 			rdlog(LOG_ERR, "Error extracting location: %s",
 				jerr.text);
 		}
+
+		return -1;
 	}
 
 	if(0!=double_cmp(0,location_lat) && 0!=double_cmp(0,location_lon)) {
@@ -499,7 +501,10 @@ static bool transform_meraki_observation(json_t *observation,
 		json_object_del(observation,MERAKI_SRCv6_ORIGINAL_KEY);
 	}
 
-	transform_meraki_observation_location(observation);
+	int ret_location = transform_meraki_observation_location(observation);
+	if (ret_location != 0)
+		return is_observation;
+
 	if (client_rssi_num) {
 		adjust_meraki_rssi(client_rssi_num);
 	}

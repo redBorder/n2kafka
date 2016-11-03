@@ -123,6 +123,42 @@ static const char MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_LOCATION_STRING[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":\"37.42205275787813\","
+	                    "\"lng\":\"-122.20766382990405\","
+	                    "\"unc\":\"49.0\","
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
 static const char MERAKI_MSG_OBSERVATION_EMPTY_LOCATION[] =
 	// *INDENT-OFF*
 	"{"
@@ -764,6 +800,12 @@ static void MerakiDecoder_msg_no_location() {
 		MERAKI_MSG_OBSERVATION_NO_LOCATION, &checkdata);
 }
 
+static void MerakiDecoder_location_string() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_LOCATION_STRING, &checkdata);
+}
+
 static void MerakiDecoder_msg_observation_no_timestamp() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
@@ -1047,6 +1089,7 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_empty_secret),
 		cmocka_unit_test(MerakiDecoder_msg_empty_location),
 		cmocka_unit_test(MerakiDecoder_msg_no_location),
+		cmocka_unit_test(MerakiDecoder_location_string),
 
 	};
 
