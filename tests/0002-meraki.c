@@ -123,6 +123,61 @@ static const char MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_EMPTY_LOCATION[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
+
+static const char MERAKI_MSG_OBSERVATION_NO_LOCATION[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                //"\"location\":{},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+
 static const char MERAKI_MSG_OBSERVATION_NO_TIMESTAMP[] =
   // *INDENT-OFF*
 	"{"
@@ -395,6 +450,22 @@ static const char MERAKI_SECRETS_IN[] = \
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_SECRETS_OBJECT_EMPTY[] = \
+  // *INDENT-OFF*
+	"{"
+		/* "\"meraki-secrets\": {" */
+	        "\"r3dB0rder\": { "
+//	          "\"sensor_name\": \"meraki1\" "
+//	          ", \"sensor_id\": 2"
+	        "},"
+	        "\"r3dB0rder2\": { "
+//	          "\"sensor_name\": \"meraki2\" "
+//	          ", \"sensor_id\": 3"
+	        "}"
+	    /* "}" */
+	"}";
+  // *INDENT-ON*
+
 static const char MERAKI_SECRETS_IN_INVALID_JSON[] = \
 	// *INDENT-OFF*
 	"{"
@@ -436,6 +507,8 @@ static const char MERAKI_SECRETS_DEFAULT_IN[] = \
 	    /* "}" */
 	"}";
   // *INDENT-ON*
+
+static const char MERAKI_SECRETS_EMPTY[] = "{}";
 
 static const char MERAKI_SECRETS_OUT[] = \
   // *INDENT-OFF*
@@ -679,6 +752,18 @@ static void MerakiDecoder_msg_observation_no_client_mac() {
 		MERAKI_MSG_OBSERVATION_NO_CLIENT_MAC, &checkdata);
 }
 
+static void MerakiDecoder_msg_empty_location() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_not_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_EMPTY_LOCATION, &checkdata);
+}
+
+static void MerakiDecoder_msg_no_location() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_not_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_NO_LOCATION, &checkdata);
+}
+
 static void MerakiDecoder_msg_observation_no_timestamp() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
@@ -776,6 +861,12 @@ static void MerakiDecoder_valid_enrich_invalid_config() {
 		MERAKI_MSG, &checkdata);
 }
 
+static void MerakiDecoder_empty_secret() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_OBJECT_EMPTY,
+		MERAKI_MSG, &checkdata);
+}
+
 static void MerakiDecoder_valid_enrich() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_IN,
@@ -799,6 +890,13 @@ static void MerakiDecoder_novalid_enrich() {
 	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_OUT, MERAKI_MSG,
 								checkdata);
 }
+
+static void MerakiDecoder_empty_enrich() {
+	struct checkdata_array *checkdata = NULL;
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_EMPTY, MERAKI_MSG,
+								checkdata);
+}
+
 
 static void MerakiDecoder_valid_enrich_mem(){
 	mem_test(MerakiDecoder_valid_enrich);
@@ -944,7 +1042,12 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_msg_observation_no_src_ipv4),
 		cmocka_unit_test(MerakiDecoder_msg_observation_no_rssi),
 		cmocka_unit_test(MerakiDecoder_valid_enrich_invalid_config),
-		cmocka_unit_test(MerakiDecoder_valid_enrich_config)
+		cmocka_unit_test(MerakiDecoder_valid_enrich_config),
+		cmocka_unit_test(MerakiDecoder_empty_enrich),
+		cmocka_unit_test(MerakiDecoder_empty_secret),
+		cmocka_unit_test(MerakiDecoder_msg_empty_location),
+		cmocka_unit_test(MerakiDecoder_msg_no_location),
+
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
