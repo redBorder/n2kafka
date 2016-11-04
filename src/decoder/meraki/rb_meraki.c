@@ -148,21 +148,15 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 
 static int meraki_decoder_info_create(
 				struct meraki_decoder_info *decoder_info) {
-	char errbuf[BUFSIZ];
 
 	memset(decoder_info, 0, sizeof(*decoder_info));
 
 	/// @TODO move global_config to static allocated buffer
 	decoder_info->meraki_config = &global_config.meraki;
 
-	const int rwlock_init_rc = pthread_rwlock_init(
-		&decoder_info->per_listener_enrichment_rwlock,NULL);
-	if(rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR,"Can't start rwlock: %s",errbuf);
-	}
+	pthread_rwlock_init(&decoder_info->per_listener_enrichment_rwlock,NULL);
 
-	return rwlock_init_rc;
+	return 0;
 }
 
 static void meraki_decoder_info_destructor(struct meraki_decoder_info *decoder_info) {
@@ -246,27 +240,17 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 	opaque->magic = MERAKI_OPAQUE_MAGIC;
 #endif
 
-	const int decoder_info_create_rc = meraki_decoder_info_create(
-							&opaque->decoder_info);
-	if (0!=decoder_info_create_rc) {
-		goto decoder_info_err;
-	}
+	meraki_decoder_info_create(&opaque->decoder_info);
 
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,config);
 	if(per_listener_enrichment_rc != 0){
-		goto parse_err;
+		meraki_decoder_info_destructor(&opaque->decoder_info);
+		free(opaque);
+		*_opaque = NULL;
+		return -1;
 	}
 
 	return 0;
-
-parse_err:
-	meraki_decoder_info_destructor(&opaque->decoder_info);
-
-decoder_info_err:
-	free(opaque);
-	*_opaque = NULL;
-
-	return -1;
 }
 
 /// @TODO Join with meraki_opaque_creator
