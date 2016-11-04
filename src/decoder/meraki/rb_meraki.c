@@ -358,7 +358,7 @@ static int double_cmp(const double a,const double b) {
 }
 
 static void enrich_meraki_observation(json_t *observation,
-                             struct meraki_transversal_data *transversal_data) {
+                             const struct meraki_transversal_data *transversal_data) {
 
 	if(!transversal_data->enrichment) {
 		rdlog(LOG_WARNING,"No enrichment, cannot add extra data like type");
@@ -443,7 +443,7 @@ static void adjust_meraki_rssi(json_t *client_rssi_num) {
 
 /* transform meraki observation in our suitable keys/values */
 static bool transform_meraki_observation(json_t *observation,
-                           struct meraki_transversal_data *transversal_data) {
+                           const struct meraki_transversal_data *transversal_data) {
 
 	bool is_observation = false;
 	json_error_t jerr;
@@ -451,16 +451,13 @@ static bool transform_meraki_observation(json_t *observation,
 		*client_mac_vendor=NULL, *timestamp=NULL,*client_rssi_num=NULL,
 		*wireless_id=NULL;
 
+	assert(transversal_data->wireless_station);
+
 	/* Unused */
 	json_object_del(observation,MERAKI_SEEN_TIME_KEY);
 
-	if(NULL == transversal_data->wireless_station) {
-		rdlog(LOG_WARNING,"No %s in meraki message", MERAKI_WIRELESS_STATION_KEY);
-		return is_observation;
-	} else {
-		json_object_set(observation,MERAKI_WIRELESS_STATION_KEY,
+	json_object_set(observation,MERAKI_WIRELESS_STATION_KEY,
 			                       transversal_data->wireless_station);
-	}
 
 	const int unpack_rc = json_unpack_ex(observation,&jerr,0,
 	 	"{"
@@ -528,7 +525,7 @@ static bool transform_meraki_observation(json_t *observation,
 }
 
 static void extract_meraki_observation(struct kafka_message_array *msgs,size_t idx,
-	json_t *observations,struct meraki_transversal_data *transversal_data) {
+	json_t *observations,const struct meraki_transversal_data *transversal_data) {
 
 	json_t *observation_i = json_array_get(observations,idx);
 
@@ -566,15 +563,6 @@ static struct kafka_message_array *extract_meraki_data(json_t *json,struct merak
 	if(0 != json_unpack_rc) {
 		rdlog(LOG_ERR,"Can't decode meraki JSON: \"%s\" in line %d column %d",
 			jerr.text,jerr.line,jerr.column);
-	}
-
-	if(NULL == meraki_secret) {
-		rdlog(LOG_ERR,"Meraki JSON received with no secret. Discarding.");
-		return NULL;
-	}
-
-	if(NULL == observations) {
-		rdlog(LOG_ERR,"Meraki JSON received with no observations. Discarding.");
 		return NULL;
 	}
 
