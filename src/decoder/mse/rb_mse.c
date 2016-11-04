@@ -188,17 +188,10 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 }
 
 static int mse_decoder_info_create(struct mse_decoder_info *decoder_info) {
-	char errbuf[BUFSIZ];
-
 	memset(decoder_info, 0, sizeof(*decoder_info));
-	const int rwlock_init_rc = pthread_rwlock_init(
-	        &decoder_info->per_listener_enrichment_rwlock, NULL);
-	if (rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
-	}
+	pthread_rwlock_init(&decoder_info->per_listener_enrichment_rwlock, NULL);
 
-	return rwlock_init_rc;
+	return 0;
 }
 
 static void mse_decoder_info_destroy(struct mse_decoder_info *decoder_info) {
@@ -220,16 +213,15 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	opaque->magic = MSE_OPAQUE_MAGIC;
 #endif
-	const int mse_decoder_info_create_rc = mse_decoder_info_create(
-							&opaque->decoder_info);
-	if (mse_decoder_info_create_rc != 0) {
-		goto _err;
-	}
+	mse_decoder_info_create(&opaque->decoder_info);
 
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,
 	                                       config);
 	if (per_listener_enrichment_rc != 0) {
-		goto err_rwlock;
+		mse_decoder_info_destroy(&opaque->decoder_info);
+		free(opaque);
+		*_opaque = NULL;
+		return -1;
 	}
 
 	/// @TODO move global_config to static allocated buffer
@@ -237,12 +229,6 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 
 	return 0;
 
-err_rwlock:
-	mse_decoder_info_destroy(&opaque->decoder_info);
-_err:
-	free(opaque);
-	*_opaque = NULL;
-	return -1;
 }
 
 static void mse_warn_timestamp(struct mse_data *data,
