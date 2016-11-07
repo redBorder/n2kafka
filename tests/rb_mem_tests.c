@@ -17,6 +17,10 @@
 
 #include <jansson.h>
 #include <pthread.h>
+#include <librdkafka/rdkafka.h>
+#include "util/kafka.h"
+
+
 /* malloc / calloc fails tests */
 
 size_t mem_wrap_fail_in = 0;
@@ -45,4 +49,4 @@ WRAP_MEM_FN(strdup, char *, const char *str, str)
 WRAP_MEM_FN(json_object, json_t *,,)
 WRAP_MEM_FN(calloc, void *, size_t n COMMA size_t m, n COMMA m)
 WRAP_MEM_FN(realloc, void *, void *ptr COMMA size_t m, ptr COMMA m)
-
+WRAP_MEM_FN(new_rkt_global_config, const char *, const char *topic_name COMMA rb_rd_kafka_partitioner_t partitioner COMMA char *err COMMA size_t errsiz, topic_name COMMA partitioner COMMA err COMMA errsiz)

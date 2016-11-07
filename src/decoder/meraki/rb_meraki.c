@@ -256,6 +256,11 @@ int meraki_opaque_creator(struct json_t *config,void **_opaque) {
 /// @TODO Join with meraki_opaque_creator
 /// @TODO Test stalls in rd_kafka_topic_destroy
 int meraki_opaque_reload(json_t *config,void *vopaque) {
+	assert(vopaque);
+
+	if (NULL == vopaque)
+		return -1;
+
 	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);
 	assert(config);
@@ -287,7 +292,7 @@ int meraki_opaque_reload(json_t *config,void *vopaque) {
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
-		rdlog(LOG_ERR, "Can't create Meraki topic %s: %s", topic_name, err);
+		rdlog(LOG_ERR, "Can't create Meraki topic: %s.", topic_name);
 		goto rkt_err;
 	}
 

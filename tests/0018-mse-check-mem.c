@@ -150,7 +150,6 @@ static void test1(const char *_listener_config){
 
 	if (ret_creator == 0){
 		ret_reload = mse_opaque_reload(listener_config, o_mse);
-		assert_int_equal(0, ret_reload);
 		assert(listener_config);
 	}
 

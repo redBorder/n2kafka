@@ -38,7 +38,6 @@ static void opaque_check_reload() {
 	ret_creator = meraki_opaque_creator(opaque_config, &o_meraki);
 
 	/* without kafka config */
-	assert_int_equal(0, ret_creator);
 
 	assert(opaque_config);
 	const int unpack_rc = json_unpack_ex(opaque_config, &jerr, 0,
@@ -257,6 +256,10 @@ static void test_opaque_reload(){
 	opaque_check_reload();
 }
 
+static void test_mem_opaque_reload(){
+	mem_test(opaque_check_reload);
+}
+
 int main() {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_opaque1),
@@ -264,7 +267,8 @@ int main() {
 		cmocka_unit_test(test_opaque_conf),
 		cmocka_unit_test(test_opaque_config_empty),
 		cmocka_unit_test(test_opaque_reload),
-		cmocka_unit_test(test_check_kafka)
+		cmocka_unit_test(test_check_kafka),
+		cmocka_unit_test(test_mem_opaque_reload),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

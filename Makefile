@@ -80,7 +80,7 @@ tests/%.xml: tests/%.test
 	@echo -e '\033[0;33m Testing:\033[0m $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
-MALLOC_FUNCTIONS := $(strip malloc calloc strdup realloc json_object)
+MALLOC_FUNCTIONS := $(strip malloc calloc strdup realloc json_object new_rkt_global_config)
 WRAP_ALLOC_FUNCTIONS := $(foreach fn, $(MALLOC_FUNCTIONS)\
 						 ,-Wl,-u,$(fn) -Wl,-wrap,$(fn))
 
