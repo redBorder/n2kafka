@@ -159,6 +159,41 @@ static const char MERAKI_MSG_OBSERVATION_LOCATION_STRING[] =
 	"}";
   // *INDENT-ON*
 
+static const char MERAKI_MSG_OBSERVATION_LOCATION_LON_ZERO[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"version\":\"2.0\","
+	    "\"secret\":\"r3dB0rder\","
+	    "\"type\":\"DevicesSeen\","
+	    "\"data\":{"
+	        "\"apMac\":\"55:55:55:55:55:55\","
+	        "\"apFloors\":[],"
+	        "\"apTags\":[],"
+	        "\"observations\":["
+	            "{"
+	                "\"ipv4\":\"/10.1.3.38\","
+	                "\"location\":{"
+	                    "\"lat\":37.42205275787813,"
+	                    "\"lng\":0.0,"
+	                    "\"unc\":\"49.0\","
+	                    "\"x\":["
+	                    "],"
+	                    "\"y\":["
+	                    "]"
+	                "},"
+	                "\"seenTime\":\"2015-05-19T07:30:34Z\","
+	                "\"ssid\":\"Trinity\","
+	                "\"os\":\"Apple iOS\","
+	                "\"clientMac\":\"78:3a:84:11:22:33\","
+	                "\"seenEpoch\":1432020634,"
+	                "\"rssi\":0,"
+	                "\"ipv6\":null,"
+	                "\"manufacturer\":\"Apple\""
+	            "}"
+	        "]"
+	    "}"
+	"}";
+  // *INDENT-ON*
 static const char MERAKI_MSG_OBSERVATION_EMPTY_LOCATION[] =
 	// *INDENT-OFF*
 	"{"
@@ -806,6 +841,12 @@ static void MerakiDecoder_location_string() {
 		MERAKI_MSG_OBSERVATION_LOCATION_STRING, &checkdata);
 }
 
+static void MerakiDecoder_location_lon_zero() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	MerakiDecoder_test_notificacion_array_not_null(NULL, MERAKI_SECRETS_IN,
+		MERAKI_MSG_OBSERVATION_LOCATION_LON_ZERO, &checkdata);
+}
+
 static void MerakiDecoder_msg_observation_no_timestamp() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
 	MerakiDecoder_test_notificacion_array_null(NULL, MERAKI_SECRETS_IN,
@@ -854,6 +895,12 @@ static void MerakiDecoder_msg_invalid_observation() {
 		MERAKI_MSG_INVALID_OBSERVATION, &checkdata);
 }
 
+static void MerakiDecoder_no_enrichment() {
+	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
+	const char MERAKI_CONFIG_ENRICHMENT[] = "{\"topic\":\"topic_test\"}";
+	MerakiDecoder_test_base(NULL, MERAKI_SECRETS_OBJECT_EMPTY,
+		MERAKI_MSG, &checkdata);
+}
 
 static void MerakiDecoder_msg_no_observation() {
 	CHECKDATA_ARRAY(checkdata, &check1, &check2, &check3);
@@ -1089,7 +1136,9 @@ int main() {
 		cmocka_unit_test(MerakiDecoder_empty_secret),
 		cmocka_unit_test(MerakiDecoder_msg_empty_location),
 		cmocka_unit_test(MerakiDecoder_msg_no_location),
+		cmocka_unit_test(MerakiDecoder_location_lon_zero),
 		cmocka_unit_test(MerakiDecoder_location_string),
+		cmocka_unit_test(MerakiDecoder_no_enrichment),
 
 	};
 
