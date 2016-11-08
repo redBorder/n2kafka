@@ -176,11 +176,7 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
-		if (NULL == topic_name) {
-			rdlog(LOG_ERR, "Can't create MSE topic: %s", err);
-		} else {
-			rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
-		}
+		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
 		return -1;
 	}
 
@@ -367,14 +363,6 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	if (unpack_rc != 0) {
 		char *sensor_json = json_dumps(sensor, 0);
 		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json, err.text);
-		free(sensor_json);
-		return -1;
-	}
-
-	if (stream == NULL) {
-		char *sensor_json = json_dumps(sensor, 0);
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json,
-		      "No \"stream\"");
 		free(sensor_json);
 		return -1;
 	}
