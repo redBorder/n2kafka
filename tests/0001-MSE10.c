@@ -33,6 +33,32 @@ static const char MSE10_ASSOC[] =
 	"}";
 		// *INDENT-ON*
 
+static const char MSE10_ASSOC_COVE[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"notifications\":["
+	        "{"
+	            "\"notificationType\":\"association\","
+	            "\"subscriptionName\":\"rb-assoc\","
+	            "\"entity\":\"WIRELESS_CLIENTS\","
+	            "\"deviceId\":\"00:ca:00:05:06:52\","
+	            "\"lastSeen\":\"2015-02-24T08:41:50.026+0000\","
+	            "\"ssid\":\"SHAW_SABER\","
+	            "\"band\":\"IEEE_802_11_B\","
+	            "\"apMacAddress\":\"00:ba:20:10:4f:00\","
+	            "\"association\":true,"
+	            "\"ipAddress\":["
+	                "\"25.145.34.131\""
+	            "],"
+	            "\"status\":3,"
+	            "\"username\":\"AAAAAAA\","
+	            "\"timestamp\":1446650950000"
+	        "}"
+	    "]"
+	"}";
+		// *INDENT-ON*
+
+
 static const char MSE10_ASSOC_OLD[] =
 	// *INDENT-OFF*
 	"{"
@@ -53,6 +79,32 @@ static const char MSE10_ASSOC_OLD[] =
 	            "\"status\":3,"
 	            "\"username\":\"\","
 	            "\"timestamp\":1446640950000"
+	        "}"
+	    "]"
+	"}";
+		// *INDENT-ON*
+
+// line 249-255 of rb_mse.c
+static const char MSE10_ASSOC_OLD_OLD[] =
+	// *INDENT-OFF*
+	"{"
+	    "\"notifications\":["
+	        "{"
+	            "\"notificationType\":\"association\","
+	            "\"subscriptionName\":\"rb-assoc\","
+	            "\"entity\":\"WIRELESS_CLIENTS\","
+	            "\"deviceId\":\"00:ca:00:05:06:52\","
+	            "\"lastSeen\":\"2015-02-24T08:41:50.026+0000\","
+	            "\"ssid\":\"SHAW_SABER\","
+	            "\"band\":\"IEEE_802_11_B\","
+	            "\"apMacAddress\":\"00:ba:20:10:4f:00\","
+	            "\"association\":true,"
+	            "\"ipAddress\":["
+	                "\"25.145.34.131\""
+	            "],"
+	            "\"status\":3,"
+	            "\"username\":\"\","
+	            "\"timestamp\":950000"
 	        "}"
 	    "]"
 	"}";
@@ -141,6 +193,20 @@ static const char MSE_ARRAY_IN[] = \
 		"}\n" \
 	"]";
 	// *INDENT-ON*
+
+static const char MSE_ARRAY_IN_COVE[] = \
+	// *INDENT-OFF*
+	"[\n" \
+		"{\n" \
+			"\"stream\": \"rb-assoc\" \n" \
+			",\"enrichment\":{\n" \
+				"\"sensor_name\": \"testing\"\n" \
+				", \"sensor_id\": 255\n" \
+			"}\n" \
+		"}\n" \
+	"]";
+	// *INDENT-ON*
+
 
 static const char MSE_ARRAY_OUT[] = \
 	// *INDENT-OFF*
@@ -391,6 +457,22 @@ static void testMSE8Decoder_invalid_timestamp() {
 	                checkMSE8_invalid_timestamp);
 }
 
+static void testMSE8Decoder_null_values_cove() {
+	testMSE8Decoder(MSE_ARRAY_IN_COVE,
+	                LISTENER_NULL_CONFIG,
+	                MSE10_ASSOC_COVE,
+	                NOW,
+	                checkMSE8_valid_timestamp);
+}
+
+static void testMSE10Decoder_invalid_enrich() {
+	testMSE10Decoder(MSE_ARRAY_IN_COVE,
+	                 LISTENER_NULL_CONFIG,
+	                 MSE10_ASSOC_COVE,
+	                 NOW,
+	                 checkMSE10Decoder_valid_enrich);
+}
+
 int main() {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(testMSE10Decoder_valid_enrich),
@@ -398,7 +480,9 @@ int main() {
 		cmocka_unit_test(testMSE10Decoder_valid_enrich_multi),
 		cmocka_unit_test(testMSE10Decoder_empty_array),
 		cmocka_unit_test(testMSE8Decoder_valid_timestamp),
-		cmocka_unit_test(testMSE8Decoder_invalid_timestamp)
+		cmocka_unit_test(testMSE8Decoder_invalid_timestamp),
+		//cmocka_unit_test(testMSE8Decoder_null_values_cove),
+		cmocka_unit_test(testMSE10Decoder_invalid_enrich)
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

@@ -39,16 +39,36 @@
     @return New topic handler */
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	rb_rd_kafka_partitioner_t partitioner,char *err,size_t errsize) {
+
+	if (NULL == global_config.kafka_topic_conf) {
+		rblog(LOG_DEBUG,"Empty new_rkt_global_config.");
+		return NULL;
+	}
+
 	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
+
+	if (NULL == topic_name) {
+		rblog(LOG_DEBUG,"Empty topic_name conf in new_rkt_global_config.");
+		return NULL;
+	}
+
 	rd_kafka_topic_conf_t *my_rkt_conf
 		= rd_kafka_topic_conf_dup(template_config);
 
 	if(NULL == my_rkt_conf) {
 		rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+		rd_kafka_topic_conf_destroy(template_config);
 		return NULL;
 	}
 
 	rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+
+	if (NULL == global_config.rk){
+		rdlog(LOG_ERR,"Null global_config.rk in new_rkt_global_config");
+		rd_kafka_topic_conf_destroy(template_config);
+		rd_kafka_topic_conf_destroy(my_rkt_conf);
+		return NULL;
+	}
 
 	rd_kafka_topic_t *ret = rd_kafka_topic_new(global_config.rk, topic_name,
 		my_rkt_conf);

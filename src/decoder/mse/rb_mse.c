@@ -167,6 +167,11 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		topic_name = default_topic_name();
 	}
 
+	if (!topic_name) {
+		rdlog(LOG_ERR, "Can't create rkt with no topic");
+		return -1;
+	}
+
 	opaque->rkt = new_rkt_global_config(topic_name,
 		rb_client_mac_partitioner,err,sizeof(err));
 
@@ -179,17 +184,10 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 }
 
 static int mse_decoder_info_create(struct mse_decoder_info *decoder_info) {
-	char errbuf[BUFSIZ];
-
 	memset(decoder_info, 0, sizeof(*decoder_info));
-	const int rwlock_init_rc = pthread_rwlock_init(
-	        &decoder_info->per_listener_enrichment_rwlock, NULL);
-	if (rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
-	}
+	pthread_rwlock_init(&decoder_info->per_listener_enrichment_rwlock, NULL);
 
-	return rwlock_init_rc;
+	return 0;
 }
 
 static void mse_decoder_info_destroy(struct mse_decoder_info *decoder_info) {
@@ -211,16 +209,15 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	opaque->magic = MSE_OPAQUE_MAGIC;
 #endif
-	const int mse_decoder_info_create_rc = mse_decoder_info_create(
-							&opaque->decoder_info);
-	if (mse_decoder_info_create_rc != 0) {
-		goto _err;
-	}
+	mse_decoder_info_create(&opaque->decoder_info);
 
 	const int per_listener_enrichment_rc = parse_per_listener_opaque_config(opaque,
 	                                       config);
 	if (per_listener_enrichment_rc != 0) {
-		goto err_rwlock;
+		mse_decoder_info_destroy(&opaque->decoder_info);
+		free(opaque);
+		*_opaque = NULL;
+		return -1;
 	}
 
 	/// @TODO move global_config to static allocated buffer
@@ -228,12 +225,6 @@ int mse_opaque_creator(json_t *config, void **_opaque) {
 
 	return 0;
 
-err_rwlock:
-	mse_decoder_info_destroy(&opaque->decoder_info);
-_err:
-	free(opaque);
-	*_opaque = NULL;
-	return -1;
 }
 
 static void mse_warn_timestamp(struct mse_data *data,
@@ -243,6 +234,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 	json_t *new_value = NULL;
 	json_int_t last_time_warned = 0;
 	struct mse_database *db = &decoder_info->mse_config->database;
+	int json_ret = 0;
 
 	pthread_mutex_lock(&db->warning_ht_lock);
 	if ((value = json_object_get(db->warning_ht, data->subscriptionName))
@@ -253,14 +245,19 @@ static void mse_warn_timestamp(struct mse_data *data,
 			rdlog(LOG_WARNING, "Timestamp out of date");
 			data->timestamp_warnings++;
 			new_value = json_integer(now);
-			json_object_set(db->warning_ht, data->subscriptionName, new_value);
+
+			json_ret = json_object_set(db->warning_ht, data->subscriptionName, new_value);
+			if (json_ret != 0)
+				rdlog(LOG_ERR, "Can't add new value in warning_ht");
 		}
 	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
 		data->timestamp_warnings++;
 		new_value = json_integer(now);
-		json_object_set_new(db->warning_ht, data->subscriptionName,
-		                    new_value);
+		json_ret = json_object_set_new(db->warning_ht, data->subscriptionName,
+		                               new_value);
+		if (json_ret != 0)
+			rdlog(LOG_ERR, "Can't add new value in warning_ht");
 	}
 	pthread_mutex_unlock(&db->warning_ht_lock);
 }
@@ -308,7 +305,8 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
-		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		if (NULL == topic_name)
+			rblog(LOG_DEBUG,"Empty topic_name conf in new_rkt_global_config.");
 		goto rkt_err;
 	}
 
@@ -318,6 +316,10 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 	decoder_info->max_time_offset_warning_wait = max_time_offset_warning_wait;
 	decoder_info->max_time_offset = max_time_offset;
 	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
+
+	rd_kafka_topic_destroy(rkt_aux);
+	json_decref(enrichment_aux);
+	return 0;
 
 rkt_err:
 enrichment_err:
@@ -329,7 +331,7 @@ enrichment_err:
 		json_decref(enrichment_aux);
 	}
 
-	return 0;
+	return -1;
 }
 
 void mse_opaque_done(void *_opaque) {
@@ -339,10 +341,11 @@ void mse_opaque_done(void *_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
+	assert(opaque->rkt);
 	mse_decoder_info_destroy(&opaque->decoder_info);
-	if (opaque->rkt) {
-		rd_kafka_topic_destroy(opaque->rkt);
-	}
+
+	rd_kafka_topic_destroy(opaque->rkt);
+
 	free(opaque);
 }
 
@@ -359,13 +362,9 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	                                     "{s:s,s?o}", "stream", &stream, MSE_ENRICHMENT_KEY, &enrichment);
 
 	if (unpack_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0), err.text);
-		return -1;
-	}
-
-	if (stream == NULL) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0),
-		      "No \"stream\"");
+		char *sensor_json = json_dumps(sensor, 0);
+		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json, err.text);
+		free(sensor_json);
 		return -1;
 	}
 
@@ -374,6 +373,7 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	const int set_rc = json_object_set_new(streams_db, stream, _enrich);
 	if (set_rc != 0) {
 		rdlog(LOG_ERR, "Can't set new MSE enrichment db entry (out of memory?)");
+		return -1;
 	}
 
 	return 0;
@@ -399,7 +399,11 @@ int parse_mse_array(void *_db, const struct json_t *mse_array) {
 	}
 
 	json_array_foreach(mse_array, _index, value) {
-		parse_sensor(value, new_db);
+		const int ret = parse_sensor(value, new_db);
+		if (ret != 0) {
+			json_decref(new_db);
+			return -1;
+		}
 	}
 
 	pthread_rwlock_wrlock(&db->rwlock);
@@ -423,16 +427,16 @@ static const json_t *mse_database_entry(const char *subscriptionName,
 }
 
 void free_valid_mse_database(struct mse_database *db) {
-	if (db) {
-		pthread_rwlock_destroy(&db->rwlock);
+	assert(db);
 
-		if (db->root) {
-			json_decref(db->root);
-		}
+	pthread_rwlock_destroy(&db->rwlock);
 
-		if (db->warning_ht) {
-			json_decref(db->warning_ht);
-		}
+	if (db->root) {
+		json_decref(db->root);
+	}
+
+	if (db->warning_ht) {
+		json_decref(db->warning_ht);
 	}
 }
 
@@ -540,8 +544,8 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 	                             "{s:o}",  /* subscriptionName */
 	                             MSE10_NOTIFICATIONS_KEY, &notifications_array);
 
-	if (*extract_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse MSE10 JSON notifications array: %s", err.text);
+	if (0 == json_is_array(notifications_array)) {
+		rdlog(LOG_ERR, "The MSE10 JSON notifications array is not an array %s", err.text);
 		return NULL;
 	}
 
@@ -550,6 +554,11 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 	                              struct mse_data);
 
 	struct mse_array *mse_array = calloc(1, alloc_size);
+	if (NULL == mse_array) {
+		rdlog(LOG_ERR, "Can not alloc the mse_array (out of memory?)");
+		return NULL;
+	}
+
 	mse_array->size = mse_array_size;
 	mse_array->data = (void *)&mse_array[1];
 
@@ -635,35 +644,35 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		const json_t *enrichment = NULL;
 		json_error_t _err;
 
-		if (db && !to->subscriptionName) {
-			rdlog(LOG_ERR, "Received MSE message with no subscription name. Discarding.");
-			continue;
-		}
-
-		if (db && to->subscriptionName) {
-			enrichment = mse_database_entry(to->subscriptionName, db);
-
-			if (NULL == enrichment) {
-				/* Try the default one */
-				enrichment = mse_database_entry(MSE_DEFAULT_STREAM, db);
-			}
-
-			if (NULL == enrichment) {
-				rdlog(LOG_ERR, "MSE message (%s) has unknown subscription "
-				      "name %s, and no default stream \"%s\" specified. "
-				      "Discarding.",
-				      buffer, to->subscriptionName, MSE_DEFAULT_STREAM);
-				memset(to, 0, sizeof(to[0]));
+		if(db){
+			if (!to->subscriptionName) {
+				rdlog(LOG_ERR, "Received MSE message with no subscription name. Discarding.");
 				continue;
+			} else {
+				enrichment = mse_database_entry(to->subscriptionName, db);
+
+				if (NULL == enrichment) {
+					/* Try the default one */
+					enrichment = mse_database_entry(MSE_DEFAULT_STREAM, db);
+				}
+
+				if (NULL == enrichment) {
+					rdlog(LOG_ERR, "MSE message (%s) has unknown subscription "
+					      "name %s, and no default stream \"%s\" specified. "
+					      "Discarding.",
+					      buffer, to->subscriptionName, MSE_DEFAULT_STREAM);
+					memset(to, 0, sizeof(to[0]));
+					continue;
+				}
 			}
-		}
 
-		if (db && decoder_info->per_listener_enrichment) {
-			enrich_mse_json(to->json, decoder_info->per_listener_enrichment);
-		}
+			if (decoder_info->per_listener_enrichment) {
+				enrich_mse_json(to->json, decoder_info->per_listener_enrichment);
+			}
 
-		if (db && enrichment) {
-			enrich_mse_json(to->json, enrichment);
+			if (enrichment) {
+				enrich_mse_json(to->json, enrichment);
+			}
 		}
 
 		if (abs(to->timestamp - now) > decoder_info->max_time_offset) {
