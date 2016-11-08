@@ -52,6 +52,10 @@ static void opaque_check_reload() {
 
 	ret_reload = meraki_opaque_reload(opaque_config, o_meraki);
 
+	ret_reload = meraki_opaque_reload(opaque_config, o_meraki);
+
+	ret_reload = meraki_opaque_reload(opaque_config, o_meraki);
+
 	if (ret_reload == 0)
 		meraki_opaque_destructor(o_meraki);
 
