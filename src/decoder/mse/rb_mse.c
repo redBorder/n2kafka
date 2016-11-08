@@ -544,11 +544,6 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 	                             "{s:o}",  /* subscriptionName */
 	                             MSE10_NOTIFICATIONS_KEY, &notifications_array);
 
-	if (*extract_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse MSE10 JSON notifications array: %s", err.text);
-		return NULL;
-	}
-
 	if (0 == json_is_array(notifications_array)) {
 		rdlog(LOG_ERR, "The MSE10 JSON notifications array is not an array %s", err.text);
 		return NULL;
