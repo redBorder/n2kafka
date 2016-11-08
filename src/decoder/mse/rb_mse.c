@@ -644,35 +644,35 @@ static struct mse_array *process_mse_buffer(const char *buffer, size_t bsize,
 		const json_t *enrichment = NULL;
 		json_error_t _err;
 
-		if (db && !to->subscriptionName) {
-			rdlog(LOG_ERR, "Received MSE message with no subscription name. Discarding.");
-			continue;
-		}
-
-		if (db && to->subscriptionName) {
-			enrichment = mse_database_entry(to->subscriptionName, db);
-
-			if (NULL == enrichment) {
-				/* Try the default one */
-				enrichment = mse_database_entry(MSE_DEFAULT_STREAM, db);
-			}
-
-			if (NULL == enrichment) {
-				rdlog(LOG_ERR, "MSE message (%s) has unknown subscription "
-				      "name %s, and no default stream \"%s\" specified. "
-				      "Discarding.",
-				      buffer, to->subscriptionName, MSE_DEFAULT_STREAM);
-				memset(to, 0, sizeof(to[0]));
+		if(db){
+			if (!to->subscriptionName) {
+				rdlog(LOG_ERR, "Received MSE message with no subscription name. Discarding.");
 				continue;
+			} else {
+				enrichment = mse_database_entry(to->subscriptionName, db);
+
+				if (NULL == enrichment) {
+					/* Try the default one */
+					enrichment = mse_database_entry(MSE_DEFAULT_STREAM, db);
+				}
+
+				if (NULL == enrichment) {
+					rdlog(LOG_ERR, "MSE message (%s) has unknown subscription "
+					      "name %s, and no default stream \"%s\" specified. "
+					      "Discarding.",
+					      buffer, to->subscriptionName, MSE_DEFAULT_STREAM);
+					memset(to, 0, sizeof(to[0]));
+					continue;
+				}
 			}
-		}
 
-		if (db && decoder_info->per_listener_enrichment) {
-			enrich_mse_json(to->json, decoder_info->per_listener_enrichment);
-		}
+			if (decoder_info->per_listener_enrichment) {
+				enrich_mse_json(to->json, decoder_info->per_listener_enrichment);
+			}
 
-		if (db && enrichment) {
-			enrich_mse_json(to->json, enrichment);
+			if (enrichment) {
+				enrich_mse_json(to->json, enrichment);
+			}
 		}
 
 		if (abs(to->timestamp - now) > decoder_info->max_time_offset) {
