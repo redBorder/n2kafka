@@ -341,10 +341,11 @@ void mse_opaque_done(void *_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
+	assert(opaque->rkt);
 	mse_decoder_info_destroy(&opaque->decoder_info);
-	if (opaque->rkt) {
-		rd_kafka_topic_destroy(opaque->rkt);
-	}
+
+	rd_kafka_topic_destroy(opaque->rkt);
+
 	free(opaque);
 }
 
@@ -426,16 +427,16 @@ static const json_t *mse_database_entry(const char *subscriptionName,
 }
 
 void free_valid_mse_database(struct mse_database *db) {
-	if (db) {
-		pthread_rwlock_destroy(&db->rwlock);
+	assert(db);
 
-		if (db->root) {
-			json_decref(db->root);
-		}
+	pthread_rwlock_destroy(&db->rwlock);
 
-		if (db->warning_ht) {
-			json_decref(db->warning_ht);
-		}
+	if (db->root) {
+		json_decref(db->root);
+	}
+
+	if (db->warning_ht) {
+		json_decref(db->warning_ht);
 	}
 }
 
