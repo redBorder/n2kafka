@@ -319,11 +319,10 @@ void meraki_opaque_destructor(void *_opaque) {
 	assert(MERAKI_OPAQUE_MAGIC == opaque->magic);
 #endif
 
+	assert(opaque->rkt);
 	meraki_decoder_info_destructor(&opaque->decoder_info);
 
-	if (opaque->rkt) {
-		rd_kafka_topic_destroy(opaque->rkt);
-	}
+	rd_kafka_topic_destroy(opaque->rkt);
 
 	free(opaque);
 }
@@ -349,10 +348,7 @@ static int double_cmp(const double a,const double b) {
 static void enrich_meraki_observation(json_t *observation,
                              const struct meraki_transversal_data *transversal_data) {
 
-	if(!transversal_data->enrichment) {
-		rdlog(LOG_WARNING,"No enrichment, cannot add extra data like type");
-		return;
-	}
+	assert(transversal_data->enrichment);
 
 	const int update_rc = json_object_update_missing(observation,transversal_data->enrichment);
 	if(update_rc != 0) {
