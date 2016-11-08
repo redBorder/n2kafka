@@ -206,6 +206,11 @@ static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,json_t 
 		topic_name = default_topic_name();
 	}
 
+	if (NULL == topic_name){
+		rdlog(LOG_ERR, "Unknown topic name");
+		return -1;
+	}
+
 	opaque->rkt = new_rkt_global_config(topic_name,
 		rb_client_mac_partitioner,err,sizeof(err));
 
@@ -255,6 +260,7 @@ decoder_info_err:
 }
 
 /// @TODO Join with meraki_opaque_creator
+/// @TODO Test stalls in rd_kafka_topic_destroy
 int meraki_opaque_reload(json_t *config,void *vopaque) {
 	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);

@@ -167,11 +167,20 @@ static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
 		topic_name = default_topic_name();
 	}
 
+	if (!topic_name) {
+		rdlog(LOG_ERR, "Can't create rkt with no topic");
+		return -1;
+	}
+
 	opaque->rkt = new_rkt_global_config(topic_name,
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == opaque->rkt) {
-		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		if (NULL == topic_name) {
+			rdlog(LOG_ERR, "Can't create MSE topic: %s", err);
+		} else {
+			rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		}
 		return -1;
 	}
 
@@ -243,6 +252,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 	json_t *new_value = NULL;
 	json_int_t last_time_warned = 0;
 	struct mse_database *db = &decoder_info->mse_config->database;
+	int json_ret = 0;
 
 	pthread_mutex_lock(&db->warning_ht_lock);
 	if ((value = json_object_get(db->warning_ht, data->subscriptionName))
@@ -253,14 +263,19 @@ static void mse_warn_timestamp(struct mse_data *data,
 			rdlog(LOG_WARNING, "Timestamp out of date");
 			data->timestamp_warnings++;
 			new_value = json_integer(now);
-			json_object_set(db->warning_ht, data->subscriptionName, new_value);
+
+			json_ret = json_object_set(db->warning_ht, data->subscriptionName, new_value);
+			if (json_ret != 0)
+				rdlog(LOG_ERR, "Can't add new value in warning_ht");
 		}
 	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
 		data->timestamp_warnings++;
 		new_value = json_integer(now);
-		json_object_set_new(db->warning_ht, data->subscriptionName,
-		                    new_value);
+		json_ret = json_object_set_new(db->warning_ht, data->subscriptionName,
+		                               new_value);
+		if (json_ret != 0)
+			rdlog(LOG_ERR, "Can't add new value in warning_ht");
 	}
 	pthread_mutex_unlock(&db->warning_ht_lock);
 }
@@ -308,7 +323,8 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		rb_client_mac_partitioner,err,sizeof(err));
 
 	if(NULL == rkt_aux) {
-		rdlog(LOG_ERR, "Can't create MSE topic %s: %s", topic_name, err);
+		if (NULL == topic_name)
+			rblog(LOG_DEBUG,"Empty topic_name conf in new_rkt_global_config.");
 		goto rkt_err;
 	}
 
@@ -318,6 +334,10 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 	decoder_info->max_time_offset_warning_wait = max_time_offset_warning_wait;
 	decoder_info->max_time_offset = max_time_offset;
 	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
+
+	rd_kafka_topic_destroy(rkt_aux);
+	json_decref(enrichment_aux);
+	return 0;
 
 rkt_err:
 enrichment_err:
@@ -329,7 +349,7 @@ enrichment_err:
 		json_decref(enrichment_aux);
 	}
 
-	return 0;
+	return -1;
 }
 
 void mse_opaque_done(void *_opaque) {
@@ -359,13 +379,17 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	                                     "{s:s,s?o}", "stream", &stream, MSE_ENRICHMENT_KEY, &enrichment);
 
 	if (unpack_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0), err.text);
+		char *sensor_json = json_dumps(sensor, 0);
+		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json, err.text);
+		free(sensor_json);
 		return -1;
 	}
 
 	if (stream == NULL) {
-		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", json_dumps(sensor, 0),
+		char *sensor_json = json_dumps(sensor, 0);
+		rdlog(LOG_ERR, "Can't parse sensor (%s): %s", sensor_json,
 		      "No \"stream\"");
+		free(sensor_json);
 		return -1;
 	}
 
@@ -374,6 +398,7 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	const int set_rc = json_object_set_new(streams_db, stream, _enrich);
 	if (set_rc != 0) {
 		rdlog(LOG_ERR, "Can't set new MSE enrichment db entry (out of memory?)");
+		return -1;
 	}
 
 	return 0;
@@ -399,7 +424,11 @@ int parse_mse_array(void *_db, const struct json_t *mse_array) {
 	}
 
 	json_array_foreach(mse_array, _index, value) {
-		parse_sensor(value, new_db);
+		const int ret = parse_sensor(value, new_db);
+		if (ret != 0) {
+			json_decref(new_db);
+			return -1;
+		}
 	}
 
 	pthread_rwlock_wrlock(&db->rwlock);
@@ -545,11 +574,21 @@ static struct mse_array *extract_mse10_rich_data(json_t *from,
 		return NULL;
 	}
 
+	if (0 == json_is_array(notifications_array)) {
+		rdlog(LOG_ERR, "The MSE10 JSON notifications array is not an array %s", err.text);
+		return NULL;
+	}
+
 	const size_t mse_array_size = json_array_size(notifications_array);
 	const size_t alloc_size = sizeof(struct mse_array) + mse_array_size * sizeof(
 	                              struct mse_data);
 
 	struct mse_array *mse_array = calloc(1, alloc_size);
+	if (NULL == mse_array) {
+		rdlog(LOG_ERR, "Can not alloc the mse_array (out of memory?)");
+		return NULL;
+	}
+
 	mse_array->size = mse_array_size;
 	mse_array->data = (void *)&mse_array[1];
 
