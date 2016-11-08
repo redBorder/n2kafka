@@ -313,6 +313,8 @@ static void test4_reload(const char *_listener_config){
 
 	assert_int_equal(unpack_rc2, -1);
 
+	meraki_opaque_reload(listener_config, &o_mse);
+
 	json_decref(listener_config);
 
 	assert_null(o_mse);
