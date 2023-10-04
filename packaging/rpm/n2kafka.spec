@@ -10,7 +10,7 @@ BuildRequires: gcc librd-devel json-c-devel librdkafka-devel libev-devel libmicr
 
 Summary: Network messages to json/kafka gateway
 Group:   Development/Libraries/C and C++
-Requires: librd0 json-c librdkafka1 libev libmicrohttpd jansson >= 2.7 yajl >= 2.1.0 libcurl >= 7.48
+Requires: librd0 json-c librdkafka libev libmicrohttpd jansson >= 2.7 yajl >= 2.1.0 libcurl >= 7.48
 %description
 %{summary}
 
