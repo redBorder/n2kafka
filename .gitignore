@@ -45,3 +45,7 @@ version.c
 
 # Binary
 n2kafka
+
+#build
+/packaging/rpm/SOURCES/
+/packaging/rpm/pkgs
