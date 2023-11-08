@@ -1,0 +1,13 @@
+{
+  "listeners": [{
+    "proto": "http",
+    "port": 2057,
+    "mode": "epoll",
+    "num_threads": 2
+  }],
+  "brokers": "localhost",
+  "topic": "n2kafka_test",
+  "rdkafka.socket.max.fails": "3",
+  "rdkafka.socket.keepalive.enable": "true"
+}
+

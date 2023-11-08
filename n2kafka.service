@@ -1,0 +1,9 @@
+[Unit]
+Description=Network socket to Kafka messaging gateway
+
+[Service]
+ExecStart=/usr/bin/n2kafka /etc/n2kafka_config.json
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
